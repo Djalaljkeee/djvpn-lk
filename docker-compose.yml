@@ -12,8 +12,9 @@ services:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - shm-net
 
   frontend:
     build:
@@ -28,3 +29,6 @@ services:
 networks:
   default:
     name: shm-cabinet
+  shm-net:
+    external: true
+    name: ${SHM_NETWORK}
