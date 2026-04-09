@@ -22,7 +22,7 @@ function StatusBadge({ status }: { status: number }) {
 }
 
 function ServiceCard({ svc }: { svc: UserService }) {
-  const expiredAt  = svc.expired ? parseISO(svc.expired) : null
+  const expiredAt  = svc.expired ? parseISO(svc.expired.replace(' ', 'T')) : null
   const daysLeft   = expiredAt ? differenceInDays(expiredAt, new Date()) : null
   const isExpired  = expiredAt ? isPast(expiredAt) : false
   const isUrgent   = !isExpired && daysLeft !== null && daysLeft <= 5
@@ -38,7 +38,7 @@ function ServiceCard({ svc }: { svc: UserService }) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span>Создана: {format(parseISO(svc.created), 'd MMM yyyy', { locale: ru })}</span>
+        <span>Создана: {svc.created ? format(parseISO(svc.created.replace(' ', 'T')), 'd MMM yyyy', { locale: ru }) : '—'}</span>
         {expiredAt && (
           <span className={isExpired ? 'text-red-400 font-medium' : isUrgent ? 'text-amber-400 font-medium' : ''}>
             {isExpired ? '🔴 Истекла: ' : isUrgent ? '⚠ До: ' : 'До: '}
@@ -95,7 +95,7 @@ export default function DashboardPage() {
   const activeServices = services.filter(s => s.status === 1)
   const urgentServices = activeServices.filter(s => {
     if (!s.expired) return false
-    const d = differenceInDays(parseISO(s.expired), new Date())
+    const d = differenceInDays(parseISO(s.expired.replace(' ', 'T')), new Date())
     return d <= 5
   })
 
