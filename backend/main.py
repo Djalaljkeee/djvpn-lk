@@ -82,6 +82,55 @@ def get_current_session(credentials: HTTPAuthorizationCredentials = Depends(secu
 
 
 # ---------------------------------------------------------------------------
+# SHM field normalization
+# ---------------------------------------------------------------------------
+
+_SERVICE_STATUS = {
+    "ACTIVE": 1, "BLOCK": 2, "NOT PAID": 2,
+    "STUCK": 2, "REMOVED": 3, "INIT": 0, "PROGRESS": 0,
+}
+
+def normalize_user_service(svc: dict) -> dict:
+    info = svc.get("service") or {}
+    return {
+        "id":          svc.get("user_service_id"),
+        "service_id":  svc.get("service_id"),
+        "name":        info.get("name") or svc.get("name", ""),
+        "status":      _SERVICE_STATUS.get(str(svc.get("status", "")), 0),
+        "created":     svc.get("created"),
+        "expired":     svc.get("expire"),          # SHM: expire, not expired
+        "cost":        info.get("cost") or svc.get("cost"),
+        "period":      svc.get("period") or svc.get("period_cost"),
+        "period_type": svc.get("period_type", "month"),
+        "descr":       info.get("descr") or svc.get("descr"),
+    }
+
+def normalize_payment(pay: dict) -> dict:
+    return {
+        "id":              pay.get("id"),
+        "amount":          float(pay.get("money") or 0),  # SHM: money, not amount
+        "pay_system_id":   pay.get("pay_system_id"),
+        "pay_system_name": pay.get("pay_system_id"),
+        "created":         pay.get("date"),               # SHM: date, not created
+        "status":          1,
+        "comment":         pay.get("comment"),
+    }
+
+def normalize_catalog_service(svc: dict) -> dict:
+    allow = svc.get("allow_to_order", 1)
+    return {
+        "service_id":  svc.get("id") or svc.get("service_id"),
+        "name":        svc.get("name", ""),
+        "cost":        float(svc.get("cost") or 0),
+        "period":      int(svc.get("period_cost") or svc.get("period") or 1),
+        "period_type": svc.get("period_type", "month"),
+        "descr":       svc.get("descr"),
+        "category":    svc.get("category"),
+        "status":      1 if allow else 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # SHM API client
 # ---------------------------------------------------------------------------
 
@@ -247,23 +296,13 @@ async def get_profile(session: dict = Depends(get_current_session)):
 @app.get("/api/user/services")
 async def get_user_services(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
-    items = data.get("data", [])
-    if items:
-        import logging
-        logging.warning("SHM user/service sample fields: %s", list(items[0].keys()))
-        logging.warning("SHM user/service sample: %s", items[0])
-    return items
+    return [normalize_user_service(s) for s in data.get("data", [])]
 
 
 @app.get("/api/user/payments")
 async def get_payments(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/pay", session["shm_session"])
-    items = data.get("data", [])
-    if items:
-        import logging
-        logging.warning("SHM user/pay sample fields: %s", list(items[0].keys()))
-        logging.warning("SHM user/pay sample: %s", items[0])
-    return items
+    return [normalize_payment(p) for p in data.get("data", [])]
 
 
 @app.get("/api/user/referrals")
@@ -279,8 +318,9 @@ async def get_referrals(session: dict = Depends(get_current_session)):
 @app.get("/api/services")
 async def get_services(session: dict = Depends(get_current_session)):
     try:
-        data = await shm_request("GET", "/shm/v1/admin/service", session["shm_session"])
-        return data.get("data", [])
+        admin_session = await get_admin_session()
+        data = await shm_request("GET", "/shm/v1/admin/service", admin_session)
+        return [normalize_catalog_service(s) for s in data.get("data", [])]
     except HTTPException:
         return []
 
