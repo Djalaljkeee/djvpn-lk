@@ -85,6 +85,18 @@ def get_current_session(credentials: HTTPAuthorizationCredentials = Depends(secu
 # SHM API client
 # ---------------------------------------------------------------------------
 
+async def get_admin_session() -> str:
+    """Получить admin session_id от SHM"""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+            json={"login": settings.SHM_ADMIN_LOGIN, "password": settings.SHM_ADMIN_PASSWORD},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=503, detail="Не удалось получить admin-сессию SHM")
+    return resp.json().get("session_id")
+
+
 async def shm_request(
     method: str,
     path: str,
@@ -256,11 +268,9 @@ async def get_referrals(session: dict = Depends(get_current_session)):
 
 @app.get("/api/services")
 async def get_services(session: dict = Depends(get_current_session)):
-    try:
-        data = await shm_request("GET", "/shm/v1/service", session["shm_session"])
-        return data.get("data", [])
-    except HTTPException:
-        return []
+    admin_session = await get_admin_session()
+    data = await shm_request("GET", "/shm/v1/admin/service", admin_session)
+    return data.get("data", [])
 
 
 @app.post("/api/services/buy")
@@ -278,7 +288,8 @@ async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_curren
 
 @app.get("/api/pay-systems")
 async def get_pay_systems(session: dict = Depends(get_current_session)):
-    data = await shm_request("GET", "/shm/v1/pay", session["shm_session"])
+    admin_session = await get_admin_session()
+    data = await shm_request("GET", "/shm/v1/admin/pay_system", admin_session)
     return data.get("data", [])
 
 
