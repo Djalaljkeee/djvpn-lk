@@ -2,6 +2,7 @@ version: '3.9'
 
 services:
   backend:
+    image: ghcr.io/djalaljkeee/djvpn-lk-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -12,10 +13,12 @@ services:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - shm-net
 
   frontend:
+    image: ghcr.io/djalaljkeee/djvpn-lk-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -28,3 +31,6 @@ services:
 networks:
   default:
     name: shm-cabinet
+  shm-net:
+    external: true
+    name: ${SHM_NETWORK}
