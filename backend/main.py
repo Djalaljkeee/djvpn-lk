@@ -105,6 +105,10 @@ async def shm_request(
         if resp.content:
             return resp.json()
         return {}
+    if resp.status_code == 404:
+        return {}
+    import logging
+    logging.warning("SHM %s %s -> %s: %s", method, path, resp.status_code, resp.text[:500])
     raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
 
