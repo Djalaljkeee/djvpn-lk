@@ -247,13 +247,23 @@ async def get_profile(session: dict = Depends(get_current_session)):
 @app.get("/api/user/services")
 async def get_user_services(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
-    return data.get("data", [])
+    items = data.get("data", [])
+    if items:
+        import logging
+        logging.warning("SHM user/service sample fields: %s", list(items[0].keys()))
+        logging.warning("SHM user/service sample: %s", items[0])
+    return items
 
 
 @app.get("/api/user/payments")
 async def get_payments(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/pay", session["shm_session"])
-    return data.get("data", [])
+    items = data.get("data", [])
+    if items:
+        import logging
+        logging.warning("SHM user/pay sample fields: %s", list(items[0].keys()))
+        logging.warning("SHM user/pay sample: %s", items[0])
+    return items
 
 
 @app.get("/api/user/referrals")

@@ -194,7 +194,7 @@ export default function PaymentsPage() {
                     {pay.pay_system_name || (pay.amount >= 0 ? 'Пополнение' : 'Списание')}
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {format(parseISO(pay.created), 'd MMM yyyy, HH:mm', { locale: ru })}
+                    {pay.created ? format(parseISO(pay.created.replace(' ', 'T')), 'd MMM yyyy, HH:mm', { locale: ru }) : '—'}
                     {pay.comment && ` · ${pay.comment}`}
                   </p>
                 </div>

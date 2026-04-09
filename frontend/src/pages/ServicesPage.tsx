@@ -181,7 +181,7 @@ export default function ServicesPage() {
                   <span className="text-sm text-white font-medium block truncate">{svc.name}</span>
                   {svc.expired && (
                     <span className="text-xs text-slate-500">
-                      Истекает: {svc.expired.split('T')[0]}
+                      Истекает: {svc.expired.replace('T', ' ').split(' ')[0]}
                     </span>
                   )}
                 </div>
