@@ -268,9 +268,11 @@ async def get_referrals(session: dict = Depends(get_current_session)):
 
 @app.get("/api/services")
 async def get_services(session: dict = Depends(get_current_session)):
-    admin_session = await get_admin_session()
-    data = await shm_request("GET", "/shm/v1/admin/service", admin_session)
-    return data.get("data", [])
+    try:
+        data = await shm_request("GET", "/shm/v1/admin/service", session["shm_session"])
+        return data.get("data", [])
+    except HTTPException:
+        return []
 
 
 @app.post("/api/services/buy")
@@ -288,9 +290,11 @@ async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_curren
 
 @app.get("/api/pay-systems")
 async def get_pay_systems(session: dict = Depends(get_current_session)):
-    admin_session = await get_admin_session()
-    data = await shm_request("GET", "/shm/v1/admin/pay_system", admin_session)
-    return data.get("data", [])
+    try:
+        data = await shm_request("GET", "/shm/v1/admin/pay_system", session["shm_session"])
+        return data.get("data", [])
+    except HTTPException:
+        return []
 
 
 @app.post("/api/pay/create")
