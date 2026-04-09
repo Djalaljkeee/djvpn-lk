@@ -256,8 +256,11 @@ async def get_referrals(session: dict = Depends(get_current_session)):
 
 @app.get("/api/services")
 async def get_services(session: dict = Depends(get_current_session)):
-    data = await shm_request("GET", "/shm/v1/service", session["shm_session"])
-    return data.get("data", [])
+    try:
+        data = await shm_request("GET", "/shm/v1/service", session["shm_session"])
+        return data.get("data", [])
+    except HTTPException:
+        return []
 
 
 @app.post("/api/services/buy")
