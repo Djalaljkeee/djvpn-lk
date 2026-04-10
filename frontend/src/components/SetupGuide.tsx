@@ -63,18 +63,30 @@ const PLATFORM_LABELS: Record<string, string> = {
   macos: 'macOS',
 }
 
-export default function SetupGuide({ subUrl, onClose }: { subUrl: string; onClose: () => void }) {
+export default function SetupGuide({
+  subUrl,
+  serviceId,
+  onClose,
+}: {
+  subUrl?: string
+  serviceId?: number
+  onClose: () => void
+}) {
   const [data, setData] = useState<SetupData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [step, setStep] = useState(1)
 
   useEffect(() => {
-    api.get<SetupData>('/vpn/setup', { params: { url: subUrl } })
+    const req = serviceId
+      ? api.get<SetupData>(`/user/service/${serviceId}/config`)
+      : api.get<SetupData>('/vpn/setup', { params: { url: subUrl } })
+
+    req
       .then(r => setData(r.data))
-      .catch(() => setError('Не удалось загрузить настройки'))
+      .catch(() => setError('Не удалось загрузить настройки. Скопируйте ссылку вручную.'))
       .finally(() => setLoading(false))
-  }, [subUrl])
+  }, [subUrl, serviceId])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -104,7 +116,7 @@ export default function SetupGuide({ subUrl, onClose }: { subUrl: string; onClos
                 <div className="text-4xl mb-3">⚠️</div>
                 <p className="text-sm text-slate-400">{error}</p>
               </div>
-              <CopyBtn text={subUrl} label="Скопировать ссылку подписки" />
+              {subUrl && <CopyBtn text={subUrl} label="Скопировать ссылку подписки" />}
               <div className="bg-surface-3 rounded-xl p-4 text-xs text-slate-400 leading-relaxed whitespace-pre-line">
                 {'1. Скачайте приложение Happ\n2. Откройте и нажмите «+»\n3. Выберите «Добавить подписку»\n4. Вставьте скопированную ссылку'}
               </div>

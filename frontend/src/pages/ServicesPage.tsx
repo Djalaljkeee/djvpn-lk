@@ -118,7 +118,7 @@ export default function ServicesPage() {
   const [changingId, setChangingId] = useState<number | null>(null)  // user_service_id for modal
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
-  const [setupUrl, setSetupUrl] = useState<string | null>(null)
+  const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
 
   const reload = async () => {
     const [cat, svcs] = await Promise.all([fetchServices(), fetchUserServices()])
@@ -220,7 +220,13 @@ export default function ServicesPage() {
       )}
 
       {/* Setup guide modal */}
-      {setupUrl && <SetupGuide subUrl={setupUrl} onClose={() => setSetupUrl(null)} />}
+      {setupTarget && (
+        <SetupGuide
+          subUrl={setupTarget.url}
+          serviceId={setupTarget.serviceId}
+          onClose={() => setSetupTarget(null)}
+        />
+      )}
 
       {/* Top-up prompt modal */}
       {topupPrompt && (
@@ -368,36 +374,40 @@ export default function ServicesPage() {
                   {svc.subscription_url && <SubUrl url={svc.subscription_url} />}
 
                   {/* Action buttons */}
-                  <div className="flex gap-2 mt-3 pt-3 border-t border-white/5">
-                    {svc.subscription_url && (
+                  <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/5">
+                    <button
+                      onClick={() => setSetupTarget(
+                        svc.subscription_url
+                          ? { url: svc.subscription_url }
+                          : { serviceId: svc.id ?? undefined }
+                      )}
+                      className="w-full py-2 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-semibold transition-colors border border-emerald-500/20"
+                    >
+                      Настроить подключение
+                    </button>
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => setSetupUrl(svc.subscription_url!)}
-                        className="flex-1 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-xs font-medium transition-colors"
+                        onClick={() => setChangingId(svc.id ?? null)}
+                        disabled={isActioning}
+                        className="flex-1 py-1.5 rounded-lg bg-brand-600/15 text-brand-400 hover:bg-brand-600/25 text-xs font-medium transition-colors disabled:opacity-40"
                       >
-                        Настроить
+                        Сменить тариф
                       </button>
-                    )}
-                    <button
-                      onClick={() => setChangingId(svc.id ?? null)}
-                      disabled={isActioning}
-                      className="flex-1 py-1.5 rounded-lg bg-brand-600/15 text-brand-400 hover:bg-brand-600/25 text-xs font-medium transition-colors disabled:opacity-40"
-                    >
-                      Сменить тариф
-                    </button>
-                    <button
-                      onClick={() => handleStop(svc)}
-                      disabled={isActioning || svc.status !== 1}
-                      className="flex-1 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-xs font-medium transition-colors disabled:opacity-40"
-                    >
-                      {isActioning ? '...' : 'Остановить'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(svc)}
-                      disabled={isActioning}
-                      className="flex-1 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-40"
-                    >
-                      Удалить
-                    </button>
+                      <button
+                        onClick={() => handleStop(svc)}
+                        disabled={isActioning || svc.status !== 1}
+                        className="flex-1 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-xs font-medium transition-colors disabled:opacity-40"
+                      >
+                        {isActioning ? '...' : 'Остановить'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(svc)}
+                        disabled={isActioning}
+                        className="flex-1 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-40"
+                      >
+                        Удалить
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
