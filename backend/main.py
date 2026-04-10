@@ -209,6 +209,18 @@ def verify_telegram_auth(data: TelegramAuthRequest) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Public config (no auth required)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/config")
+async def get_public_config():
+    """Публичная конфигурация для фронтенда"""
+    return {
+        "telegram_bot_username": settings.TELEGRAM_BOT_USERNAME,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
 

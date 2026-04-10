@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { loginWithPassword, loginWithTelegram } from '../api/auth'
+import { fetchConfig } from '../api/services'
 
 declare global {
   interface Window {
@@ -19,14 +20,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const tgRef = useRef<HTMLDivElement>(null)
+  const [botUsername, setBotUsername] = useState('')
 
   useEffect(() => {
     if (isAuthenticated()) navigate('/', { replace: true })
+    fetchConfig().then(cfg => setBotUsername(cfg.telegram_bot_username)).catch(() => {})
   }, [])
 
   // Инжектим Telegram Login Widget
   useEffect(() => {
-    if (tab !== 'telegram' || !tgRef.current) return
+    if (tab !== 'telegram' || !tgRef.current || !botUsername) return
     tgRef.current.innerHTML = ''
 
     window.onTelegramAuth = async (tgUser) => {
@@ -43,7 +46,6 @@ export default function LoginPage() {
       }
     }
 
-    const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'DJ_VPN_bot'
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
     script.setAttribute('data-telegram-login', botUsername)
@@ -54,7 +56,7 @@ export default function LoginPage() {
     tgRef.current.appendChild(script)
 
     return () => { window.onTelegramAuth = undefined }
-  }, [tab])
+  }, [tab, botUsername])
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault()

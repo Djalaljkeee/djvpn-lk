@@ -1,6 +1,9 @@
 import api from './client'
 import type { Service, PaySystem } from '../types'
 
+export const fetchConfig = (): Promise<{ telegram_bot_username: string }> =>
+  api.get('/config').then(r => r.data)
+
 export const fetchServices = () =>
   api.get<Service[]>('/services').then(r => r.data)
 
