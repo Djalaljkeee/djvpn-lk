@@ -21,3 +21,6 @@ export const stopService = (user_service_id: number) =>
 
 export const deleteService = (user_service_id: number) =>
   api.delete('/user/service', { data: { user_service_id } }).then(r => r.data)
+
+export const applyPromoCode = (code: string) =>
+  api.post('/user/promo', { code }).then(r => r.data)

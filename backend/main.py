@@ -70,6 +70,9 @@ class ChangeServiceRequest(BaseModel):
 class StopServiceRequest(BaseModel):
     user_service_id: int
 
+class PromoCodeRequest(BaseModel):
+    code: str
+
 class DeleteServiceRequest(BaseModel):
     user_service_id: int
 
@@ -484,7 +487,10 @@ async def change_service(req: ChangeServiceRequest, session: dict = Depends(get_
         "POST", "/shm/v1/user/service/change", session["shm_session"],
         json_data={"user_service_id": req.user_service_id, "service_id": req.service_id},
     )
-    return normalize_user_service(result.get("data", result) if isinstance(result, dict) else {})
+    data = result.get("data", result) if isinstance(result, dict) else {}
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return normalize_user_service(data)
 
 
 @app.post("/api/user/service/stop")
@@ -498,11 +504,30 @@ async def stop_service(req: StopServiceRequest, session: dict = Depends(get_curr
 
 @app.delete("/api/user/service")
 async def delete_service(req: DeleteServiceRequest, session: dict = Depends(get_current_session)):
-    """Удалить услугу: DELETE /shm/v1/user/service"""
+    """Удалить услугу: сначала останавливаем (если активна), затем удаляем"""
+    try:
+        await shm_request(
+            "POST", "/shm/v1/user/service/stop", session["shm_session"],
+            json_data={"user_service_id": req.user_service_id},
+        )
+    except HTTPException:
+        pass  # уже остановлена или заблокирована — продолжаем
     return await shm_request(
         "DELETE", "/shm/v1/user/service", session["shm_session"],
         json_data={"user_service_id": req.user_service_id},
     )
+
+
+@app.post("/api/user/promo")
+async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current_session)):
+    """Применить промокод"""
+    result = await shm_request(
+        "POST", "/shm/v1/user/promo", session["shm_session"],
+        json_data={"code": req.code},
+    )
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        raise HTTPException(status_code=400, detail=result.get("msg", "Промокод не найден или уже использован"))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +536,16 @@ async def delete_service(req: DeleteServiceRequest, session: dict = Depends(get_
 
 @app.get("/api/services", response_model=list[CatalogServiceOut])
 async def get_services(session: dict = Depends(get_current_session)):
+    # Используем сессию пользователя — SHM возвращает allow_to_order=0 для уже
+    # использованных одноразовых услуг (пробный период и т.п.)
+    try:
+        data = await shm_request("GET", "/shm/v1/service", session["shm_session"])
+        services = data.get("data", [])
+        if services:
+            return [normalize_catalog_service(s) for s in services]
+    except HTTPException:
+        pass
+    # Fallback: admin-каталог
     try:
         admin_session = await get_admin_session()
         data = await shm_request("GET", "/shm/v1/admin/service", admin_session)

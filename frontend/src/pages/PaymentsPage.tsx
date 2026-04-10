@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchPaySystemsV2, type PaySystemV2 } from '../api/services'
-import { fetchPayments, fetchProfile } from '../api/user'
+import { fetchPayments, fetchProfile, applyPromoCode } from '../api/user'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
 import type { Payment } from '../types'
@@ -18,6 +18,8 @@ export default function PaymentsPage() {
   const [selectedPs, setSelectedPs] = useState<PaySystemV2 | null>(null)
   const [amount,     setAmount]     = useState('100')
   const [editingAmt, setEditingAmt] = useState(false)
+  const [promoCode,  setPromoCode]  = useState('')
+  const [promoLoading, setPromoLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -36,6 +38,22 @@ export default function PaymentsPage() {
     if (!selectedPs || !amountValid) return
     const url = selectedPs.shm_url + parsedAmount.toFixed(2)
     window.open(url, '_blank')
+  }
+
+  const handlePromo = async () => {
+    const code = promoCode.trim()
+    if (!code) return
+    setPromoLoading(true)
+    try {
+      await applyPromoCode(code)
+      show('Промокод применён!', 'success')
+      setPromoCode('')
+      fetchProfile().then(setUser)
+    } catch (e: any) {
+      show(e?.response?.data?.detail || 'Промокод не найден или уже использован', 'error')
+    } finally {
+      setPromoLoading(false)
+    }
   }
 
   const balance = user?.balance ?? 0
@@ -142,6 +160,30 @@ export default function PaymentsPage() {
                   Пополнить на {parsedAmount.toFixed(0)} ₽ через {selectedPs.name}
                 </button>
               )}
+
+              {/* Promo code */}
+              <div className="pt-1 border-t border-white/5">
+                <p className="text-xs text-slate-500 mb-2 font-medium">Промокод</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoCode}
+                    onChange={e => setPromoCode(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handlePromo()}
+                    placeholder="Введите промокод"
+                    className="flex-1 bg-surface-3 border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-500/40 transition-all"
+                  />
+                  <button
+                    onClick={handlePromo}
+                    disabled={!promoCode.trim() || promoLoading}
+                    className="px-4 py-2.5 rounded-xl bg-brand-600/20 text-brand-400 hover:bg-brand-600/30 text-sm font-medium border border-brand-600/25 transition-all disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    {promoLoading
+                      ? <span className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
+                      : 'Применить'}
+                  </button>
+                </div>
+              </div>
             </>
           )}
         </div>
