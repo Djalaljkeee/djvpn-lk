@@ -19,6 +19,7 @@ export interface UserService {
   period?: number
   period_type?: string
   descr?: string
+  subscription_url?: string
 }
 
 export interface Service {

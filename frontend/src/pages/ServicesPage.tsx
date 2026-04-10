@@ -4,6 +4,21 @@ import { fetchUserServices } from '../api/user'
 import { useToast } from '../components/Toast'
 import type { Service, UserService } from '../types'
 
+function SubUrl({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2">
+      <code className="flex-1 text-xs text-brand-300 font-mono truncate min-w-0">{url}</code>
+      <button
+        onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+        className="flex-shrink-0 text-xs px-2 py-1 rounded-lg bg-brand-600/15 text-brand-400 hover:bg-brand-600/25 transition-colors whitespace-nowrap"
+      >
+        {copied ? '✓ Скопировано' : 'Скопировать'}
+      </button>
+    </div>
+  )
+}
+
 function periodLabel(period: number, type: string) {
   if (type === 'month') return period === 1 ? '/мес'  : `/${period} мес`
   if (type === 'year')  return period === 1 ? '/год'  : `/${period} г`
@@ -176,22 +191,27 @@ export default function ServicesPage() {
           <h2 className="text-base font-semibold text-white mb-3">Мои подключённые услуги</h2>
           <div className="space-y-2">
             {myServices.map(svc => (
-              <div key={svc.id} className="glass rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <span className="text-sm text-white font-medium block truncate">{svc.name}</span>
-                  {svc.expired && (
-                    <span className="text-xs text-slate-500">
-                      Истекает: {svc.expired.replace('T', ' ').split(' ')[0]}
-                    </span>
-                  )}
+              <div key={svc.id} className="glass rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-sm text-white font-medium block truncate">{svc.name}</span>
+                    {svc.expired && (
+                      <span className="text-xs text-slate-500">
+                        Истекает: {svc.expired.replace('T', ' ').split(' ')[0]}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md border ${
+                    svc.status === 1
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`}>
+                    {svc.status === 1 ? 'Активна' : 'Блокирована'}
+                  </span>
                 </div>
-                <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-md border ${
-                  svc.status === 1
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                }`}>
-                  {svc.status === 1 ? 'Активна' : 'Блокирована'}
-                </span>
+                {svc.subscription_url && (
+                  <SubUrl url={svc.subscription_url} />
+                )}
               </div>
             ))}
           </div>

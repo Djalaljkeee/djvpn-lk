@@ -12,3 +12,6 @@ export const fetchPaySystems = () =>
 
 export const createPayment = (pay_system_id: number, amount: number) =>
   api.post('/pay/create', { pay_system_id, amount }).then(r => r.data)
+
+export const fetchPaymentWebappUrl = (): Promise<string> =>
+  api.get<{ url: string }>('/pay/webapp-url').then(r => r.data.url)

@@ -92,17 +92,26 @@ _SERVICE_STATUS = {
 
 def normalize_user_service(svc: dict) -> dict:
     info = svc.get("service") or {}
+    data = svc.get("data") or {}
+    # Subscription URL: SHM Marzban module stores it in multiple places
+    sub_url = (
+        svc.get("subscription_url")
+        or svc.get("subscriptionUrl")
+        or data.get("subscription_url")
+        or data.get("subscriptionUrl")
+    )
     return {
-        "id":          svc.get("user_service_id"),
-        "service_id":  svc.get("service_id"),
-        "name":        info.get("name") or svc.get("name", ""),
-        "status":      _SERVICE_STATUS.get(str(svc.get("status", "")), 0),
-        "created":     svc.get("created"),
-        "expired":     svc.get("expire"),          # SHM: expire, not expired
-        "cost":        info.get("cost") or svc.get("cost"),
-        "period":      svc.get("period") or svc.get("period_cost"),
-        "period_type": svc.get("period_type", "month"),
-        "descr":       info.get("descr") or svc.get("descr"),
+        "id":               svc.get("user_service_id"),
+        "service_id":       svc.get("service_id"),
+        "name":             info.get("name") or svc.get("name", ""),
+        "status":           _SERVICE_STATUS.get(str(svc.get("status", "")), 0),
+        "created":          svc.get("created"),
+        "expired":          svc.get("expire"),          # SHM: expire, not expired
+        "cost":             info.get("cost") or svc.get("cost"),
+        "period":           svc.get("period") or svc.get("period_cost"),
+        "period_type":      svc.get("period_type", "month"),
+        "descr":            info.get("descr") or svc.get("descr"),
+        "subscription_url": sub_url,
     }
 
 def normalize_payment(pay: dict) -> dict:
@@ -327,10 +336,15 @@ async def get_services(session: dict = Depends(get_current_session)):
 
 @app.post("/api/services/buy")
 async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_current_session)):
+    import logging
     result = await shm_request(
         "PUT", "/shm/v1/user/service", session["shm_session"],
         json_data={"service_id": req.service_id},
     )
+    logging.info("buy_service response: %s", result)
+    # SHM может вернуть {"status": 4xx, "msg": "..."} c HTTP 200
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        raise HTTPException(status_code=400, detail=result.get("msg", "Ошибка при покупке услуги"))
     return result
 
 
@@ -345,6 +359,16 @@ async def get_pay_systems(session: dict = Depends(get_current_session)):
         return data.get("data", [])
     except HTTPException:
         return []
+
+
+@app.get("/api/pay/webapp-url")
+async def get_payment_webapp_url(session: dict = Depends(get_current_session)):
+    """URL страницы оплаты SHM (Telegram Payment WebApp)"""
+    public_url = (settings.SHM_PUBLIC_URL or "").rstrip("/")
+    if not public_url:
+        raise HTTPException(status_code=503, detail="SHM_PUBLIC_URL не настроен")
+    user_id = session.get("user_id", 0)
+    return {"url": f"{public_url}/shm/v1/public/tg_payment_webapp?format=html&user_id={user_id}"}
 
 
 @app.post("/api/pay/create")

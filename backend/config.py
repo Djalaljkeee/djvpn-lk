@@ -5,6 +5,7 @@ from typing import List
 class Settings(BaseSettings):
     # SHM
     SHM_BASE_URL: str = "http://your-shm-host:3001"
+    SHM_PUBLIC_URL: str = ""   # публичный URL SHM, доступный из браузера (напр. https://shm.example.com)
     SHM_ADMIN_LOGIN: str = "admin"
     SHM_ADMIN_PASSWORD: str = "admin"
 

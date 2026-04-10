@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchPaySystems, createPayment } from '../api/services'
+import { fetchPaySystems, createPayment, fetchPaymentWebappUrl } from '../api/services'
 import { fetchPayments, fetchProfile } from '../api/user'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
@@ -12,19 +12,21 @@ const QUICK_AMOUNTS = [100, 300, 500, 1000]
 export default function PaymentsPage() {
   const { user, setUser } = useAuthStore()
   const { show } = useToast()
-  const [paySystems, setPaySystems] = useState<PaySystem[]>([])
-  const [payments,   setPayments]   = useState<Payment[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [selectedPs, setSelectedPs] = useState<number | null>(null)
-  const [amount,     setAmount]     = useState('')
-  const [paying,     setPaying]     = useState(false)
-  const [payUrl,     setPayUrl]     = useState<string | null>(null)
+  const [paySystems,   setPaySystems]   = useState<PaySystem[]>([])
+  const [payments,     setPayments]     = useState<Payment[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [selectedPs,   setSelectedPs]   = useState<number | null>(null)
+  const [amount,       setAmount]       = useState('')
+  const [paying,       setPaying]       = useState(false)
+  const [payUrl,       setPayUrl]       = useState<string | null>(null)
+  const [webappUrl,    setWebappUrl]    = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
       fetchPaySystems().then(data => { setPaySystems(data); if (data[0]) setSelectedPs(data[0].pay_system_id) }),
       fetchPayments().then(setPayments),
       fetchProfile().then(setUser),
+      fetchPaymentWebappUrl().then(setWebappUrl).catch(() => null),
     ])
       .catch(() => show('Ошибка загрузки данных', 'error'))
       .finally(() => setLoading(false))
@@ -92,9 +94,37 @@ export default function PaymentsPage() {
             <div className="h-11 bg-surface-3 rounded-xl" />
           </div>
         ) : paySystems.length === 0 ? (
-          <p className="text-sm text-slate-500 py-4 text-center">Платёжные системы не настроены</p>
+          webappUrl ? (
+            <div className="py-2 space-y-3">
+              <p className="text-xs text-slate-500">Оплата через платёжную систему</p>
+              <button
+                onClick={() => window.open(webappUrl, '_blank')}
+                className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-sm transition-all shadow-lg shadow-brand-600/20 flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Пополнить баланс
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 py-4 text-center">Платёжные системы не настроены</p>
+          )
         ) : (
           <>
+            {/* Webapp pay button (if configured) */}
+            {webappUrl && (
+              <button
+                onClick={() => window.open(webappUrl, '_blank')}
+                className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-sm transition-all shadow-lg shadow-brand-600/20 flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Пополнить баланс
+              </button>
+            )}
+
             {/* Pay system grid */}
             <div>
               <p className="text-xs text-slate-500 mb-2 font-medium">Способ оплаты</p>
