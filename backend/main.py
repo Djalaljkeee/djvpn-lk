@@ -492,7 +492,7 @@ async def get_user_services(session: dict = Depends(get_current_session)):
     if missing_idx:
         try:
             urls = await asyncio.gather(
-                *[_fetch_sub_url_from_storage(services[i]["id"], session["shm_session"]) for i in missing_idx],
+                *[_fetch_sub_url_from_storage(services[i]["id"], session.get("user_id", 0)) for i in missing_idx],
                 return_exceptions=True,
             )
             for i, url in zip(missing_idx, urls):
@@ -676,25 +676,28 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
 # VPN Setup: /api/vpn/setup
 # ---------------------------------------------------------------------------
 
-async def _fetch_sub_url_from_storage(user_service_id: int, session_id: str = "") -> Optional[str]:
-    """Берёт subscriptionUrl из SHM Marzban-хранилища через user session.
-    Эндпоинт: GET /shm/v1/storage/manage/vpn_mrzb_{id}
+async def _fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) -> Optional[str]:
+    """Берёт subscriptionUrl из SHM Marzban-хранилища.
+    Эндпоинт: GET /shm/v1/storage/manage/vpn_mrzb_{id}?user_id={user_id}
+    Требует admin session + user_id для доступа к хранилищу конкретного пользователя.
     Ответ: text/plain → JSON.
     """
     url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
+        admin_session = await get_admin_session()
+        params = {"user_id": user_id} if user_id else {}
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 url,
                 headers={
-                    "session-id": session_id,
+                    "session-id": admin_session,
                     "Accept": "text/plain, application/json",
                 },
-                params={"limit": 25, "offset": 0},
+                params=params,
             )
         logging.warning(
-            "storage vpn_mrzb_%s status=%s content-type=%s body=%s",
-            user_service_id, resp.status_code,
+            "storage vpn_mrzb_%s user_id=%s status=%s content-type=%s body=%s",
+            user_service_id, user_id, resp.status_code,
             resp.headers.get("content-type", ""),
             resp.text[:500],
         )
@@ -770,9 +773,9 @@ async def vpn_setup_by_service(
             sub_url = ns.get("subscription_url")
             break
 
-    # 2. Запрашиваем Marzban-хранилище
+    # 2. Запрашиваем Marzban-хранилище (admin session + user_id)
     if not sub_url:
-        sub_url = await _fetch_sub_url_from_storage(service_id, session["shm_session"])
+        sub_url = await _fetch_sub_url_from_storage(service_id, session.get("user_id", 0))
 
     if not sub_url:
         raise HTTPException(
