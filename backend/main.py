@@ -491,9 +491,8 @@ async def get_user_services(session: dict = Depends(get_current_session)):
     missing_idx = [i for i, s in enumerate(services) if not s.get("subscription_url") and s.get("id")]
     if missing_idx:
         try:
-            admin_session = await get_admin_session()
             urls = await asyncio.gather(
-                *[_fetch_sub_url_from_storage(services[i]["id"], admin_session) for i in missing_idx],
+                *[_fetch_sub_url_from_storage(services[i]["id"], session["shm_session"]) for i in missing_idx],
                 return_exceptions=True,
             )
             for i, url in zip(missing_idx, urls):
@@ -677,19 +676,18 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
 # VPN Setup: /api/vpn/setup
 # ---------------------------------------------------------------------------
 
-async def _fetch_sub_url_from_storage(user_service_id: int, _: str = "") -> Optional[str]:
-    """Берёт subscriptionUrl из SHM Marzban-хранилища через admin session.
+async def _fetch_sub_url_from_storage(user_service_id: int, session_id: str = "") -> Optional[str]:
+    """Берёт subscriptionUrl из SHM Marzban-хранилища через user session.
     Эндпоинт: GET /shm/v1/storage/manage/vpn_mrzb_{id}
-    Внутренний SHM использует session-id, ответ text/plain → JSON.
+    Ответ: text/plain → JSON.
     """
+    url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
-        admin_session = await get_admin_session()
-        url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 url,
                 headers={
-                    "session-id": admin_session,
+                    "session-id": session_id,
                     "Accept": "text/plain, application/json",
                 },
                 params={"limit": 25, "offset": 0},
@@ -774,7 +772,7 @@ async def vpn_setup_by_service(
 
     # 2. Запрашиваем Marzban-хранилище
     if not sub_url:
-        sub_url = await _fetch_sub_url_from_storage(service_id)
+        sub_url = await _fetch_sub_url_from_storage(service_id, session["shm_session"])
 
     if not sub_url:
         raise HTTPException(
