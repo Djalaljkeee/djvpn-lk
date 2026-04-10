@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchReferrals } from '../api/user'
+import { fetchConfig } from '../api/services'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
 import { format, parseISO } from 'date-fns'
@@ -16,19 +17,20 @@ interface Referral {
 export default function ReferralsPage() {
   const { user } = useAuthStore()
   const { show } = useToast()
-  const [referrals, setReferrals] = useState<Referral[]>([])
-  const [loading,   setLoading]   = useState(true)
+  const [referrals,    setReferrals]    = useState<Referral[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [botUsername,  setBotUsername]  = useState('')
 
   useEffect(() => {
+    fetchConfig().then(cfg => setBotUsername(cfg.telegram_bot_username)).catch(() => {})
     fetchReferrals()
       .then(data => setReferrals(Array.isArray(data) ? data : (data?.referrals ?? [])))
       .catch(() => show('Ошибка загрузки рефералов', 'error'))
       .finally(() => setLoading(false))
   }, [])
 
-  const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'your_bot'
-  const webRefLink  = user ? `${window.location.origin}/?partner_id=${user.user_id}` : ''
-  const tgRefLink   = user ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
+  const webRefLink = user ? `${window.location.origin}/?partner_id=${user.user_id}` : ''
+  const tgRefLink  = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
   const totalIncome = referrals.reduce((sum, r) => sum + (r.income ?? 0), 0)
 
   const copyLink = (text: string, label: string) => {

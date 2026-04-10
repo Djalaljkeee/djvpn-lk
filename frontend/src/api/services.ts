@@ -18,3 +18,14 @@ export const createPayment = (pay_system_id: number, amount: number) =>
 
 export const fetchPaymentWebappUrl = (): Promise<string> =>
   api.get<{ url: string }>('/pay/webapp-url').then(r => r.data.url)
+
+export interface PaySystemV2 {
+  name: string
+  shm_url: string
+  amount?: number
+  recurring?: string
+  pay_system?: number
+}
+
+export const fetchPaySystemsV2 = (): Promise<PaySystemV2[]> =>
+  api.get<PaySystemV2[]>('/pay/paysystems').then(r => r.data)

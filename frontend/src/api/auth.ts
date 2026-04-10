@@ -10,3 +10,8 @@ export const loginWithTelegram = async (tgData: object) => {
   const { data } = await api.post<{ token: string; user: User }>('/auth/telegram', tgData)
   return data
 }
+
+export const registerWithPassword = async (login: string, password: string, name?: string) => {
+  const { data } = await api.post<{ token: string; user: User }>('/auth/register', { login, password, name })
+  return data
+}

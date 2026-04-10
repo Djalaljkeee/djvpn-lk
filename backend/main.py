@@ -42,6 +42,11 @@ class LoginRequest(BaseModel):
     login: str
     password: str
 
+class RegisterRequest(BaseModel):
+    login: str
+    password: str
+    name: Optional[str] = None
+
 class TelegramAuthRequest(BaseModel):
     id: int
     first_name: Optional[str] = None
@@ -120,6 +125,13 @@ class WebappUrlResponse(BaseModel):
 
 class PublicConfig(BaseModel):
     telegram_bot_username: str
+
+class PaySystemV2Out(BaseModel):
+    name: str
+    shm_url: str
+    amount: Optional[float] = None
+    recurring: Optional[str] = None
+    pay_system: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +377,39 @@ async def telegram_auth(req: TelegramAuthRequest):
     return {"token": token, "user": user}
 
 
+@app.post("/api/auth/register", response_model=AuthResponse)
+async def register(req: RegisterRequest):
+    """Регистрация нового пользователя через SHM admin API"""
+    admin_session = await get_admin_session()
+
+    # Проверяем, не занят ли логин
+    existing = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": req.login})
+    if existing.get("data"):
+        raise HTTPException(status_code=400, detail="Пользователь с таким логином уже существует")
+
+    await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data={
+        "login":    req.login,
+        "password": req.password,
+        "name":     req.name or req.login,
+    })
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+            json={"login": req.login, "password": req.password},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=500, detail="Ошибка авторизации после регистрации")
+
+    shm_session = resp.json().get("session_id")
+    user_data = await shm_request("GET", "/shm/v1/user", shm_session)
+    user = user_data.get("data", [{}])[0] if user_data.get("data") else {}
+    user_id = user.get("user_id", 0)
+
+    token = create_token(shm_session, user_id)
+    return {"token": token, "user": user}
+
+
 # ---------------------------------------------------------------------------
 # User endpoints
 # ---------------------------------------------------------------------------
@@ -429,6 +474,16 @@ async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_curren
 async def get_pay_systems(session: dict = Depends(get_current_session)):
     try:
         data = await shm_request("GET", "/shm/v1/admin/pay_system", session["shm_session"])
+        return data.get("data", [])
+    except HTTPException:
+        return []
+
+
+@app.get("/api/pay/paysystems", response_model=list[PaySystemV2Out])
+async def get_paysystems_v2(session: dict = Depends(get_current_session)):
+    """Платёжные системы с прямыми ссылками (из SHM tg_payment_webapp)"""
+    try:
+        data = await shm_request("GET", "/shm/v1/user/pay/paysystems", session["shm_session"])
         return data.get("data", [])
     except HTTPException:
         return []
