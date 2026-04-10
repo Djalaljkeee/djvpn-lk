@@ -740,7 +740,7 @@ def _generate_qr_base64(data: str) -> str:
     """QR code → PNG data-URI (base64)."""
     qr = segno.make(data)
     buf = io.BytesIO()
-    qr.save(buf, kind="png", scale=8, dark="#ffffff", light="#00000000")
+    qr.save(buf, kind="png", scale=8, dark="#000000", light="#ffffff")
     b64 = base64.b64encode(buf.getvalue()).decode()
     return f"data:image/png;base64,{b64}"
 
