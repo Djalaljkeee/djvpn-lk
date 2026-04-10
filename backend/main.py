@@ -695,13 +695,15 @@ async def _fetch_sub_url_from_storage(user_service_id: int, admin_session: str) 
         resp = await shm_request(
             "GET", f"/shm/v1/storage/manage/vpn_mrzb_{user_service_id}", admin_session
         )
+        logging.warning("storage vpn_mrzb_%s response: %s", user_service_id, resp)
+
         # SHM может вернуть data как список или словарь
         data = resp.get("data", {})
         candidates = data if isinstance(data, list) else [data]
         for item in candidates:
             if not isinstance(item, dict):
                 continue
-            # Прямые поля
+            # Прямые поля верхнего уровня
             url = item.get("subscriptionUrl") or item.get("subscription_url")
             if url:
                 return url
@@ -723,11 +725,23 @@ async def _fetch_sub_url_from_storage(user_service_id: int, admin_session: str) 
                     settings = json.loads(settings)
                 except Exception:
                     settings = {}
-            url = settings.get("subscriptionUrl") or settings.get("subscription_url")
-            if url:
-                return url
+            if isinstance(settings, dict):
+                url = settings.get("subscriptionUrl") or settings.get("subscription_url")
+                if url:
+                    return url
+            # Поле data вложенное
+            nested = item.get("data") or {}
+            if isinstance(nested, str):
+                try:
+                    nested = json.loads(nested)
+                except Exception:
+                    nested = {}
+            if isinstance(nested, dict):
+                url = nested.get("subscriptionUrl") or nested.get("subscription_url")
+                if url:
+                    return url
     except Exception as e:
-        logging.debug("_fetch_sub_url_from_storage(%s): %s", user_service_id, e)
+        logging.warning("_fetch_sub_url_from_storage(%s) error: %s", user_service_id, e)
     return None
 
 
@@ -784,23 +798,25 @@ async def vpn_setup_by_service(
     raw_list = data.get("data", [])
     sub_url = None
     for svc in raw_list:
-        if svc.get("user_service_id") == service_id:
+        # SHM может вернуть ID как строку или число — сравниваем приведённо
+        if str(svc.get("user_service_id", "")) == str(service_id):
             ns = normalize_user_service(svc)
             sub_url = ns.get("subscription_url")
+            logging.warning("config svc %s normalize result: %s", service_id, ns)
             break
 
-    # 2. Если не нашли — запрашиваем Marzban-хранилище напрямую
+    # 2. Всегда запрашиваем Marzban-хранилище (основной источник subscription_url)
     if not sub_url:
         try:
             admin_session = await get_admin_session()
             sub_url = await _fetch_sub_url_from_storage(service_id, admin_session)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning("config storage lookup %s failed: %s", service_id, e)
 
     if not sub_url:
         raise HTTPException(
             status_code=404,
-            detail="Ссылка подписки не найдена. Убедитесь, что услуга активна."
+            detail=f"Ссылка подписки не найдена для услуги {service_id}. Проверьте логи сервера."
         )
 
     return _build_setup_response(sub_url, request, platform)
