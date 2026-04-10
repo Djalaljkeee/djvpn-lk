@@ -1,6 +1,9 @@
 import api from './client'
 import type { Service, PaySystem } from '../types'
 
+export const fetchConfig = (): Promise<{ telegram_bot_username: string }> =>
+  api.get('/config').then(r => r.data)
+
 export const fetchServices = () =>
   api.get<Service[]>('/services').then(r => r.data)
 
@@ -15,3 +18,13 @@ export const createPayment = (pay_system_id: number, amount: number) =>
 
 export const fetchPaymentWebappUrl = (): Promise<string> =>
   api.get<{ url: string }>('/pay/webapp-url').then(r => r.data.url)
+
+export interface PaySystemV2 {
+  name: string
+  shm_url: string          // уже содержит user_id и ts, просто дописать amount
+  paysystem?: string
+  recurring?: number
+}
+
+export const fetchPaySystemsV2 = (): Promise<PaySystemV2[]> =>
+  api.get<PaySystemV2[]>('/pay/paysystems').then(r => r.data)
