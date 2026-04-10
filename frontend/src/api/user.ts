@@ -12,3 +12,12 @@ export const fetchPayments = () =>
 
 export const fetchReferrals = () =>
   api.get('/user/referrals').then(r => r.data)
+
+export const changeService = (user_service_id: number, service_id: number) =>
+  api.post('/user/service/change', { user_service_id, service_id }).then(r => r.data)
+
+export const stopService = (user_service_id: number) =>
+  api.post('/user/service/stop', { user_service_id }).then(r => r.data)
+
+export const deleteService = (user_service_id: number) =>
+  api.delete('/user/service', { data: { user_service_id } }).then(r => r.data)

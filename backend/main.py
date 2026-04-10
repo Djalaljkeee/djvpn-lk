@@ -58,6 +58,16 @@ class PaymentRequest(BaseModel):
 class BuyServiceRequest(BaseModel):
     service_id: int
 
+class ChangeServiceRequest(BaseModel):
+    user_service_id: int
+    service_id: int
+
+class StopServiceRequest(BaseModel):
+    user_service_id: int
+
+class DeleteServiceRequest(BaseModel):
+    user_service_id: int
+
 
 # ---------------------------------------------------------------------------
 # JWT helpers
@@ -318,6 +328,34 @@ async def get_payments(session: dict = Depends(get_current_session)):
 async def get_referrals(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/partner", session["shm_session"])
     return data.get("data", [])
+
+
+@app.post("/api/user/service/change", response_model=UserServiceOut)
+async def change_service(req: ChangeServiceRequest, session: dict = Depends(get_current_session)):
+    """Сменить тариф: POST /shm/v1/user/service/change"""
+    result = await shm_request(
+        "POST", "/shm/v1/user/service/change", session["shm_session"],
+        json_data={"user_service_id": req.user_service_id, "service_id": req.service_id},
+    )
+    return normalize_user_service(result.get("data", result) if isinstance(result, dict) else {})
+
+
+@app.post("/api/user/service/stop")
+async def stop_service(req: StopServiceRequest, session: dict = Depends(get_current_session)):
+    """Остановить услугу: POST /shm/v1/user/service/stop"""
+    return await shm_request(
+        "POST", "/shm/v1/user/service/stop", session["shm_session"],
+        json_data={"user_service_id": req.user_service_id},
+    )
+
+
+@app.delete("/api/user/service")
+async def delete_service(req: DeleteServiceRequest, session: dict = Depends(get_current_session)):
+    """Удалить услугу: DELETE /shm/v1/user/service"""
+    return await shm_request(
+        "DELETE", "/shm/v1/user/service", session["shm_session"],
+        json_data={"user_service_id": req.user_service_id},
+    )
 
 
 # ---------------------------------------------------------------------------
