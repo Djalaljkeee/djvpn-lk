@@ -43,7 +43,7 @@ export default function LoginPage() {
       }
     }
 
-    const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'your_bot'
+    const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'DJ_VPN_bot'
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
     script.setAttribute('data-telegram-login', botUsername)
