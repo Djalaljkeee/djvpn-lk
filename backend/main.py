@@ -432,33 +432,61 @@ async def telegram_auth(req: TelegramAuthRequest):
         )
         users = users_data.get("data", [])
 
-    # Получаем сессию через admin impersonation (не трогаем пароль пользователя)
     shm_user_id = users[0].get("user_id") if users else None
     shm_session = None
 
     if shm_user_id:
+        # Попытка 1: POST auth.cgi user_id в теле + admin session в заголовке
         async with httpx.AsyncClient(timeout=10.0) as client:
-            imp_resp = await client.post(
+            r1 = await client.post(
                 f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
                 headers={"session-id": admin_session},
                 json={"user_id": shm_user_id},
             )
-        logging.info("TG auth: impersonation user_id=%s → %s", shm_user_id, imp_resp.status_code)
-        if imp_resp.status_code == 200:
-            shm_session = imp_resp.json().get("session_id")
+        logging.warning("TG imp#1 user_id=%s → %s: %s", shm_user_id, r1.status_code, r1.text[:150])
+        if r1.status_code == 200 and r1.json().get("session_id"):
+            shm_session = r1.json()["session_id"]
 
-    # Fallback: логин с паролем (только для новых пользователей, у которых мы сами задали пароль)
+    if not shm_session and shm_user_id:
+        # Попытка 2: admin endpoint /shm/v1/admin/user/auth
+        try:
+            r2 = await shm_request(
+                "POST", "/shm/v1/admin/user/auth", admin_session,
+                json_data={"user_id": shm_user_id},
+            )
+            logging.warning("TG imp#2 → %s", r2)
+            if r2.get("session_id"):
+                shm_session = r2["session_id"]
+        except Exception as e:
+            logging.warning("TG imp#2 failed: %s", e)
+
+    if not shm_session and shm_user_id:
+        # Попытка 3: GET auth.cgi с user_id параметром
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r3 = await client.get(
+                f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+                headers={"session-id": admin_session},
+                params={"user_id": shm_user_id},
+            )
+        logging.warning("TG imp#3 user_id=%s → %s: %s", shm_user_id, r3.status_code, r3.text[:150])
+        if r3.status_code == 200 and r3.json().get("session_id"):
+            shm_session = r3.json()["session_id"]
+
+    # Fallback: логин с tg_password (работает для пользователей, созданных нашей системой)
     if not shm_session:
-        logging.info("TG auth: impersonation не поддерживается, fallback на login/password")
+        logging.warning("TG auth: все impersonation не сработали, fallback на tg_password")
         async with httpx.AsyncClient(timeout=10.0) as client:
             auth_resp = await client.post(
                 f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
                 json={"login": tg_login, "password": tg_password},
             )
-        logging.info("TG auth: password login → %s", auth_resp.status_code)
+        logging.warning("TG auth: password login → %s", auth_resp.status_code)
         if auth_resp.status_code != 200:
-            logging.error("TG auth: login failed: %s", auth_resp.text[:200])
-            raise HTTPException(status_code=401, detail="Ошибка авторизации TG пользователя")
+            logging.error("TG auth: все методы провалились для %s (user_id=%s)", tg_login, shm_user_id)
+            raise HTTPException(
+                status_code=401,
+                detail="Не удалось войти через Telegram. Обратитесь к администратору.",
+            )
         shm_session = auth_resp.json().get("session_id")
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = user_data.get("data", [{}])[0] if user_data.get("data") else {}
