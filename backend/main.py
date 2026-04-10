@@ -695,12 +695,6 @@ async def _fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) ->
                 },
                 params=params,
             )
-        logging.warning(
-            "storage vpn_mrzb_%s user_id=%s status=%s content-type=%s body=%s",
-            user_service_id, user_id, resp.status_code,
-            resp.headers.get("content-type", ""),
-            resp.text[:500],
-        )
         if resp.status_code != 200:
             return None
         text = resp.text.strip()
@@ -767,8 +761,6 @@ async def vpn_setup_by_service(
     sub_url = None
     for svc in raw_list:
         if str(svc.get("user_service_id", "")) == str(service_id):
-            logging.warning("config svc %s RAW SHM fields: %s", service_id, list(svc.keys()))
-            logging.warning("config svc %s RAW SHM data: %s", service_id, svc)
             ns = normalize_user_service(svc)
             sub_url = ns.get("subscription_url")
             break
