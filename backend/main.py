@@ -60,6 +60,69 @@ class BuyServiceRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Response models
+# ---------------------------------------------------------------------------
+
+class UserProfile(BaseModel):
+    user_id: int
+    login: str
+    name: Optional[str] = None
+    balance: float = 0
+    credit: float = 0
+    status: int = 1
+    created: Optional[str] = None
+
+class UserServiceOut(BaseModel):
+    id: Optional[int] = None
+    service_id: Optional[int] = None
+    name: str = ""
+    status: int = 0
+    created: Optional[str] = None
+    expired: Optional[str] = None
+    cost: Optional[float] = None
+    period: Optional[int] = None
+    period_type: str = "month"
+    descr: Optional[str] = None
+    subscription_url: Optional[str] = None
+
+class PaymentOut(BaseModel):
+    id: Optional[int] = None
+    amount: float = 0
+    pay_system_id: Optional[int] = None
+    pay_system_name: Optional[str] = None
+    created: Optional[str] = None
+    status: int = 1
+    comment: Optional[str] = None
+
+class CatalogServiceOut(BaseModel):
+    service_id: Optional[int] = None
+    name: str = ""
+    cost: float = 0
+    period: int = 1
+    period_type: str = "month"
+    descr: Optional[str] = None
+    category: Optional[str] = None
+    status: int = 1
+
+class PaySystemOut(BaseModel):
+    pay_system_id: int
+    name: str
+    currency: Optional[str] = None
+    min_amount: Optional[float] = None
+    commission: Optional[float] = None
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserProfile
+
+class WebappUrlResponse(BaseModel):
+    url: str
+
+class PublicConfig(BaseModel):
+    telegram_bot_username: str
+
+
+# ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------
 
@@ -212,19 +275,17 @@ def verify_telegram_auth(data: TelegramAuthRequest) -> bool:
 # Public config (no auth required)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/config")
+@app.get("/api/config", response_model=PublicConfig)
 async def get_public_config():
     """Публичная конфигурация для фронтенда"""
-    return {
-        "telegram_bot_username": settings.TELEGRAM_BOT_USERNAME,
-    }
+    return PublicConfig(telegram_bot_username=settings.TELEGRAM_BOT_USERNAME)
 
 
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
 
-@app.post("/api/auth/login")
+@app.post("/api/auth/login", response_model=AuthResponse)
 async def login(req: LoginRequest):
     """Авторизация по логину и паролю через SHM"""
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -249,7 +310,7 @@ async def login(req: LoginRequest):
     return {"token": token, "user": user}
 
 
-@app.post("/api/auth/telegram")
+@app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
     """Авторизация через Telegram Login Widget"""
     if not verify_telegram_auth(req):
@@ -308,19 +369,19 @@ async def telegram_auth(req: TelegramAuthRequest):
 # User endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/api/user/profile")
+@app.get("/api/user/profile", response_model=UserProfile)
 async def get_profile(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user", session["shm_session"])
     return (data.get("data") or [{}])[0]
 
 
-@app.get("/api/user/services")
+@app.get("/api/user/services", response_model=list[UserServiceOut])
 async def get_user_services(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
     return [normalize_user_service(s) for s in data.get("data", [])]
 
 
-@app.get("/api/user/payments")
+@app.get("/api/user/payments", response_model=list[PaymentOut])
 async def get_payments(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/pay", session["shm_session"])
     return [normalize_payment(p) for p in data.get("data", [])]
@@ -336,7 +397,7 @@ async def get_referrals(session: dict = Depends(get_current_session)):
 # Catalog
 # ---------------------------------------------------------------------------
 
-@app.get("/api/services")
+@app.get("/api/services", response_model=list[CatalogServiceOut])
 async def get_services(session: dict = Depends(get_current_session)):
     try:
         admin_session = await get_admin_session()
@@ -346,7 +407,7 @@ async def get_services(session: dict = Depends(get_current_session)):
         return []
 
 
-@app.post("/api/services/buy")
+@app.post("/api/services/buy", response_model=UserServiceOut)
 async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_current_session)):
     import logging
     result = await shm_request(
@@ -364,7 +425,7 @@ async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_curren
 # Payments
 # ---------------------------------------------------------------------------
 
-@app.get("/api/pay-systems")
+@app.get("/api/pay-systems", response_model=list[PaySystemOut])
 async def get_pay_systems(session: dict = Depends(get_current_session)):
     try:
         data = await shm_request("GET", "/shm/v1/admin/pay_system", session["shm_session"])
@@ -373,7 +434,7 @@ async def get_pay_systems(session: dict = Depends(get_current_session)):
         return []
 
 
-@app.get("/api/pay/webapp-url")
+@app.get("/api/pay/webapp-url", response_model=WebappUrlResponse)
 async def get_payment_webapp_url(session: dict = Depends(get_current_session)):
     """URL страницы оплаты SHM (Telegram Payment WebApp)"""
     public_url = (settings.SHM_PUBLIC_URL or "").rstrip("/")
