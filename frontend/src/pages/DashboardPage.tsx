@@ -7,6 +7,40 @@ import type { UserService } from '../types'
 import { format, parseISO, differenceInDays, isPast } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
+function SubscriptionUrlRow({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <div className="mt-3 pt-3 border-t border-white/5">
+      <p className="text-xs text-slate-500 mb-1.5 font-medium">Ссылка подписки</p>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 text-xs text-brand-300 bg-surface-3/80 px-3 py-2 rounded-lg font-mono truncate border border-brand-600/15 min-w-0">
+          {url}
+        </code>
+        <button
+          onClick={copy}
+          title="Скопировать"
+          className="flex-shrink-0 p-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-brand-300"
+        >
+          {copied ? (
+            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function StatusBadge({ status }: { status: number }) {
   const map: Record<number, { label: string; cls: string }> = {
     1: { label: 'Активна',     cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' },
@@ -52,6 +86,7 @@ function ServiceCard({ svc }: { svc: UserService }) {
           </span>
         )}
       </div>
+      {svc.subscription_url && <SubscriptionUrlRow url={svc.subscription_url} />}
     </div>
   )
 }
