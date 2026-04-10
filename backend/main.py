@@ -93,7 +93,7 @@ class UserServiceOut(BaseModel):
 class PaymentOut(BaseModel):
     id: Optional[int] = None
     amount: float = 0
-    pay_system_id: Optional[int] = None
+    pay_system_id: Optional[str] = None   # SHM: строка, напр. 'yookassa'
     pay_system_name: Optional[str] = None
     created: Optional[str] = None
     status: int = 1
@@ -189,14 +189,20 @@ def normalize_user_service(svc: dict) -> dict:
         "subscription_url": sub_url,
     }
 
+_PAY_SYSTEM_NAMES: dict[str, str] = {
+    "yookassa":          "ЮKassa",
+    "yookassa-canceled": "Отменён (ЮKassa)",
+    "yookassa-refund":   "Возврат (ЮKassa)",
+}
+
 def normalize_payment(pay: dict) -> dict:
     return {
         "id":              pay.get("id"),
         "amount":          float(pay.get("money") or 0),  # SHM: money, not amount
-        "pay_system_id":   pay.get("pay_system_id"),
-        "pay_system_name": pay.get("pay_system_id"),
+        "pay_system_id":   str(pay.get("pay_system_id") or ""),
+        "pay_system_name": _PAY_SYSTEM_NAMES.get(str(pay.get("pay_system_id") or ""), str(pay.get("pay_system_id") or "")),
         "created":         pay.get("date"),               # SHM: date, not created
-        "status":          1,
+        "status":          1 if str(pay.get("pay_system_id") or "").find("canceled") < 0 and str(pay.get("pay_system_id") or "").find("refund") < 0 else 0,
         "comment":         pay.get("comment"),
     }
 
