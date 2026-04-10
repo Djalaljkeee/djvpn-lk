@@ -418,7 +418,7 @@ async def telegram_auth(req: TelegramAuthRequest):
     tg_password = str(req.id) + settings.JWT_SECRET[:8]
 
     if not users:
-        # Регистрируем нового пользователя
+        # Новый пользователь — создаём с нашим паролем
         new_user_data = {
             "login": tg_login,
             "password": tg_password,
@@ -426,32 +426,40 @@ async def telegram_auth(req: TelegramAuthRequest):
         }
         create_result = await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=new_user_data)
         logging.info("TG auth: создан новый пользователь: %s", create_result)
-    else:
-        # Пользователь уже существует — обновляем пароль через admin API,
-        # чтобы он всегда совпадал с нашим производным паролем
-        existing_user_id = users[0].get("user_id")
-        try:
-            await shm_request(
-                "POST", "/shm/v1/admin/user", admin_session,
-                json_data={"user_id": existing_user_id, "password": tg_password},
-            )
-            logging.info("TG auth: пароль обновлён для user_id=%s", existing_user_id)
-        except Exception as e:
-            logging.warning("TG auth: не удалось обновить пароль: %s", e)
-
-    # Авторизуемся как пользователь
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        auth_resp = await client.post(
-            f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
-            json={"login": tg_login, "password": tg_password},
+        # Перечитываем чтобы получить user_id
+        users_data = await shm_request(
+            "GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login}
         )
+        users = users_data.get("data", [])
 
-    logging.info("TG auth: user SHM login → %s", auth_resp.status_code)
-    if auth_resp.status_code != 200:
-        logging.error("TG auth: user SHM login failed: %s", auth_resp.text[:200])
-        raise HTTPException(status_code=401, detail="Ошибка авторизации TG пользователя")
+    # Получаем сессию через admin impersonation (не трогаем пароль пользователя)
+    shm_user_id = users[0].get("user_id") if users else None
+    shm_session = None
 
-    shm_session = auth_resp.json().get("session_id")
+    if shm_user_id:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            imp_resp = await client.post(
+                f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+                headers={"session-id": admin_session},
+                json={"user_id": shm_user_id},
+            )
+        logging.info("TG auth: impersonation user_id=%s → %s", shm_user_id, imp_resp.status_code)
+        if imp_resp.status_code == 200:
+            shm_session = imp_resp.json().get("session_id")
+
+    # Fallback: логин с паролем (только для новых пользователей, у которых мы сами задали пароль)
+    if not shm_session:
+        logging.info("TG auth: impersonation не поддерживается, fallback на login/password")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            auth_resp = await client.post(
+                f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+                json={"login": tg_login, "password": tg_password},
+            )
+        logging.info("TG auth: password login → %s", auth_resp.status_code)
+        if auth_resp.status_code != 200:
+            logging.error("TG auth: login failed: %s", auth_resp.text[:200])
+            raise HTTPException(status_code=401, detail="Ошибка авторизации TG пользователя")
+        shm_session = auth_resp.json().get("session_id")
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = user_data.get("data", [{}])[0] if user_data.get("data") else {}
     user_id = user.get("user_id", 0)
