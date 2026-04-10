@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
 import { fetchUserServices, changeService, stopService, deleteService } from '../api/user'
 import { useToast } from '../components/Toast'
+import SetupGuide from '../components/SetupGuide'
 import type { Service, UserService } from '../types'
 
 function SubUrl({ url }: { url: string }) {
@@ -117,6 +118,7 @@ export default function ServicesPage() {
   const [changingId, setChangingId] = useState<number | null>(null)  // user_service_id for modal
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
+  const [setupUrl, setSetupUrl] = useState<string | null>(null)
 
   const reload = async () => {
     const [cat, svcs] = await Promise.all([fetchServices(), fetchUserServices()])
@@ -216,6 +218,9 @@ export default function ServicesPage() {
           onChanged={reload}
         />
       )}
+
+      {/* Setup guide modal */}
+      {setupUrl && <SetupGuide subUrl={setupUrl} onClose={() => setSetupUrl(null)} />}
 
       {/* Top-up prompt modal */}
       {topupPrompt && (
@@ -364,6 +369,14 @@ export default function ServicesPage() {
 
                   {/* Action buttons */}
                   <div className="flex gap-2 mt-3 pt-3 border-t border-white/5">
+                    {svc.subscription_url && (
+                      <button
+                        onClick={() => setSetupUrl(svc.subscription_url!)}
+                        className="flex-1 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-xs font-medium transition-colors"
+                      >
+                        Настроить
+                      </button>
+                    )}
                     <button
                       onClick={() => setChangingId(svc.id ?? null)}
                       disabled={isActioning}
