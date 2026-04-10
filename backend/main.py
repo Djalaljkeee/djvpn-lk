@@ -678,26 +678,34 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
 # ---------------------------------------------------------------------------
 
 async def _fetch_sub_url_from_storage(user_service_id: int, _: str = "") -> Optional[str]:
-    """Берёт subscriptionUrl из SHM Marzban-хранилища.
+    """Берёт subscriptionUrl из SHM Marzban-хранилища через admin session.
     Эндпоинт: GET /shm/v1/storage/manage/vpn_mrzb_{id}
-    Авторизация: Basic Auth (login:password), ответ: text/plain → JSON
+    Внутренний SHM использует session-id, ответ text/plain → JSON.
     """
-    import base64 as _b64
-    creds = _b64.b64encode(
-        f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
-    ).decode()
-    url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
+        admin_session = await get_admin_session()
+        url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 url,
-                headers={"Authorization": f"Basic {creds}", "Accept": "text/plain"},
+                headers={
+                    "session-id": admin_session,
+                    "Accept": "text/plain, application/json",
+                },
                 params={"limit": 25, "offset": 0},
             )
-        logging.warning("storage vpn_mrzb_%s status=%s body=%s", user_service_id, resp.status_code, resp.text[:300])
-        if resp.status_code != 200 or not resp.text.strip():
+        logging.warning(
+            "storage vpn_mrzb_%s status=%s content-type=%s body=%s",
+            user_service_id, resp.status_code,
+            resp.headers.get("content-type", ""),
+            resp.text[:500],
+        )
+        if resp.status_code != 200:
             return None
-        data = json.loads(resp.text)
+        text = resp.text.strip()
+        if not text:
+            return None
+        data = json.loads(text)
         return data.get("subscriptionUrl") or data.get("subscription_url")
     except Exception as e:
         logging.warning("_fetch_sub_url_from_storage(%s) error: %s", user_service_id, e)
