@@ -76,10 +76,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm animate-slide-up">
         {/* Logo */}
         <div className="text-center mb-7">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-purple-600 mb-4 shadow-xl shadow-brand-600/30">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 01.25 12c0 6.627 5.373 12 12 12s12-5.373 12-12c0-2.5-.765-4.822-2.079-6.75" />
-            </svg>
+          <div className="flex justify-center mb-3">
+            <DjVpnLogo size={80} />
           </div>
           <h1 className="text-2xl font-bold text-white">
             {mode === 'login' ? 'Добро пожаловать!' : 'Создать аккаунт'}
@@ -214,5 +212,21 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+function DjVpnLogo({ size = 80 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="djvpn-bg-lp" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#7c3aed" />
+        </linearGradient>
+      </defs>
+      <path d="M20 15 Q5 20 5 45 Q5 75 25 88 Q50 100 75 88 Q95 78 95 50 Q95 20 75 12 Q55 3 20 15Z" fill="url(#djvpn-bg-lp)" />
+      <text x="50" y="48" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="32" fill="#1a0533" letterSpacing="-1">DJ</text>
+      <text x="50" y="75" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="22" fill="#1a0533" letterSpacing="-0.5">VPN</text>
+    </svg>
   )
 }

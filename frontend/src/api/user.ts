@@ -24,3 +24,6 @@ export const deleteService = (user_service_id: number) =>
 
 export const applyPromoCode = (code: string) =>
   api.post('/user/promo', { code }).then(r => r.data)
+
+export const fetchServiceOrders = (): Promise<{ service_id: number }[]> =>
+  api.get('/user/service/orders').then(r => r.data)

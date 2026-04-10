@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
-import { fetchUserServices, changeService, stopService, deleteService } from '../api/user'
+import { fetchUserServices, changeService, stopService, deleteService, fetchServiceOrders } from '../api/user'
 import { useToast } from '../components/Toast'
 import SetupGuide from '../components/SetupGuide'
 import type { Service, UserService } from '../types'
@@ -111,6 +111,7 @@ export default function ServicesPage() {
   const navigate = useNavigate()
   const [catalog,    setCatalog]    = useState<Service[]>([])
   const [myServices, setMyServices] = useState<UserService[]>([])
+  const [orderedIds, setOrderedIds] = useState<Set<number>>(new Set())
   const [loading,    setLoading]    = useState(true)
   const [buying,     setBuying]     = useState<number | null>(null)
   const [justBought, setJustBought] = useState<Set<number>>(new Set())
@@ -121,14 +122,19 @@ export default function ServicesPage() {
   const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
 
   const reload = async () => {
-    const [cat, svcs] = await Promise.all([fetchServices(), fetchUserServices()])
+    const [cat, svcs, orders] = await Promise.all([fetchServices(), fetchUserServices(), fetchServiceOrders()])
     setCatalog(cat)
     setMyServices(svcs)
+    setOrderedIds(new Set(orders.map(o => o.service_id)))
   }
 
   useEffect(() => {
-    Promise.all([fetchServices(), fetchUserServices()])
-      .then(([cat, svcs]) => { setCatalog(cat); setMyServices(svcs) })
+    Promise.all([fetchServices(), fetchUserServices(), fetchServiceOrders()])
+      .then(([cat, svcs, orders]) => {
+        setCatalog(cat)
+        setMyServices(svcs)
+        setOrderedIds(new Set(orders.map(o => o.service_id)))
+      })
       .catch(() => show('Ошибка загрузки каталога', 'error'))
       .finally(() => setLoading(false))
   }, [])
@@ -298,12 +304,14 @@ export default function ServicesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(svc => {
-            const owned   = myActiveIds.has(svc.service_id)
+            const owned    = myActiveIds.has(svc.service_id)
+            const used     = !owned && orderedIds.has(svc.service_id)
             const isBuying = buying === svc.service_id
             const success  = justBought.has(svc.service_id)
+            const disabled = owned || used || isBuying
             return (
               <div key={svc.service_id}
-                className={`glass glass-hover rounded-xl p-5 flex flex-col gap-3 transition-all animate-slide-up ${owned ? 'border-emerald-500/20' : ''}`}>
+                className={`glass glass-hover rounded-xl p-5 flex flex-col gap-3 transition-all animate-slide-up ${owned ? 'border-emerald-500/20' : used ? 'border-white/5 opacity-70' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-white text-sm leading-snug">{svc.name}</p>
@@ -311,6 +319,9 @@ export default function ServicesPage() {
                   </div>
                   {owned && (
                     <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">Активна</span>
+                  )}
+                  {used && (
+                    <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-md bg-slate-500/15 text-slate-500 border border-slate-500/20">Использована</span>
                   )}
                 </div>
                 {svc.descr && <p className="text-xs text-slate-500 leading-relaxed">{svc.descr}</p>}
@@ -320,17 +331,21 @@ export default function ServicesPage() {
                     <span className="text-slate-500 text-xs"> ₽{periodLabel(svc.period, svc.period_type)}</span>
                   </div>
                   <button
-                    onClick={() => !owned && !isBuying && handleBuy(svc.service_id)}
-                    disabled={owned || isBuying}
+                    onClick={() => !disabled && handleBuy(svc.service_id)}
+                    disabled={disabled}
                     className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
-                      success ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                      : owned  ? 'bg-surface-3 text-slate-600 cursor-default border border-white/5'
+                      success   ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                      : owned   ? 'bg-surface-3 text-slate-600 cursor-default border border-white/5'
+                      : used    ? 'bg-surface-3 text-slate-600 cursor-default border border-white/5'
                       : isBuying ? 'bg-brand-600/50 text-white cursor-wait'
                       : 'bg-brand-600 hover:bg-brand-500 text-white shadow-md shadow-brand-600/20'
                     }`}>
-                    {success ? '✓ Куплено' : owned ? 'Подключена' : isBuying
-                      ? <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />...</span>
-                      : 'Купить'}
+                    {success ? '✓ Куплено'
+                      : owned ? 'Подключена'
+                      : used  ? 'Использована'
+                      : isBuying
+                        ? <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />...</span>
+                        : 'Купить'}
                   </button>
                 </div>
               </div>

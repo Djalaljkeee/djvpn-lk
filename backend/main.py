@@ -309,25 +309,26 @@ async def shm_request(
 # ---------------------------------------------------------------------------
 
 def verify_telegram_auth(data: TelegramAuthRequest) -> bool:
-    """Верификация данных от Telegram Login Widget"""
+    """Верификация данных от Telegram Login Widget.
+    Все поля кроме hash включаются в строку проверки (Telegram docs).
+    """
     bot_token = settings.TELEGRAM_BOT_TOKEN
-    check_hash = data.hash
 
-    data_dict = {
-        "auth_date": str(data.auth_date),
-        "first_name": data.first_name or "",
-        "id": str(data.id),
-        "username": data.username or "",
-    }
-    data_dict = {k: v for k, v in data_dict.items() if v}
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(data_dict.items()))
+    # Собираем все присланные поля (кроме hash) в порядке алфавита
+    fields: dict[str, str] = {"auth_date": str(data.auth_date), "id": str(data.id)}
+    if data.first_name:  fields["first_name"]  = data.first_name
+    if data.last_name:   fields["last_name"]   = data.last_name
+    if data.username:    fields["username"]     = data.username
+    if data.photo_url:   fields["photo_url"]   = data.photo_url
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
     secret_key = hashlib.sha256(bot_token.encode()).digest()
     expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if time.time() - data.auth_date > 86400:
         return False
 
-    return hmac.compare_digest(expected_hash, check_hash)
+    return hmac.compare_digest(expected_hash, data.hash)
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +555,16 @@ async def delete_service(req: DeleteServiceRequest, session: dict = Depends(get_
     )
 
 
+@app.get("/api/user/service/orders")
+async def get_service_orders(session: dict = Depends(get_current_session)):
+    """История заказов услуг пользователя: GET /shm/v1/service/order"""
+    data = await shm_request(
+        "GET", "/shm/v1/service/order", session["shm_session"],
+        params={"limit": 100, "offset": 0},
+    )
+    return data.get("data", [])
+
+
 @app.post("/api/user/promo")
 async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current_session)):
     """Применить промокод"""
@@ -727,7 +738,7 @@ def _detect_platform(ua: str) -> str:
 
 
 def _build_deeplink(subscription_url: str) -> str:
-    return f"happ://import/{subscription_url}"
+    return f"happ://add/{subscription_url}"
 
 
 def _generate_qr_base64(data: str) -> str:
