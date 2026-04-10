@@ -313,6 +313,9 @@ def verify_telegram_auth(data: TelegramAuthRequest) -> bool:
     Все поля кроме hash включаются в строку проверки (Telegram docs).
     """
     bot_token = settings.TELEGRAM_BOT_TOKEN
+    if not bot_token:
+        logging.error("TG auth: TELEGRAM_BOT_TOKEN не задан в .env!")
+        return False
 
     # Собираем все присланные поля (кроме hash) в порядке алфавита
     fields: dict[str, str] = {"auth_date": str(data.auth_date), "id": str(data.id)}
@@ -325,10 +328,20 @@ def verify_telegram_auth(data: TelegramAuthRequest) -> bool:
     secret_key = hashlib.sha256(bot_token.encode()).digest()
     expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
-    if time.time() - data.auth_date > 86400:
+    age = time.time() - data.auth_date
+    logging.info(
+        "TG verify: id=%s fields=%s age=%.0fs expected=%s...  got=%s...",
+        data.id, list(fields.keys()), age, expected_hash[:8], data.hash[:8]
+    )
+
+    if age > 86400:
+        logging.warning("TG auth: auth_date устарел на %.0f сек", age)
         return False
 
-    return hmac.compare_digest(expected_hash, data.hash)
+    ok = hmac.compare_digest(expected_hash, data.hash)
+    if not ok:
+        logging.warning("TG auth: хэш не совпал для id=%s", data.id)
+    return ok
 
 
 # ---------------------------------------------------------------------------
@@ -373,10 +386,14 @@ async def login(req: LoginRequest):
 @app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
     """Авторизация через Telegram Login Widget"""
+    logging.info("TG auth request: id=%s username=%s first=%s has_photo=%s",
+                 req.id, req.username, req.first_name, bool(req.photo_url))
+
     if not verify_telegram_auth(req):
         raise HTTPException(status_code=401, detail="Невалидные данные Telegram")
 
     tg_login = f"@{req.id}"
+    logging.info("TG auth: хэш ОК, ищем пользователя %s в SHM", tg_login)
 
     # Авторизуемся как admin для поиска/создания пользователя
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -385,15 +402,18 @@ async def telegram_auth(req: TelegramAuthRequest):
             json={"login": settings.SHM_ADMIN_LOGIN, "password": settings.SHM_ADMIN_PASSWORD},
         )
     if resp.status_code != 200:
+        logging.error("TG auth: admin SHM login failed: %s %s", resp.status_code, resp.text[:200])
         raise HTTPException(status_code=500, detail="Ошибка подключения к SHM")
 
     admin_session = resp.json().get("session_id")
+    logging.info("TG auth: admin session получен")
 
     # Ищем пользователя по login
     users_data = await shm_request(
         "GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login}
     )
     users = users_data.get("data", [])
+    logging.info("TG auth: поиск %s → найдено %d пользователей", tg_login, len(users))
 
     tg_password = str(req.id) + settings.JWT_SECRET[:8]
 
@@ -404,7 +424,8 @@ async def telegram_auth(req: TelegramAuthRequest):
             "password": tg_password,
             "name": f"{req.first_name or ''} {req.last_name or ''}".strip() or req.username or tg_login,
         }
-        await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=new_user_data)
+        create_result = await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=new_user_data)
+        logging.info("TG auth: создан новый пользователь: %s", create_result)
 
     # Авторизуемся как пользователь
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -413,7 +434,9 @@ async def telegram_auth(req: TelegramAuthRequest):
             json={"login": tg_login, "password": tg_password},
         )
 
+    logging.info("TG auth: user SHM login → %s", auth_resp.status_code)
     if auth_resp.status_code != 200:
+        logging.error("TG auth: user SHM login failed: %s", auth_resp.text[:200])
         raise HTTPException(status_code=401, detail="Ошибка авторизации TG пользователя")
 
     shm_session = auth_resp.json().get("session_id")
@@ -421,6 +444,7 @@ async def telegram_auth(req: TelegramAuthRequest):
     user = user_data.get("data", [{}])[0] if user_data.get("data") else {}
     user_id = user.get("user_id", 0)
 
+    logging.info("TG auth: успех, user_id=%s", user_id)
     token = create_token(shm_session, user_id)
     return {"token": token, "user": user}
 
