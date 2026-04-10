@@ -8,9 +8,13 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Optional
+import io
+import base64
+import logging
+from typing import Optional, List
 
 import httpx
+import segno
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -663,6 +667,123 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
         json_data={"pay_system_id": req.pay_system_id, "amount": req.amount},
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# VPN Setup: /api/vpn/setup
+# ---------------------------------------------------------------------------
+
+_HAPP_DOWNLOADS = {
+    "ios":     "https://apps.apple.com/app/happ/id6744897585",
+    "android": "https://play.google.com/store/apps/details?id=com.happ.vpn",
+    "windows": "https://github.com/hiddify/hiddify-app/releases/latest",
+    "macos":   "https://apps.apple.com/app/happ/id6744897585",
+}
+
+
+def _detect_platform(ua: str) -> str:
+    ua = ua.lower()
+    if "iphone" in ua or "ipad" in ua or "ipod" in ua:
+        return "ios"
+    if "android" in ua:
+        return "android"
+    if "mac" in ua:
+        return "macos"
+    return "windows"
+
+
+def _build_deeplink(subscription_url: str) -> str:
+    return f"happ://import/{subscription_url}"
+
+
+def _generate_qr_base64(data: str) -> str:
+    """QR code → PNG data-URI (base64)."""
+    qr = segno.make(data)
+    buf = io.BytesIO()
+    qr.save(buf, kind="png", scale=8, dark="#ffffff", light="#00000000")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return f"data:image/png;base64,{b64}"
+
+
+class VpnSetupResponse(BaseModel):
+    platform: str
+    subscription_url: str
+    step1: dict    # скачать
+    step2: dict    # подключиться
+    fallback: dict  # ручная настройка
+
+
+@app.get("/api/user/service/{service_id}/config")
+async def vpn_setup_by_service(
+    service_id: int,
+    request: Request,
+    platform: Optional[str] = None,
+    session: dict = Depends(get_current_session),
+):
+    """Конфигурация VPN-клиента для услуги пользователя."""
+    # 1. Получаем услуги пользователя и ищем subscription_url
+    data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
+    raw_list = data.get("data", [])
+    sub_url = None
+    for svc in raw_list:
+        if svc.get("user_service_id") == service_id:
+            ns = normalize_user_service(svc)
+            sub_url = ns.get("subscription_url")
+            break
+    if not sub_url:
+        raise HTTPException(status_code=404, detail="Ссылка подписки не найдена для данной услуги")
+
+    return _build_setup_response(sub_url, request, platform)
+
+
+@app.get("/api/vpn/setup")
+async def vpn_setup_by_url(
+    url: str,
+    request: Request,
+    platform: Optional[str] = None,
+    session: dict = Depends(get_current_session),
+):
+    """Конфигурация VPN-клиента по прямой ссылке подписки."""
+    if not url:
+        raise HTTPException(status_code=400, detail="URL подписки не указан")
+    return _build_setup_response(url, request, platform)
+
+
+def _build_setup_response(sub_url: str, request: Request, platform: Optional[str]) -> dict:
+    # Платформа
+    detected = platform or _detect_platform(request.headers.get("user-agent", ""))
+
+    # Deep link
+    deeplink = _build_deeplink(sub_url)
+
+    # QR code
+    qr_data = _generate_qr_base64(deeplink)
+
+    return {
+        "platform": detected,
+        "subscription_url": sub_url,
+        "step1": {
+            "title": "Скачайте приложение",
+            "app_name": "Happ",
+            "download_url": _HAPP_DOWNLOADS.get(detected, _HAPP_DOWNLOADS["windows"]),
+            "all_downloads": _HAPP_DOWNLOADS,
+        },
+        "step2": {
+            "title": "Подключиться",
+            "deeplink": deeplink,
+            "copy_link": sub_url,
+            "qr_code": qr_data,
+        },
+        "fallback": {
+            "title": "Ручная настройка",
+            "instruction": (
+                "1. Откройте приложение Happ\n"
+                "2. Нажмите «+» → «Добавить подписку»\n"
+                "3. Вставьте скопированную ссылку"
+            ),
+            "copy_link": sub_url,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
