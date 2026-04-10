@@ -380,18 +380,30 @@ async def telegram_auth(req: TelegramAuthRequest):
 @app.post("/api/auth/register", response_model=AuthResponse)
 async def register(req: RegisterRequest):
     """Регистрация нового пользователя через SHM admin API"""
+    import logging
     admin_session = await get_admin_session()
 
-    # Проверяем, не занят ли логин
-    existing = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": req.login})
-    if existing.get("data"):
-        raise HTTPException(status_code=400, detail="Пользователь с таким логином уже существует")
+    # Проверяем логин — SHM может вернуть 400/404 если не найден, это нормально
+    try:
+        existing = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": req.login})
+        if existing.get("data"):
+            raise HTTPException(status_code=400, detail="Пользователь с таким логином уже существует")
+    except HTTPException as e:
+        if e.status_code == 400 and "уже существует" in str(e.detail):
+            raise
+        # SHM вернул ошибку при поиске — значит пользователь не найден, продолжаем
 
-    await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data={
-        "login":    req.login,
-        "password": req.password,
-        "name":     req.name or req.login,
-    })
+    # Создаём пользователя
+    try:
+        result = await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data={
+            "login":    req.login,
+            "password": req.password,
+            "name":     req.name or req.login,
+        })
+        logging.info("register: SHM create user result: %s", result)
+    except HTTPException as e:
+        logging.error("register: SHM create user error %s: %s", e.status_code, e.detail)
+        raise HTTPException(status_code=400, detail=f"Не удалось создать аккаунт: {e.detail}")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
@@ -399,7 +411,8 @@ async def register(req: RegisterRequest):
             json={"login": req.login, "password": req.password},
         )
     if resp.status_code != 200:
-        raise HTTPException(status_code=500, detail="Ошибка авторизации после регистрации")
+        logging.error("register: SHM login after create failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=500, detail="Аккаунт создан, но не удалось войти. Попробуйте войти вручную.")
 
     shm_session = resp.json().get("session_id")
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
