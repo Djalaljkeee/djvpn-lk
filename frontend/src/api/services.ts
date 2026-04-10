@@ -21,10 +21,9 @@ export const fetchPaymentWebappUrl = (): Promise<string> =>
 
 export interface PaySystemV2 {
   name: string
-  shm_url: string
-  amount?: number
-  recurring?: string
-  pay_system?: number
+  shm_url: string          // уже содержит user_id и ts, просто дописать amount
+  paysystem?: string
+  recurring?: number
 }
 
 export const fetchPaySystemsV2 = (): Promise<PaySystemV2[]> =>

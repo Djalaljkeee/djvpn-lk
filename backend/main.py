@@ -127,11 +127,14 @@ class PublicConfig(BaseModel):
     telegram_bot_username: str
 
 class PaySystemV2Out(BaseModel):
+    model_config = {"extra": "ignore"}
     name: str
     shm_url: str
-    amount: Optional[float] = None
-    recurring: Optional[str] = None
-    pay_system: Optional[int] = None
+    paysystem: Optional[str] = None
+    recurring: Optional[int] = None
+    allow_deletion: Optional[int] = None
+    internal: Optional[int] = None
+    weight: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
