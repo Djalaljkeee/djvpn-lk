@@ -426,6 +426,18 @@ async def telegram_auth(req: TelegramAuthRequest):
         }
         create_result = await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=new_user_data)
         logging.info("TG auth: создан новый пользователь: %s", create_result)
+    else:
+        # Пользователь уже существует — обновляем пароль через admin API,
+        # чтобы он всегда совпадал с нашим производным паролем
+        existing_user_id = users[0].get("user_id")
+        try:
+            await shm_request(
+                "POST", "/shm/v1/admin/user", admin_session,
+                json_data={"user_id": existing_user_id, "password": tg_password},
+            )
+            logging.info("TG auth: пароль обновлён для user_id=%s", existing_user_id)
+        except Exception as e:
+            logging.warning("TG auth: не удалось обновить пароль: %s", e)
 
     # Авторизуемся как пользователь
     async with httpx.AsyncClient(timeout=10.0) as client:
