@@ -73,6 +73,13 @@ class StopServiceRequest(BaseModel):
 class DeleteServiceRequest(BaseModel):
     user_service_id: int
 
+class BuyServiceResponse(BaseModel):
+    success: bool = True
+    needs_topup: bool = False
+    amount_needed: float = 0.0
+    balance: float = 0.0
+    message: str = ""
+
 
 # ---------------------------------------------------------------------------
 # Response models
@@ -512,18 +519,54 @@ async def get_services(session: dict = Depends(get_current_session)):
         return []
 
 
-@app.post("/api/services/buy", response_model=UserServiceOut)
+@app.post("/api/services/buy", response_model=BuyServiceResponse)
 async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_current_session)):
-    import logging
+    import logging, asyncio
     result = await shm_request(
-        "PUT", "/shm/v1/user/service", session["shm_session"],
+        "PUT", "/shm/v1/service/order", session["shm_session"],
         json_data={"service_id": req.service_id},
     )
     logging.info("buy_service response: %s", result)
     # SHM может вернуть {"status": 4xx, "msg": "..."} c HTTP 200
     if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
         raise HTTPException(status_code=400, detail=result.get("msg", "Ошибка при покупке услуги"))
-    return result
+
+    # Extract first ordered service
+    order_list = result.get("data", []) if isinstance(result, dict) else []
+    svc_raw = order_list[0] if order_list else {}
+    svc_status = str(svc_raw.get("status", "")).upper()
+
+    # If service is not yet active, check whether balance is insufficient
+    if svc_status in ("PROGRESS", "INIT", "NOT PAID"):
+        try:
+            admin_session = await get_admin_session()
+            user_data, catalog_data = await asyncio.gather(
+                shm_request("GET", "/shm/v1/user", session["shm_session"]),
+                shm_request("GET", "/shm/v1/admin/service", admin_session),
+            )
+            user_info = (user_data.get("data") or [{}])[0]
+            balance = float(user_info.get("balance") or 0)
+
+            cost = 0.0
+            for s in catalog_data.get("data", []):
+                sid = s.get("id") or s.get("service_id")
+                if sid == req.service_id:
+                    cost = float(s.get("cost") or 0)
+                    break
+
+            amount_needed = round(max(0.0, cost - balance), 2)
+            if amount_needed > 0:
+                return BuyServiceResponse(
+                    success=True,
+                    needs_topup=True,
+                    amount_needed=amount_needed,
+                    balance=round(balance, 2),
+                    message=f"Услуга зарегистрирована. Пополните баланс на {amount_needed:.2f} ₽ для активации",
+                )
+        except Exception:
+            pass  # balance check is best-effort; don't fail the whole request
+
+    return BuyServiceResponse(success=True, message="Услуга успешно подключена")
 
 
 # ---------------------------------------------------------------------------

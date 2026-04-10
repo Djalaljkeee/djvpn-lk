@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
 import { fetchUserServices, changeService, stopService, deleteService } from '../api/user'
 import { useToast } from '../components/Toast'
@@ -106,6 +107,7 @@ function periodLabel(period: number, type: string) {
 
 export default function ServicesPage() {
   const { show } = useToast()
+  const navigate = useNavigate()
   const [catalog,    setCatalog]    = useState<Service[]>([])
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [loading,    setLoading]    = useState(true)
@@ -114,6 +116,7 @@ export default function ServicesPage() {
   const [filter,     setFilter]     = useState<'all' | 'available' | 'mine'>('all')
   const [changingId, setChangingId] = useState<number | null>(null)  // user_service_id for modal
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
 
   const reload = async () => {
     const [cat, svcs] = await Promise.all([fetchServices(), fetchUserServices()])
@@ -133,14 +136,18 @@ export default function ServicesPage() {
   const handleBuy = async (service_id: number) => {
     setBuying(service_id)
     try {
-      await buyService(service_id)
-      setJustBought(prev => new Set([...prev, service_id]))
+      const res = await buyService(service_id)
       const updated = await fetchUserServices()
       setMyServices(updated)
-      show('Услуга успешно подключена!', 'success')
-      setTimeout(() => {
-        setJustBought(prev => { const s = new Set(prev); s.delete(service_id); return s })
-      }, 4000)
+      if (res?.needs_topup) {
+        setTopupPrompt({ amount: res.amount_needed, balance: res.balance })
+      } else {
+        setJustBought(prev => new Set([...prev, service_id]))
+        show('Услуга успешно подключена!', 'success')
+        setTimeout(() => {
+          setJustBought(prev => { const s = new Set(prev); s.delete(service_id); return s })
+        }, 4000)
+      }
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Ошибка при покупке услуги', 'error')
     } finally {
@@ -208,6 +215,43 @@ export default function ServicesPage() {
           onClose={() => setChangingId(null)}
           onChanged={reload}
         />
+      )}
+
+      {/* Top-up prompt modal */}
+      {topupPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTopupPrompt(null)} />
+          <div className="relative glass rounded-2xl p-6 w-full max-w-sm space-y-4 animate-slide-up">
+            <div className="text-center">
+              <div className="text-3xl mb-3">💳</div>
+              <h2 className="font-bold text-white text-base">Недостаточно средств</h2>
+              <p className="text-sm text-slate-400 mt-1.5">
+                Услуга зарегистрирована и ожидает оплаты.
+              </p>
+            </div>
+            <div className="bg-surface-3 rounded-xl p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Ваш баланс</span>
+                <span className="text-white font-mono">{topupPrompt.balance.toFixed(2)} ₽</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Нужно пополнить</span>
+                <span className="text-amber-400 font-mono font-semibold">{topupPrompt.amount.toFixed(2)} ₽</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setTopupPrompt(null)}
+                className="flex-1 py-2.5 rounded-xl bg-surface-3 text-slate-400 text-sm font-medium hover:text-white transition-colors">
+                Позже
+              </button>
+              <button
+                onClick={() => { setTopupPrompt(null); navigate('/payments') }}
+                className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-all">
+                Пополнить
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Header */}
