@@ -482,13 +482,27 @@ async def get_profile(session: dict = Depends(get_current_session)):
 
 @app.get("/api/user/services", response_model=list[UserServiceOut])
 async def get_user_services(session: dict = Depends(get_current_session)):
-    import logging
+    import asyncio
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
     raw_list = data.get("data", [])
-    if raw_list:
-        logging.warning("SHM user/service first item keys: %s", list(raw_list[0].keys()))
-        logging.warning("SHM user/service first item: %s", raw_list[0])
-    return [normalize_user_service(s) for s in raw_list]
+    services = [normalize_user_service(s) for s in raw_list]
+
+    # Для услуг без subscription_url — подтягиваем из Marzban-хранилища
+    missing_idx = [i for i, s in enumerate(services) if not s.get("subscription_url") and s.get("id")]
+    if missing_idx:
+        try:
+            admin_session = await get_admin_session()
+            urls = await asyncio.gather(
+                *[_fetch_sub_url_from_storage(services[i]["id"], admin_session) for i in missing_idx],
+                return_exceptions=True,
+            )
+            for i, url in zip(missing_idx, urls):
+                if isinstance(url, str) and url:
+                    services[i]["subscription_url"] = url
+        except Exception:
+            pass
+
+    return services
 
 
 @app.get("/api/user/payments", response_model=list[PaymentOut])
@@ -673,6 +687,50 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
 # VPN Setup: /api/vpn/setup
 # ---------------------------------------------------------------------------
 
+async def _fetch_sub_url_from_storage(user_service_id: int, admin_session: str) -> Optional[str]:
+    """Берёт subscription_url из SHM Marzban-хранилища.
+    Ключ: vpn_mrzb_{user_service_id}
+    """
+    try:
+        resp = await shm_request(
+            "GET", f"/shm/v1/storage/manage/vpn_mrzb_{user_service_id}", admin_session
+        )
+        # SHM может вернуть data как список или словарь
+        data = resp.get("data", {})
+        candidates = data if isinstance(data, list) else [data]
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            # Прямые поля
+            url = item.get("subscriptionUrl") or item.get("subscription_url")
+            if url:
+                return url
+            # Поле value — может быть JSON-строкой или словарём
+            val = item.get("value")
+            if isinstance(val, str):
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    pass
+            if isinstance(val, dict):
+                url = val.get("subscriptionUrl") or val.get("subscription_url")
+                if url:
+                    return url
+            # Поле settings
+            settings = item.get("settings") or {}
+            if isinstance(settings, str):
+                try:
+                    settings = json.loads(settings)
+                except Exception:
+                    settings = {}
+            url = settings.get("subscriptionUrl") or settings.get("subscription_url")
+            if url:
+                return url
+    except Exception as e:
+        logging.debug("_fetch_sub_url_from_storage(%s): %s", user_service_id, e)
+    return None
+
+
 _HAPP_DOWNLOADS = {
     "ios":     "https://apps.apple.com/app/happ/id6744897585",
     "android": "https://play.google.com/store/apps/details?id=com.happ.vpn",
@@ -721,7 +779,7 @@ async def vpn_setup_by_service(
     session: dict = Depends(get_current_session),
 ):
     """Конфигурация VPN-клиента для услуги пользователя."""
-    # 1. Получаем услуги пользователя и ищем subscription_url
+    # 1. Ищем subscription_url в данных SHM user/service
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
     raw_list = data.get("data", [])
     sub_url = None
@@ -730,8 +788,20 @@ async def vpn_setup_by_service(
             ns = normalize_user_service(svc)
             sub_url = ns.get("subscription_url")
             break
+
+    # 2. Если не нашли — запрашиваем Marzban-хранилище напрямую
     if not sub_url:
-        raise HTTPException(status_code=404, detail="Ссылка подписки не найдена для данной услуги")
+        try:
+            admin_session = await get_admin_session()
+            sub_url = await _fetch_sub_url_from_storage(service_id, admin_session)
+        except Exception:
+            pass
+
+    if not sub_url:
+        raise HTTPException(
+            status_code=404,
+            detail="Ссылка подписки не найдена. Убедитесь, что услуга активна."
+        )
 
     return _build_setup_response(sub_url, request, platform)
 
