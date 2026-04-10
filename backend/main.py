@@ -765,20 +765,16 @@ async def vpn_setup_by_service(
     raw_list = data.get("data", [])
     sub_url = None
     for svc in raw_list:
-        # SHM может вернуть ID как строку или число — сравниваем приведённо
         if str(svc.get("user_service_id", "")) == str(service_id):
+            logging.warning("config svc %s RAW SHM fields: %s", service_id, list(svc.keys()))
+            logging.warning("config svc %s RAW SHM data: %s", service_id, svc)
             ns = normalize_user_service(svc)
             sub_url = ns.get("subscription_url")
-            logging.warning("config svc %s normalize result: %s", service_id, ns)
             break
 
-    # 2. Всегда запрашиваем Marzban-хранилище (основной источник subscription_url)
+    # 2. Запрашиваем Marzban-хранилище
     if not sub_url:
-        try:
-            admin_session = await get_admin_session()
-            sub_url = await _fetch_sub_url_from_storage(service_id, admin_session)
-        except Exception as e:
-            logging.warning("config storage lookup %s failed: %s", service_id, e)
+        sub_url = await _fetch_sub_url_from_storage(service_id)
 
     if not sub_url:
         raise HTTPException(
