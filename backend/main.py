@@ -189,14 +189,28 @@ _SERVICE_STATUS = {
 }
 
 def normalize_user_service(svc: dict) -> dict:
+    import json as _json, logging
     info = svc.get("service") or {}
-    data = svc.get("data") or {}
+    # SHM хранит доп. данные (Marzban subscriptionUrl и т.д.) в поле data,
+    # которое может быть как dict, так и JSON-строкой
+    raw_data = svc.get("data") or {}
+    if isinstance(raw_data, str):
+        try:
+            data = _json.loads(raw_data)
+        except Exception:
+            data = {}
+    else:
+        data = raw_data
+
+    logging.debug("normalize_user_service svc keys=%s data=%s", list(svc.keys()), data)
+
     # Subscription URL: SHM Marzban module stores it in multiple places
     sub_url = (
         svc.get("subscription_url")
         or svc.get("subscriptionUrl")
         or data.get("subscription_url")
         or data.get("subscriptionUrl")
+        or (info.get("data") or {}).get("subscriptionUrl") if isinstance(info.get("data"), dict) else None
     )
     return {
         "id":               svc.get("user_service_id"),
@@ -464,8 +478,13 @@ async def get_profile(session: dict = Depends(get_current_session)):
 
 @app.get("/api/user/services", response_model=list[UserServiceOut])
 async def get_user_services(session: dict = Depends(get_current_session)):
+    import logging
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
-    return [normalize_user_service(s) for s in data.get("data", [])]
+    raw_list = data.get("data", [])
+    if raw_list:
+        logging.warning("SHM user/service first item keys: %s", list(raw_list[0].keys()))
+        logging.warning("SHM user/service first item: %s", raw_list[0])
+    return [normalize_user_service(s) for s in raw_list]
 
 
 @app.get("/api/user/payments", response_model=list[PaymentOut])

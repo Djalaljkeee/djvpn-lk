@@ -16,8 +16,7 @@ export default function PaymentsPage() {
   const [payments,   setPayments]   = useState<Payment[]>([])
   const [loading,    setLoading]    = useState(true)
   const [selectedPs, setSelectedPs] = useState<PaySystemV2 | null>(null)
-  const [amount,     setAmount]     = useState('100')
-  const [editingAmt, setEditingAmt] = useState(false)
+  const [amount,     setAmount]     = useState('300')
   const [promoCode,  setPromoCode]  = useState('')
   const [promoLoading, setPromoLoading] = useState(false)
 
@@ -100,33 +99,32 @@ export default function PaymentsPage() {
             </div>
           ) : (
             <>
-              {/* Amount row */}
-              <div className="flex items-center justify-between px-4 py-3 bg-surface-3 rounded-xl border border-white/8">
-                {editingAmt ? (
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="flex gap-2 flex-wrap">
-                      {QUICK_AMOUNTS.map(v => (
-                        <button key={v} onClick={() => { setAmount(String(v)); setEditingAmt(false) }}
-                          className="px-3 py-1.5 rounded-lg bg-surface-2 border border-white/10 text-xs text-slate-300 hover:text-white hover:border-brand-500/40 transition-all">
-                          {v} ₽
-                        </button>
-                      ))}
-                    </div>
-                    <input autoFocus type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                      onBlur={() => setEditingAmt(false)}
-                      className="w-24 bg-transparent border-b border-brand-500/50 text-white text-sm font-semibold focus:outline-none text-center"
-                      min="1" step="1"
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <span className="text-sm font-semibold text-white">✓ {parsedAmount.toFixed(0)} ₽</span>
-                    <button onClick={() => setEditingAmt(true)}
-                      className="text-xs text-brand-400 hover:text-brand-300 transition-colors font-medium">
-                      Изменить
+              {/* Amount input */}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  {QUICK_AMOUNTS.map(v => (
+                    <button key={v} onClick={() => setAmount(String(v))}
+                      className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all border ${
+                        parsedAmount === v
+                          ? 'bg-brand-600/25 border-brand-500/50 text-brand-300'
+                          : 'bg-surface-3 border-white/8 text-slate-400 hover:text-white hover:border-white/20'
+                      }`}>
+                      {v} ₽
                     </button>
-                  </>
-                )}
+                  ))}
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    min="1"
+                    step="1"
+                    placeholder="Введите сумму"
+                    className="w-full bg-surface-3 border border-white/8 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-500/40 transition-all pr-10"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm pointer-events-none">₽</span>
+                </div>
               </div>
 
               {/* Pay system selector */}
