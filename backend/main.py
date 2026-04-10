@@ -573,16 +573,6 @@ async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current
 
 @app.get("/api/services", response_model=list[CatalogServiceOut])
 async def get_services(session: dict = Depends(get_current_session)):
-    # Используем сессию пользователя — SHM возвращает allow_to_order=0 для уже
-    # использованных одноразовых услуг (пробный период и т.п.)
-    try:
-        data = await shm_request("GET", "/shm/v1/service", session["shm_session"])
-        services = data.get("data", [])
-        if services:
-            return [normalize_catalog_service(s) for s in services]
-    except HTTPException:
-        pass
-    # Fallback: admin-каталог
     try:
         admin_session = await get_admin_session()
         data = await shm_request("GET", "/shm/v1/admin/service", admin_session)
@@ -687,59 +677,28 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
 # VPN Setup: /api/vpn/setup
 # ---------------------------------------------------------------------------
 
-async def _fetch_sub_url_from_storage(user_service_id: int, admin_session: str) -> Optional[str]:
-    """Берёт subscription_url из SHM Marzban-хранилища.
-    Ключ: vpn_mrzb_{user_service_id}
+async def _fetch_sub_url_from_storage(user_service_id: int, _: str = "") -> Optional[str]:
+    """Берёт subscriptionUrl из SHM Marzban-хранилища.
+    Эндпоинт: GET /shm/v1/storage/manage/vpn_mrzb_{id}
+    Авторизация: Basic Auth (login:password), ответ: text/plain → JSON
     """
+    import base64 as _b64
+    creds = _b64.b64encode(
+        f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
+    ).decode()
+    url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
-        resp = await shm_request(
-            "GET", f"/shm/v1/storage/manage/vpn_mrzb_{user_service_id}", admin_session
-        )
-        logging.warning("storage vpn_mrzb_%s response: %s", user_service_id, resp)
-
-        # SHM может вернуть data как список или словарь
-        data = resp.get("data", {})
-        candidates = data if isinstance(data, list) else [data]
-        for item in candidates:
-            if not isinstance(item, dict):
-                continue
-            # Прямые поля верхнего уровня
-            url = item.get("subscriptionUrl") or item.get("subscription_url")
-            if url:
-                return url
-            # Поле value — может быть JSON-строкой или словарём
-            val = item.get("value")
-            if isinstance(val, str):
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    pass
-            if isinstance(val, dict):
-                url = val.get("subscriptionUrl") or val.get("subscription_url")
-                if url:
-                    return url
-            # Поле settings
-            settings = item.get("settings") or {}
-            if isinstance(settings, str):
-                try:
-                    settings = json.loads(settings)
-                except Exception:
-                    settings = {}
-            if isinstance(settings, dict):
-                url = settings.get("subscriptionUrl") or settings.get("subscription_url")
-                if url:
-                    return url
-            # Поле data вложенное
-            nested = item.get("data") or {}
-            if isinstance(nested, str):
-                try:
-                    nested = json.loads(nested)
-                except Exception:
-                    nested = {}
-            if isinstance(nested, dict):
-                url = nested.get("subscriptionUrl") or nested.get("subscription_url")
-                if url:
-                    return url
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Basic {creds}", "Accept": "text/plain"},
+                params={"limit": 25, "offset": 0},
+            )
+        logging.warning("storage vpn_mrzb_%s status=%s body=%s", user_service_id, resp.status_code, resp.text[:300])
+        if resp.status_code != 200 or not resp.text.strip():
+            return None
+        data = json.loads(resp.text)
+        return data.get("subscriptionUrl") or data.get("subscription_url")
     except Exception as e:
         logging.warning("_fetch_sub_url_from_storage(%s) error: %s", user_service_id, e)
     return None
