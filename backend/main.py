@@ -480,16 +480,20 @@ async def webapp_auth(initData: str):
         raise HTTPException(status_code=401, detail="initData не содержит hash")
 
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    bot_token = settings.TELEGRAM_BOT_TOKEN.strip()  # убираем случайные пробелы/переносы из .env
     secret_key = hmac.new(
         b"WebAppData",
-        settings.TELEGRAM_BOT_TOKEN.encode(),
+        bot_token.encode(),
         hashlib.sha256,
     ).digest()
     expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
-    logging.info("WebApp HMAC: expected=%s... got=%s...", expected_hash[:8], received_hash[:8])
+    logging.warning(
+        "WebApp HMAC: token=%r...%r len=%d expected=%s... got=%s...",
+        bot_token[:10], bot_token[-4:], len(bot_token), expected_hash[:8], received_hash[:8]
+    )
     if not hmac.compare_digest(expected_hash, received_hash):
-        logging.warning("WebApp HMAC failed. check_string=%r", data_check_string[:200])
+        logging.warning("WebApp HMAC failed. check_string=%r", data_check_string[:500])
         raise HTTPException(status_code=401, detail="Невалидные данные WebApp")
 
     # 2. Пробуем SHM /shm/v1/telegram/webapp/auth (прямой метод)
