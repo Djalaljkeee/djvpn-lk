@@ -401,12 +401,21 @@ async def telegram_auth(req: TelegramAuthRequest):
     ).decode()
 
     async with httpx.AsyncClient(timeout=15.0) as client:
+        # Пробуем POST с form-data (SHM CGI), потом GET с params
         resp = await client.post(
             f"{public_url}/telegram/web/auth",
-            json=payload,
+            data=payload,
             headers={"Authorization": f"Basic {basic}"},
         )
-    logging.warning("TG widget auth → %s: %s", resp.status_code, resp.text[:300])
+        logging.warning("TG widget POST form → %s: %s", resp.status_code, resp.text[:200])
+        if resp.status_code == 405:
+            resp = await client.get(
+                f"{public_url}/telegram/web/auth",
+                params=payload,
+                headers={"Authorization": f"Basic {basic}"},
+            )
+            logging.warning("TG widget GET params → %s: %s", resp.status_code, resp.text[:200])
+    logging.warning("TG widget auth final → %s: %s", resp.status_code, resp.text[:300])
 
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=401, detail="Ошибка авторизации через Telegram")
