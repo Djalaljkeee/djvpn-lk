@@ -539,12 +539,19 @@ async def webapp_auth(initData: str):
         shm_basic = base64.b64encode(
             f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
         ).decode()
+        headers = {"Authorization": f"Basic {shm_basic}"}
         async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-            resp = await client.post(
+            resp = await client.get(
                 f"{admin_url}/shm/v1/telegram/webapp/auth",
-                json={"initData": initData},
-                headers={"Authorization": f"Basic {shm_basic}"},
+                params={"initData": initData},
+                headers=headers,
             )
+            if resp.status_code not in (200, 201):
+                resp = await client.post(
+                    f"{admin_url}/shm/v1/telegram/webapp/auth",
+                    json={"initData": initData},
+                    headers=headers,
+                )
         logging.info("WebApp SHM → %s: %s", resp.status_code, resp.text[:200])
         if resp.status_code in (200, 201):
             shm_session = resp.json().get("session_id")
