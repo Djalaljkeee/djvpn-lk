@@ -385,11 +385,15 @@ async def login(req: LoginRequest):
 
 @app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
-    """Авторизация через Telegram Login Widget.
-    Виджет работает на внешнем сайте — вызываем SHM через публичный URL (nginx).
-    """
+    """Авторизация через Telegram Login Widget."""
     public_url = (settings.SHM_PUBLIC_URL or settings.SHM_BASE_URL).rstrip("/")
-    payload = {"id": req.id, "auth_date": req.auth_date, "hash": req.hash}
+    logging.warning("TG widget auth START: id=%s public_url=%s", req.id, public_url)
+
+    payload = {
+        "id": str(req.id),
+        "auth_date": str(req.auth_date),
+        "hash": req.hash,
+    }
     if req.first_name: payload["first_name"] = req.first_name
     if req.last_name:  payload["last_name"]  = req.last_name
     if req.username:   payload["username"]   = req.username
@@ -400,30 +404,32 @@ async def telegram_auth(req: TelegramAuthRequest):
         f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
     ).decode()
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        # Пробуем POST с form-data (SHM CGI), потом GET с params
-        resp = await client.post(
-            f"{public_url}/telegram/web/auth",
-            data=payload,
-            headers={"Authorization": f"Basic {basic}"},
-        )
-        logging.warning("TG widget POST form → %s: %s", resp.status_code, resp.text[:200])
-        if resp.status_code == 405:
-            resp = await client.get(
+    shm_session = None
+    try:
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
+            resp = await client.post(
                 f"{public_url}/telegram/web/auth",
-                params=payload,
+                data=payload,
                 headers={"Authorization": f"Basic {basic}"},
             )
-            logging.warning("TG widget GET params → %s: %s", resp.status_code, resp.text[:200])
-    logging.warning("TG widget auth final → %s: %s", resp.status_code, resp.text[:300])
+            logging.warning("TG widget POST form → %s: %s", resp.status_code, resp.text[:300])
+            if resp.status_code == 405:
+                resp = await client.get(
+                    f"{public_url}/telegram/web/auth",
+                    params=payload,
+                    headers={"Authorization": f"Basic {basic}"},
+                )
+                logging.warning("TG widget GET params → %s: %s", resp.status_code, resp.text[:300])
 
-    if resp.status_code not in (200, 201):
-        raise HTTPException(status_code=401, detail="Ошибка авторизации через Telegram")
+        if resp.status_code in (200, 201):
+            result = resp.json()
+            shm_session = result.get("session_id")
+            logging.warning("TG widget SHM session_id=%s", bool(shm_session))
+    except Exception as exc:
+        logging.warning("TG widget HTTP error: %s", exc)
 
-    result = resp.json()
-    shm_session = result.get("session_id")
     if not shm_session:
-        raise HTTPException(status_code=401, detail="SHM не вернул session_id")
+        raise HTTPException(status_code=401, detail="Ошибка авторизации через Telegram")
 
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]
