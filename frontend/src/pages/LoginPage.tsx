@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { loginWithPassword, loginWithTelegram, registerWithPassword } from '../api/auth'
 import { fetchConfig } from '../api/services'
+import { BrandLogo } from '../components/BrandLogo'
 
 declare global {
   interface Window { onTelegramAuth?: (user: object) => void }
@@ -13,14 +14,14 @@ type Mode = 'login' | 'register'
 export default function LoginPage() {
   const navigate = useNavigate()
   const { setAuth, isAuthenticated } = useAuthStore()
-  const [mode,       setMode]       = useState<Mode>('login')
-  const [login,      setLogin]      = useState('')
-  const [password,   setPassword]   = useState('')
-  const [name,       setName]       = useState('')
-  const [confirmPw,  setConfirmPw]  = useState('')
-  const [showPw,     setShowPw]     = useState(false)
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState('')
+  const [mode, setMode] = useState<Mode>('login')
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [botUsername, setBotUsername] = useState('')
   const tgRef = useRef<HTMLDivElement>(null)
 
@@ -33,201 +34,263 @@ export default function LoginPage() {
     if (!botUsername || !tgRef.current) return
     tgRef.current.innerHTML = ''
     window.onTelegramAuth = async (tgUser) => {
-      setLoading(true); setError('')
+      setLoading(true)
+      setError('')
       try {
         const { token, user } = await loginWithTelegram(tgUser)
-        setAuth(token, user); navigate('/')
+        setAuth(token, user)
+        navigate('/')
       } catch (e: any) {
         setError(e?.response?.data?.detail || 'Ошибка авторизации через Telegram')
-      } finally { setLoading(false) }
+      } finally {
+        setLoading(false)
+      }
     }
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
     script.setAttribute('data-telegram-login', botUsername)
     script.setAttribute('data-size', 'large')
-    script.setAttribute('data-radius', '10')
+    script.setAttribute('data-radius', '14')
     script.setAttribute('data-onauth', 'onTelegramAuth(user)')
     script.setAttribute('data-request-access', 'write')
     script.async = true
     tgRef.current.appendChild(script)
-    return () => { window.onTelegramAuth = undefined; tgRef.current && (tgRef.current.innerHTML = '') }
+    return () => {
+      window.onTelegramAuth = undefined
+      if (tgRef.current) tgRef.current.innerHTML = ''
+    }
   }, [botUsername])
 
-  const switchMode = (m: Mode) => { setMode(m); setError(''); setLogin(''); setPassword(''); setName(''); setConfirmPw('') }
+  const switchMode = (nextMode: Mode) => {
+    setMode(nextMode)
+    setError('')
+    setLogin('')
+    setPassword('')
+    setName('')
+    setConfirmPw('')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (mode === 'register' && password !== confirmPw) { setError('Пароли не совпадают'); return }
-    setLoading(true); setError('')
+    if (mode === 'register' && password !== confirmPw) {
+      setError('Пароли не совпадают')
+      return
+    }
+    setLoading(true)
+    setError('')
     try {
       const { token, user } = mode === 'login'
         ? await loginWithPassword(login, password)
         : await registerWithPassword(login, password, name || undefined)
-      setAuth(token, user); navigate('/')
+      setAuth(token, user)
+      navigate('/')
     } catch (e: any) {
       setError(e?.response?.data?.detail || (mode === 'login' ? 'Неверный логин или пароль' : 'Ошибка регистрации'))
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-0 px-4 relative overflow-hidden">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-brand-600/8 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-700/6 rounded-full blur-3xl pointer-events-none" />
+    <div className="relative min-h-screen overflow-hidden px-4 py-6">
+      <div className="absolute inset-x-0 top-0 h-[38vh] bg-gradient-to-b from-brand-300/25 to-transparent blur-3xl" />
+      <div className="absolute left-[-8%] top-[22%] h-72 w-72 rounded-full bg-brand-700/25 blur-3xl" />
+      <div className="absolute bottom-[-8%] right-[-5%] h-80 w-80 rounded-full bg-brand-500/20 blur-3xl" />
 
-      <div className="w-full max-w-sm animate-slide-up">
-        {/* Logo */}
-        <div className="text-center mb-7">
-          <div className="flex justify-center mb-3">
-            <DjVpnLogo size={80} />
-          </div>
-          <h1 className="text-2xl font-bold text-white">
-            {mode === 'login' ? 'Добро пожаловать!' : 'Создать аккаунт'}
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            {mode === 'login' ? 'Войдите в свой аккаунт' : 'Зарегистрируйтесь для доступа'}
-          </p>
-        </div>
-
-        {/* Card */}
-        <div className="glass rounded-2xl p-6 space-y-4">
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {/* Name field — only for registration */}
-            {mode === 'register' && (
-              <div className="relative">
-                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
-                <input
-                  type="text" value={name} onChange={e => setName(e.target.value)}
-                  placeholder="Имя (необязательно)"
-                  className="w-full bg-surface-3 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-500/50 transition-all"
-                />
+      <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center">
+        <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="brand-panel hidden rounded-[2rem] p-8 lg:flex lg:flex-col lg:justify-between">
+            <div className="space-y-6">
+              <BrandLogo size={96} showWordmark />
+              <div className="max-w-xl">
+                <div className="text-sm uppercase tracking-[0.4em] text-fuchsia-100/70">DJ VPN cabinet</div>
+                <h1 className="mt-4 text-5xl font-bold leading-tight text-white">
+                  Управление VPN без лишнего шума и сложных экранов.
+                </h1>
+                <p className="mt-4 text-base leading-7 text-slate-200">
+                  Быстрый вход, понятные тарифы, баланс, промокоды и настройка подключения в одном интерфейсе.
+                </p>
               </div>
-            )}
-
-            {/* Login field */}
-            <div className="relative">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-              </svg>
-              <input
-                type="text" value={login} onChange={e => setLogin(e.target.value)}
-                placeholder="Логин"
-                required
-                className="w-full bg-surface-3 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-500/50 transition-all"
-              />
             </div>
 
-            {/* Password field */}
-            <div className="relative">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-              </svg>
-              <input
-                type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Пароль"
-                required
-                className="w-full bg-surface-3 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-500/50 transition-all"
-              />
-              <button type="button" onClick={() => setShowPw(v => !v)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                {showPw
-                  ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
-                  : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                }
-              </button>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { title: 'Mini App', text: 'Автовход внутри Telegram' },
+                { title: 'Тарифы', text: 'Понятные цены и статусы' },
+                { title: 'Deeplink', text: 'Подключение в пару касаний' },
+              ].map(item => (
+                <div key={item.title} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-sm font-semibold text-white">{item.title}</div>
+                  <div className="mt-2 text-xs leading-5 text-slate-200">{item.text}</div>
+                </div>
+              ))}
             </div>
+          </section>
 
-            {/* Confirm password — only for registration */}
-            {mode === 'register' && (
-              <div className="relative">
-                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-                <input
-                  type={showPw ? 'text' : 'password'} value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
-                  placeholder="Повторите пароль"
-                  required
-                  className="w-full bg-surface-3 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-500/50 transition-all"
-                />
+          <section className="mx-auto w-full max-w-md animate-slide-up">
+            <div className="glass rounded-[2rem] p-5 sm:p-7">
+              <div className="mb-6 flex items-center justify-between gap-3">
+                <BrandLogo size={64} />
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-1">
+                  {([
+                    { key: 'login', label: 'Вход' },
+                    { key: 'register', label: 'Регистрация' },
+                  ] as const).map(item => (
+                    <button
+                      key={item.key}
+                      onClick={() => switchMode(item.key)}
+                      className={`rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                        mode === item.key ? 'bg-brand-500/25 text-white' : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
 
-            {/* Submit button */}
-            <button
-              type="submit" disabled={loading}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-600 to-purple-600 hover:from-brand-500 hover:to-purple-500 text-white font-semibold text-sm transition-all disabled:opacity-50 shadow-lg shadow-brand-600/25 flex items-center justify-center gap-2 mt-1"
-            >
-              {loading ? (
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                  </svg>
+              <div className="mb-5">
+                <h2 className="text-2xl font-bold text-white">
+                  {mode === 'login' ? 'Добро пожаловать' : 'Создать аккаунт'}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-300">
+                  {mode === 'login'
+                    ? 'Войдите по логину и паролю или используйте Telegram.'
+                    : 'Заполните форму, чтобы создать аккаунт и управлять услугами.'}
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-3">
+                {mode === 'register' && (
+                  <Field label="Имя" optional>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      placeholder="Ваше имя"
+                      className={fieldClass}
+                    />
+                  </Field>
+                )}
+
+                <Field label="Логин">
+                  <input
+                    type="text"
+                    value={login}
+                    onChange={e => setLogin(e.target.value)}
+                    placeholder="Введите логин"
+                    required
+                    className={fieldClass}
+                  />
+                </Field>
+
+                <Field label="Пароль">
+                  <div className="relative">
+                    <input
+                      type={showPw ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="Введите пароль"
+                      required
+                      className={`${fieldClass} pr-12`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-300 hover:text-white"
+                    >
+                      {showPw ? 'Скрыть' : 'Показать'}
+                    </button>
+                  </div>
+                </Field>
+
+                {mode === 'register' && (
+                  <Field label="Повтор пароля">
+                    <input
+                      type={showPw ? 'text' : 'password'}
+                      value={confirmPw}
+                      onChange={e => setConfirmPw(e.target.value)}
+                      placeholder="Повторите пароль"
+                      required
+                      className={fieldClass}
+                    />
+                  </Field>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand transition-all hover:brightness-110 disabled:opacity-60"
+                >
+                  {loading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
                   {mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
-                </>
+                </button>
+              </form>
+
+              {error && (
+                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                  {error}
+                </div>
               )}
-            </button>
-          </form>
 
-          {/* Error */}
-          {error && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400 animate-fade-in">
-              {error}
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs uppercase tracking-[0.25em] text-slate-400">Telegram</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+
+              {botUsername ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div ref={tgRef} className="flex justify-center" />
+                </div>
+              ) : (
+                <div className="h-14 rounded-2xl bg-white/5 animate-pulse" />
+              )}
+
+              <p className="mt-5 text-center text-sm text-slate-300">
+                {mode === 'login' ? (
+                  <>
+                    Нет аккаунта?{' '}
+                    <button onClick={() => switchMode('register')} className="font-medium text-fuchsia-200 hover:text-white">
+                      Зарегистрируйтесь
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Уже есть аккаунт?{' '}
+                    <button onClick={() => switchMode('login')} className="font-medium text-fuchsia-200 hover:text-white">
+                      Войти
+                    </button>
+                  </>
+                )}
+              </p>
             </div>
-          )}
-
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-white/8" />
-            <span className="text-xs text-slate-600">или</span>
-            <div className="flex-1 h-px bg-white/8" />
-          </div>
-
-          {/* Telegram button */}
-          {botUsername ? (
-            <div ref={tgRef} className="flex justify-center" />
-          ) : (
-            <div className="h-10 bg-surface-3 rounded-xl animate-pulse" />
-          )}
+          </section>
         </div>
-
-        {/* Register / Login toggle */}
-        <p className="text-center text-sm text-slate-500 mt-5">
-          {mode === 'login' ? (
-            <>
-              Нет аккаунта?{' '}
-              <button onClick={() => switchMode('register')} className="text-brand-400 hover:text-brand-300 font-medium transition-colors">
-                Зарегистрируйтесь
-              </button>
-            </>
-          ) : (
-            <>
-              Уже есть аккаунт?{' '}
-              <button onClick={() => switchMode('login')} className="text-brand-400 hover:text-brand-300 font-medium transition-colors">
-                Войти
-              </button>
-            </>
-          )}
-        </p>
       </div>
     </div>
   )
 }
 
-function DjVpnLogo({ size = 80 }: { size?: number }) {
+function Field({
+  label,
+  optional = false,
+  children,
+}: {
+  label: string
+  optional?: boolean
+  children: React.ReactNode
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="djvpn-bg-lp" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#a855f7" />
-          <stop offset="100%" stopColor="#7c3aed" />
-        </linearGradient>
-      </defs>
-      <path d="M20 15 Q5 20 5 45 Q5 75 25 88 Q50 100 75 88 Q95 78 95 50 Q95 20 75 12 Q55 3 20 15Z" fill="url(#djvpn-bg-lp)" />
-      <text x="50" y="48" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="32" fill="#1a0533" letterSpacing="-1">DJ</text>
-      <text x="50" y="75" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="22" fill="#1a0533" letterSpacing="-0.5">VPN</text>
-    </svg>
+    <label className="block space-y-1.5">
+      <span className="text-sm text-slate-200">
+        {label}
+        {optional && <span className="ml-1 text-slate-400">(необязательно)</span>}
+      </span>
+      {children}
+    </label>
   )
 }
+
+const fieldClass =
+  'w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-400 outline-none transition-all focus:border-brand-300/50 focus:bg-white/10'
