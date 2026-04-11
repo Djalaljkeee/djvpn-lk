@@ -162,6 +162,29 @@ class PaySystemV2Out(BaseModel):
     weight: Optional[int] = None
 
 
+class ReferralEntryOut(BaseModel):
+    user_id: Optional[int] = None
+    login: Optional[str] = None
+    name: Optional[str] = None
+    created: Optional[str] = None
+    income: float = 0
+    total: Optional[int] = None
+
+
+class ReferralSummaryOut(BaseModel):
+    total_referrals: int = 0
+    total_income: float = 0
+    items: int = 0
+    referrals: Optional[List[ReferralEntryOut]] = None
+
+
+class PromoApplyResponse(BaseModel):
+    ok: bool = True
+    status: int = 200
+    message: str = ""
+    code: str = ""
+
+
 # ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------
@@ -696,10 +719,51 @@ async def get_payments(session: dict = Depends(get_current_session)):
     return [normalize_payment(p) for p in data.get("data", [])]
 
 
-@app.get("/api/user/referrals")
+@app.get("/api/user/referrals", response_model=ReferralSummaryOut)
 async def get_referrals(session: dict = Depends(get_current_session)):
-    data = await shm_request("GET", "/shm/v1/user/partner", session["shm_session"])
-    return data.get("data", [])
+    data = await shm_request(
+        "GET", "/shm/v1/user/referrals", session["shm_session"],
+        params={"limit": 25, "offset": 0},
+    )
+    raw_items = data.get("data", []) if isinstance(data, dict) else []
+
+    total_referrals = 0
+    total_income = 0.0
+    referrals: List[dict] = []
+
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        if "total" in item and item.get("total") is not None:
+            try:
+                total_referrals = int(item.get("total", 0))
+            except Exception:
+                total_referrals = 0
+            continue
+
+        try:
+            income = float(item.get("income", 0) or 0)
+        except Exception:
+            income = 0.0
+
+        total_income += income
+        referrals.append({
+            "user_id": item.get("user_id"),
+            "login": item.get("login"),
+            "name": item.get("name"),
+            "created": item.get("created"),
+            "income": income,
+        })
+
+    if not total_referrals:
+        total_referrals = len(referrals)
+
+    return {
+        "total_referrals": total_referrals,
+        "total_income": total_income,
+        "items": len(referrals),
+        "referrals": referrals or None,
+    }
 
 
 @app.post("/api/user/service/change", response_model=UserServiceOut)
@@ -750,7 +814,7 @@ async def get_service_orders(session: dict = Depends(get_current_session)):
     return data.get("data", [])
 
 
-@app.post("/api/user/promo")
+@app.post("/api/user/promo", response_model=PromoApplyResponse)
 async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current_session)):
     """Применить промокод"""
     result = await shm_request(
@@ -759,7 +823,10 @@ async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current
     )
     if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
         raise HTTPException(status_code=400, detail=result.get("msg", "Промокод не найден или уже использован"))
-    return result
+    message = "Промокод применен"
+    if isinstance(result, dict):
+        message = result.get("msg") or result.get("message") or message
+    return {"ok": True, "status": 200, "message": message, "code": req.code}
 
 
 # ---------------------------------------------------------------------------
