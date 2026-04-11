@@ -5,7 +5,8 @@ from typing import List
 class Settings(BaseSettings):
     # SHM
     SHM_BASE_URL: str = "http://your-shm-host:3001"
-    SHM_PUBLIC_URL: str = ""   # публичный URL SHM, доступный из браузера (напр. https://shm.example.com)
+    SHM_PUBLIC_URL: str = ""   # публичный URL SHM для ссылок оплаты (напр. https://bill.djvpn.ru)
+    SHM_ADMIN_URL: str = ""    # URL admin-панели SHM (напр. https://admin.djvpn.ru) — для Telegram auth
     SHM_ADMIN_LOGIN: str = "admin"
     SHM_ADMIN_PASSWORD: str = "admin"
 

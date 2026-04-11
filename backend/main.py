@@ -386,8 +386,8 @@ async def login(req: LoginRequest):
 @app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
     """Авторизация через Telegram Login Widget."""
-    public_url = (settings.SHM_PUBLIC_URL or settings.SHM_BASE_URL).rstrip("/")
-    logging.warning("TG widget auth START: id=%s public_url=%s", req.id, public_url)
+    admin_url = (settings.SHM_ADMIN_URL or settings.SHM_BASE_URL).rstrip("/")
+    logging.warning("TG widget auth START: id=%s admin_url=%s", req.id, admin_url)
 
     payload = {
         "id": str(req.id),
@@ -408,14 +408,14 @@ async def telegram_auth(req: TelegramAuthRequest):
     try:
         async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
             resp = await client.post(
-                f"{public_url}/telegram/web/auth",
+                f"{admin_url}/telegram/web/auth",
                 data=payload,
                 headers={"Authorization": f"Basic {basic}"},
             )
             logging.warning("TG widget POST form → %s: %s", resp.status_code, resp.text[:300])
             if resp.status_code == 405:
                 resp = await client.get(
-                    f"{public_url}/telegram/web/auth",
+                    f"{admin_url}/telegram/web/auth",
                     params=payload,
                     headers={"Authorization": f"Basic {basic}"},
                 )
@@ -443,16 +443,16 @@ async def webapp_auth(initData: str):
     """Авторизация через Telegram Mini App (WebApp).
     Бот открывает lk.djvpn.ru как WebApp — auto-auth по initData от Telegram.
     """
-    public_url = (settings.SHM_PUBLIC_URL or settings.SHM_BASE_URL).rstrip("/")
+    admin_url = (settings.SHM_ADMIN_URL or settings.SHM_BASE_URL).rstrip("/")
 
     import base64
     basic = base64.b64encode(
         f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
     ).decode()
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
         resp = await client.get(
-            f"{public_url}/telegram/webapp/auth",
+            f"{admin_url}/telegram/webapp/auth",
             params={"initData": initData},
             headers={"Authorization": f"Basic {basic}"},
         )
