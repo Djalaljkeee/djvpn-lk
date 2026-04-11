@@ -475,24 +475,45 @@ async def webapp_auth(initData: str):
     # 1. Парсим initData (parse_qsl URL-декодирует значения — это нужно для правильного HMAC)
     params = dict(parse_qsl(initData, keep_blank_values=True))
     received_hash = params.pop("hash", None)
-    params.pop("signature", None)  # Ed25519 signature (Bot API 8.0+) исключается из HMAC check
     if not received_hash:
         raise HTTPException(status_code=401, detail="initData не содержит hash")
 
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
     bot_token = settings.TELEGRAM_BOT_TOKEN.strip()  # убираем случайные пробелы/переносы из .env
+    if not bot_token:
+        logging.error("WebApp auth: TELEGRAM_BOT_TOKEN не задан")
+        raise HTTPException(status_code=500, detail="Telegram bot token не настроен")
+
     secret_key = hmac.new(
         b"WebAppData",
         bot_token.encode(),
         hashlib.sha256,
     ).digest()
-    expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    params_without_signature = {k: v for k, v in params.items() if k != "signature"}
+    matched_variant: Optional[str] = None
+    data_check_string = ""
+    expected_hash = ""
+    for variant_name, variant_params in (
+        ("with_signature", params),
+        ("without_signature", params_without_signature),
+    ):
+        candidate_check_string = "\n".join(f"{k}={v}" for k, v in sorted(variant_params.items()))
+        candidate_hash = hmac.new(secret_key, candidate_check_string.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(candidate_hash, received_hash):
+            matched_variant = variant_name
+            data_check_string = candidate_check_string
+            expected_hash = candidate_hash
+            break
+
+    if matched_variant is None:
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+        expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     logging.warning(
-        "WebApp HMAC: token=%r...%r len=%d expected=%s... got=%s...",
-        bot_token[:10], bot_token[-4:], len(bot_token), expected_hash[:8], received_hash[:8]
+        "WebApp HMAC: token=%r...%r len=%d expected=%s... got=%s... variant=%s",
+        bot_token[:10], bot_token[-4:], len(bot_token), expected_hash[:8], received_hash[:8], matched_variant or "none"
     )
-    if not hmac.compare_digest(expected_hash, received_hash):
+    if matched_variant is None:
         logging.warning("WebApp HMAC failed. check_string=%r", data_check_string[:500])
         raise HTTPException(status_code=401, detail="Невалидные данные WebApp")
 
