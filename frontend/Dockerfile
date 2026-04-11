@@ -1,7 +1,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json .
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci --frozen-lockfile
 COPY . .
 ARG VITE_TELEGRAM_BOT_USERNAME
 ENV VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME
