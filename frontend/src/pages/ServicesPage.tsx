@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
 import { fetchUserServices, changeService, stopService, deleteService, fetchServiceOrders } from '../api/user'
@@ -6,42 +6,58 @@ import { useToast } from '../components/Toast'
 import SetupGuide from '../components/SetupGuide'
 import type { Service, UserService } from '../types'
 
-function SubUrl({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2">
-      <code className="flex-1 text-xs text-brand-300 font-mono truncate min-w-0">{url}</code>
-      <button
-        onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-        className="flex-shrink-0 text-xs px-2 py-1 rounded-lg bg-brand-600/15 text-brand-400 hover:bg-brand-600/25 transition-colors whitespace-nowrap"
-      >
-        {copied ? '✓ Скопировано' : 'Скопировать'}
-      </button>
-    </div>
-  )
+function periodLabel(period: number, type: string) {
+  if (type === 'month') return period === 1 ? 'в месяц' : `за ${period} мес`
+  if (type === 'year') return period === 1 ? 'в год' : `за ${period} г`
+  return period === 1 ? 'в день' : `за ${period} дн`
 }
 
-// ---- Modal for changing tariff ----
-function ChangeTariffModal({ svc, catalog, onClose, onChanged }: {
+async function waitForServiceChange(userServiceId: number, previousServiceId: number) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < 12000) {
+    const services = await fetchUserServices()
+    const current = services.find(item => item.id === userServiceId)
+    if (current && current.service_id !== previousServiceId) {
+      return { services, confirmed: true }
+    }
+    await new Promise(resolve => setTimeout(resolve, 1200))
+  }
+  const services = await fetchUserServices()
+  return { services, confirmed: false }
+}
+
+function ChangeTariffModal({
+  svc,
+  catalog,
+  onClose,
+  onChanged,
+}: {
   svc: UserService
   catalog: Service[]
   onClose: () => void
-  onChanged: () => void
+  onChanged: (services: UserService[], confirmed: boolean) => void
 }) {
   const { show } = useToast()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
-
-  const available = catalog.filter(s => s.status === 1 && s.service_id !== svc.service_id)
+  const available = catalog
+    .filter(s => s.status === 1 && s.service_id !== svc.service_id)
+    .sort((a, b) => a.cost - b.cost)
 
   const handleChange = async () => {
     if (!selectedId || !svc.id) return
     setLoading(true)
     try {
       await changeService(svc.id, selectedId)
-      show('Тариф изменён', 'success')
-      onChanged()
-      onClose()
+      const result = await waitForServiceChange(svc.id, svc.service_id)
+      onChanged(result.services, result.confirmed)
+      if (result.confirmed) {
+        show('Тариф обновлен и уже отражен в списке услуг', 'success')
+        onClose()
+      } else {
+        show('Запрос принят. Биллинг обновляет тариф, список уже перезагружен.', 'success')
+        onClose()
+      }
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Ошибка смены тарифа', 'error')
     } finally {
@@ -50,73 +66,77 @@ function ChangeTariffModal({ svc, catalog, onClose, onChanged }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative glass rounded-2xl p-6 w-full max-w-sm space-y-4 animate-slide-up">
-        <div>
-          <h2 className="font-bold text-white text-base">Сменить тариф</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Текущий: <span className="text-slate-300">{svc.name}</span>
-            {' '}· user_service_id: <span className="font-mono text-slate-400">{svc.id}</span>
-          </p>
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full rounded-t-[2rem] border border-white/10 bg-[rgba(32,11,44,0.96)] p-5 shadow-2xl backdrop-blur-2xl animate-slide-up sm:max-w-lg sm:rounded-[2rem]">
+        <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-white">Сменить тариф</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              Текущий тариф: <span className="text-white">{svc.name}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-xl bg-white/5 px-3 py-2 text-sm text-slate-300 hover:bg-white/10">
+            Закрыть
+          </button>
         </div>
 
-        {available.length === 0 ? (
-          <p className="text-sm text-slate-500 text-center py-4">Нет доступных тарифов для смены</p>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {available.map(s => (
+        <div className="mt-5 space-y-3">
+          {available.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+              Сейчас нет доступных вариантов для смены тарифа.
+            </div>
+          ) : (
+            available.map(option => (
               <button
-                key={s.service_id}
-                onClick={() => setSelectedId(s.service_id)}
-                className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-                  selectedId === s.service_id
-                    ? 'bg-brand-600/20 border-brand-500/40 text-white'
-                    : 'bg-surface-3 border-white/8 text-slate-300 hover:border-white/20'
+                key={option.service_id}
+                onClick={() => setSelectedId(option.service_id)}
+                className={`w-full rounded-2xl border p-4 text-left transition-all ${
+                  selectedId === option.service_id
+                    ? 'border-brand-300/60 bg-brand-500/20'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
                 }`}
               >
-                <span className="font-medium">{s.name}</span>
-                <span className="block text-xs text-slate-500 mt-0.5">
-                  {s.cost} ₽ · service_id: {s.service_id}
-                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold text-white">{option.name}</div>
+                    {option.descr && <div className="mt-1 text-sm leading-6 text-slate-300">{option.descr}</div>}
+                  </div>
+                  <div className="rounded-xl bg-white/5 px-3 py-2 text-right">
+                    <div className="text-lg font-bold text-white">{option.cost} ₽</div>
+                    <div className="text-xs text-slate-300">{periodLabel(option.period, option.period_type)}</div>
+                  </div>
+                </div>
               </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl bg-surface-3 text-slate-400 text-sm font-medium hover:text-white transition-colors">
-            Отмена
-          </button>
-          <button onClick={handleChange} disabled={!selectedId || loading}
-            className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
-            {loading && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            Сменить
-          </button>
+            ))
+          )}
         </div>
+
+        <button
+          onClick={handleChange}
+          disabled={!selectedId || loading}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand disabled:opacity-50"
+        >
+          {loading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+          {loading ? 'Меняем тариф и ждём ответ биллинга' : 'Подтвердить смену тарифа'}
+        </button>
       </div>
     </div>
   )
 }
 
-function periodLabel(period: number, type: string) {
-  if (type === 'month') return period === 1 ? '/мес'  : `/${period} мес`
-  if (type === 'year')  return period === 1 ? '/год'  : `/${period} г`
-  return period === 1 ? '/день' : `/${period} дн`
-}
-
 export default function ServicesPage() {
   const { show } = useToast()
   const navigate = useNavigate()
-  const [catalog,    setCatalog]    = useState<Service[]>([])
+  const [catalog, setCatalog] = useState<Service[]>([])
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [orderedIds, setOrderedIds] = useState<Set<number>>(new Set())
-  const [loading,    setLoading]    = useState(true)
-  const [buying,     setBuying]     = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [buying, setBuying] = useState<number | null>(null)
   const [justBought, setJustBought] = useState<Set<number>>(new Set())
-  const [filter,     setFilter]     = useState<'all' | 'available' | 'mine'>('all')
-  const [changingId, setChangingId] = useState<number | null>(null)  // user_service_id for modal
+  const [filter, setFilter] = useState<'all' | 'available' | 'mine'>('all')
+  const [changingId, setChangingId] = useState<number | null>(null)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
   const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
@@ -129,32 +149,48 @@ export default function ServicesPage() {
   }
 
   useEffect(() => {
-    Promise.all([fetchServices(), fetchUserServices(), fetchServiceOrders()])
-      .then(([cat, svcs, orders]) => {
-        setCatalog(cat)
-        setMyServices(svcs)
-        setOrderedIds(new Set(orders.map(o => o.service_id)))
-      })
+    reload()
       .catch(() => show('Ошибка загрузки каталога', 'error'))
       .finally(() => setLoading(false))
   }, [])
 
   const myActiveIds = new Set(myServices.filter(s => s.status === 1).map(s => s.service_id))
+  const changingSvc = changingId !== null ? myServices.find(s => s.id === changingId) : null
 
-  const handleBuy = async (service_id: number) => {
-    setBuying(service_id)
+  const sortedCatalog = useMemo(() => {
+    const activeCatalog = catalog.filter(s => s.status === 1)
+    const filtered = activeCatalog.filter(s => {
+      if (filter === 'mine') return myActiveIds.has(s.service_id)
+      if (filter === 'available') return !myActiveIds.has(s.service_id)
+      return true
+    })
+
+    return [...filtered].sort((a, b) => {
+      const aOwned = myActiveIds.has(a.service_id)
+      const bOwned = myActiveIds.has(b.service_id)
+      if (aOwned !== bOwned) return aOwned ? -1 : 1
+      return a.cost - b.cost
+    })
+  }, [catalog, filter, myActiveIds])
+
+  const handleBuy = async (serviceId: number) => {
+    setBuying(serviceId)
     try {
-      const res = await buyService(service_id)
+      const res = await buyService(serviceId)
       const updated = await fetchUserServices()
       setMyServices(updated)
       if (res?.needs_topup) {
         setTopupPrompt({ amount: res.amount_needed, balance: res.balance })
       } else {
-        setJustBought(prev => new Set([...prev, service_id]))
-        show('Услуга успешно подключена!', 'success')
+        setJustBought(prev => new Set([...prev, serviceId]))
+        show('Услуга успешно подключена', 'success')
         setTimeout(() => {
-          setJustBought(prev => { const s = new Set(prev); s.delete(service_id); return s })
-        }, 4000)
+          setJustBought(prev => {
+            const next = new Set(prev)
+            next.delete(serviceId)
+            return next
+          })
+        }, 3000)
       }
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Ошибка при покупке услуги', 'error')
@@ -169,8 +205,8 @@ export default function ServicesPage() {
     setActionLoading(svc.id)
     try {
       await stopService(svc.id)
-      show('Услуга остановлена', 'success')
       await reload()
+      show('Услуга остановлена', 'success')
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Ошибка остановки', 'error')
     } finally {
@@ -184,8 +220,8 @@ export default function ServicesPage() {
     setActionLoading(svc.id)
     try {
       await deleteService(svc.id)
-      show('Услуга удалена', 'success')
       await reload()
+      show('Услуга удалена', 'success')
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Ошибка удаления', 'error')
     } finally {
@@ -193,21 +229,12 @@ export default function ServicesPage() {
     }
   }
 
-  const activeCatalog = catalog.filter(s => s.status === 1)
-  const filtered = activeCatalog.filter(s => {
-    if (filter === 'mine')      return myActiveIds.has(s.service_id)
-    if (filter === 'available') return !myActiveIds.has(s.service_id)
-    return true
-  })
-
-  const changingSvc = changingId !== null ? myServices.find(s => s.id === changingId) : null
-
   if (loading) {
     return (
-      <div className="space-y-4 animate-fade-in">
-        <div className="h-7 w-40 bg-surface-2 rounded-lg animate-pulse" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1,2,3,4,5,6].map(i => <div key={i} className="h-48 rounded-xl bg-surface-2 animate-pulse" />)}
+      <div className="space-y-5 animate-fade-in">
+        <div className="h-12 w-64 rounded-2xl bg-white/5 animate-pulse" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map(item => <div key={item} className="h-64 rounded-[1.75rem] bg-white/5 animate-pulse" />)}
         </div>
       </div>
     )
@@ -215,17 +242,15 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Change tariff modal */}
       {changingSvc && (
         <ChangeTariffModal
           svc={changingSvc}
           catalog={catalog}
           onClose={() => setChangingId(null)}
-          onChanged={reload}
+          onChanged={(services, _confirmed) => setMyServices(services)}
         />
       )}
 
-      {/* Setup guide modal */}
       {setupTarget && (
         <SetupGuide
           subUrl={setupTarget.url}
@@ -234,195 +259,211 @@ export default function ServicesPage() {
         />
       )}
 
-      {/* Top-up prompt modal */}
       {topupPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTopupPrompt(null)} />
-          <div className="relative glass rounded-2xl p-6 w-full max-w-sm space-y-4 animate-slide-up">
-            <div className="text-center">
-              <div className="text-3xl mb-3">💳</div>
-              <h2 className="font-bold text-white text-base">Недостаточно средств</h2>
-              <p className="text-sm text-slate-400 mt-1.5">
-                Услуга зарегистрирована и ожидает оплаты.
-              </p>
-            </div>
-            <div className="bg-surface-3 rounded-xl p-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Ваш баланс</span>
-                <span className="text-white font-mono">{topupPrompt.balance.toFixed(2)} ₽</span>
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+          <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => setTopupPrompt(null)} />
+          <div className="relative w-full rounded-t-[2rem] bg-[rgba(32,11,44,0.96)] p-5 animate-slide-up sm:max-w-md sm:rounded-[2rem]">
+            <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
+            <div className="text-4xl">💳</div>
+            <h2 className="mt-3 text-xl font-bold text-white">Недостаточно средств</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Услуга уже зарегистрирована. Для активации нужно пополнить баланс.
+            </p>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="flex justify-between text-slate-300">
+                <span>Текущий баланс</span>
+                <span className="font-mono text-white">{topupPrompt.balance.toFixed(2)} ₽</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Нужно пополнить</span>
-                <span className="text-amber-400 font-mono font-semibold">{topupPrompt.amount.toFixed(2)} ₽</span>
+              <div className="mt-2 flex justify-between text-slate-300">
+                <span>Нужно пополнить</span>
+                <span className="font-mono text-fuchsia-100">{topupPrompt.amount.toFixed(2)} ₽</span>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setTopupPrompt(null)}
-                className="flex-1 py-2.5 rounded-xl bg-surface-3 text-slate-400 text-sm font-medium hover:text-white transition-colors">
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button onClick={() => setTopupPrompt(null)} className="w-full rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300">
                 Позже
               </button>
               <button
                 onClick={() => { setTopupPrompt(null); navigate('/payments') }}
-                className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-all">
-                Пополнить
+                className="w-full rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand"
+              >
+                Перейти к оплате
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-white">Каталог тарифов</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {activeCatalog.length} тариф{activeCatalog.length === 1 ? '' : 'а'} доступно
-          </p>
+      <section className="brand-panel rounded-[2rem] p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="text-sm uppercase tracking-[0.35em] text-fuchsia-100/70">Тарифы DJ VPN</div>
+            <h1 className="mt-3 text-3xl font-bold text-white sm:text-4xl">Выбирайте тарифы по цене и статусу без лишнего поиска.</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-200 sm:text-base">
+              Активные услуги подняты наверх. Остальные варианты отсортированы по стоимости, чтобы сравнивать их было проще.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 sm:min-w-[320px]">
+            <StatCard label="Активных" value={String(myActiveIds.size)} />
+            <StatCard label="Всего тарифов" value={String(catalog.filter(s => s.status === 1).length)} />
+            <StatCard label="После заказа" value={String(orderedIds.size)} />
+          </div>
         </div>
-        <div className="flex gap-1 p-1 bg-surface-2 rounded-xl">
+      </section>
+
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-white">Каталог тарифов</h2>
+          <p className="mt-1 text-sm text-slate-300">Сначала подключенные услуги, затем остальные варианты по возрастанию цены.</p>
+        </div>
+
+        <div className="flex w-full gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 sm:w-auto">
           {([
-            { key: 'all',       label: 'Все' },
+            { key: 'all', label: 'Все' },
             { key: 'available', label: 'Доступные' },
-            { key: 'mine',      label: 'Мои' },
-          ] as const).map(({ key, label }) => (
-            <button key={key} onClick={() => setFilter(key)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                filter === key ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}>
-              {label}
+            { key: 'mine', label: 'Мои' },
+          ] as const).map(item => (
+            <button
+              key={item.key}
+              onClick={() => setFilter(item.key)}
+              className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                filter === item.key ? 'bg-brand-500/20 text-white' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              {item.label}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Catalog grid */}
-      {filtered.length === 0 ? (
-        <div className="glass rounded-xl p-12 text-center">
-          <div className="text-4xl mb-3">🔍</div>
-          <p className="text-slate-400 text-sm">Ничего не найдено</p>
+      {sortedCatalog.length === 0 ? (
+        <div className="glass rounded-[2rem] p-10 text-center">
+          <div className="text-5xl">🔎</div>
+          <p className="mt-3 text-sm text-slate-300">По выбранному фильтру пока нет тарифов.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(svc => {
-            const owned    = myActiveIds.has(svc.service_id)
-            const used     = !owned && orderedIds.has(svc.service_id)
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {sortedCatalog.map(svc => {
+            const owned = myActiveIds.has(svc.service_id)
+            const used = !owned && orderedIds.has(svc.service_id)
             const isBuying = buying === svc.service_id
-            const success  = justBought.has(svc.service_id)
+            const success = justBought.has(svc.service_id)
             const disabled = owned || used || isBuying
+
             return (
-              <div key={svc.service_id}
-                className={`glass glass-hover rounded-xl p-5 flex flex-col gap-3 transition-all animate-slide-up ${owned ? 'border-emerald-500/20' : used ? 'border-white/5 opacity-70' : ''}`}>
-                <div className="flex items-start justify-between gap-2">
+              <div
+                key={svc.service_id}
+                className={`glass glass-hover flex h-full flex-col rounded-[1.75rem] p-5 transition-all ${
+                  owned ? 'border-emerald-400/25' : used ? 'border-white/10 opacity-80' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-white text-sm leading-snug">{svc.name}</p>
-                    {svc.category && <span className="text-xs text-slate-500 mt-0.5 block">{svc.category}</span>}
+                    <div className="text-lg font-semibold text-white">{svc.name}</div>
+                    {svc.category && <div className="mt-1 text-xs uppercase tracking-[0.2em] text-fuchsia-100/70">{svc.category}</div>}
                   </div>
-                  {owned && (
-                    <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">Активна</span>
-                  )}
-                  {used && (
-                    <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-md bg-slate-500/15 text-slate-500 border border-slate-500/20">Использована</span>
-                  )}
+                  <StatusPill owned={owned} used={used} />
                 </div>
-                {svc.descr && <p className="text-xs text-slate-500 leading-relaxed">{svc.descr}</p>}
-                <div className="mt-auto pt-3 border-t border-white/5 flex items-end justify-between gap-2">
+
+                {svc.descr && <p className="mt-4 text-sm leading-6 text-slate-200">{svc.descr}</p>}
+
+                <div className="mt-5 grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div>
-                    <span className="text-2xl font-bold font-mono gradient-text">{svc.cost}</span>
-                    <span className="text-slate-500 text-xs"> ₽{periodLabel(svc.period, svc.period_type)}</span>
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
+                    <div className="mt-1 text-3xl font-bold gradient-text">{svc.cost} ₽</div>
                   </div>
-                  <button
-                    onClick={() => !disabled && handleBuy(svc.service_id)}
-                    disabled={disabled}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
-                      success   ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                      : owned   ? 'bg-surface-3 text-slate-600 cursor-default border border-white/5'
-                      : used    ? 'bg-surface-3 text-slate-600 cursor-default border border-white/5'
-                      : isBuying ? 'bg-brand-600/50 text-white cursor-wait'
-                      : 'bg-brand-600 hover:bg-brand-500 text-white shadow-md shadow-brand-600/20'
-                    }`}>
-                    {success ? '✓ Куплено'
-                      : owned ? 'Подключена'
-                      : used  ? 'Использована'
-                      : isBuying
-                        ? <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />...</span>
-                        : 'Купить'}
-                  </button>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Период</div>
+                    <div className="mt-1 text-sm text-white">{periodLabel(svc.period, svc.period_type)}</div>
+                  </div>
                 </div>
+
+                <button
+                  onClick={() => !disabled && handleBuy(svc.service_id)}
+                  disabled={disabled}
+                  className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all ${
+                    success
+                      ? 'bg-emerald-500/20 text-emerald-100'
+                      : owned || used
+                        ? 'bg-white/5 text-slate-400'
+                        : 'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110'
+                  }`}
+                >
+                  {isBuying && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                  {success ? 'Подключено' : owned ? 'Уже подключена' : used ? 'Уже использовалась' : isBuying ? 'Покупаем…' : 'Купить тариф'}
+                </button>
               </div>
             )
           })}
         </div>
       )}
 
-      {/* My services with management */}
       {myServices.length > 0 && (
-        <section>
-          <h2 className="text-base font-semibold text-white mb-3">Мои подключённые услуги</h2>
-          <div className="space-y-2">
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Мои услуги</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              Настройка подключения доступна через deeplink и автоматический setup flow. Сырую ссылку подписки больше не показываем.
+            </p>
+          </div>
+
+          <div className="space-y-3">
             {myServices.map(svc => {
               const isActioning = actionLoading === svc.id
               return (
-                <div key={svc.id} className="glass rounded-xl px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
+                <div key={svc.id} className="glass rounded-[1.75rem] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
-                      <span className="text-sm text-white font-medium block truncate">{svc.name}</span>
-                      <span className="text-xs text-slate-600 font-mono">
-                        id: {svc.id} · svc: {svc.service_id}
-                      </span>
-                      {svc.expired && (
-                        <span className="text-xs text-slate-500 block">
-                          Истекает: {svc.expired.replace('T', ' ').split(' ')[0]}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-lg font-semibold text-white">{svc.name}</span>
+                        <span className={`rounded-full px-3 py-1 text-xs ${
+                          svc.status === 1 ? 'bg-emerald-500/15 text-emerald-100'
+                          : svc.status === 3 ? 'bg-rose-500/15 text-rose-100'
+                          : 'bg-amber-500/15 text-amber-100'
+                        }`}>
+                          {svc.status === 1 ? 'Активна' : svc.status === 3 ? 'Удалена' : 'Заблокирована'}
                         </span>
-                      )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-300">
+                        <span>ID услуги: <span className="font-mono text-white">{svc.id}</span></span>
+                        <span>Тариф: <span className="font-mono text-white">{svc.service_id}</span></span>
+                        {svc.expired && <span>Истекает: <span className="text-white">{svc.expired.replace('T', ' ').split(' ')[0]}</span></span>}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span className={`text-xs px-2 py-0.5 rounded-md border ${
-                        svc.status === 1 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                        : svc.status === 3 ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>
-                        {svc.status === 1 ? 'Активна' : svc.status === 3 ? 'Удалена' : 'Блокирована'}
-                      </span>
-                    </div>
-                  </div>
 
-                  {svc.subscription_url && <SubUrl url={svc.subscription_url} />}
-
-                  {/* Action buttons */}
-                  <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/5">
                     <button
                       onClick={() => setSetupTarget(
-                        svc.subscription_url
-                          ? { url: svc.subscription_url }
-                          : { serviceId: svc.id ?? undefined }
+                        svc.subscription_url ? { url: svc.subscription_url } : { serviceId: svc.id ?? undefined }
                       )}
-                      className="w-full py-2 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-semibold transition-colors border border-emerald-500/20"
+                      className="w-full rounded-2xl border border-emerald-300/20 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-50 hover:bg-emerald-500/20 lg:w-auto"
                     >
                       Настроить подключение
                     </button>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setChangingId(svc.id ?? null)}
-                        disabled={isActioning}
-                        className="flex-1 py-1.5 rounded-lg bg-brand-600/15 text-brand-400 hover:bg-brand-600/25 text-xs font-medium transition-colors disabled:opacity-40"
-                      >
-                        Сменить тариф
-                      </button>
-                      <button
-                        onClick={() => handleStop(svc)}
-                        disabled={isActioning || svc.status !== 1}
-                        className="flex-1 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-xs font-medium transition-colors disabled:opacity-40"
-                      >
-                        {isActioning ? '...' : 'Остановить'}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(svc)}
-                        disabled={isActioning}
-                        className="flex-1 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-40"
-                      >
-                        Удалить
-                      </button>
-                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <button
+                      onClick={() => setChangingId(svc.id ?? null)}
+                      disabled={isActioning}
+                      className="rounded-2xl bg-brand-500/18 px-4 py-3 text-sm font-medium text-white disabled:opacity-40"
+                    >
+                      Сменить тариф
+                    </button>
+                    <button
+                      onClick={() => handleStop(svc)}
+                      disabled={isActioning || svc.status !== 1}
+                      className="rounded-2xl bg-amber-500/15 px-4 py-3 text-sm font-medium text-amber-100 disabled:opacity-40"
+                    >
+                      {isActioning ? 'Выполняем…' : 'Остановить'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(svc)}
+                      disabled={isActioning}
+                      className="rounded-2xl bg-rose-500/15 px-4 py-3 text-sm font-medium text-rose-100 disabled:opacity-40"
+                    >
+                      Удалить
+                    </button>
                   </div>
                 </div>
               )
@@ -430,6 +471,21 @@ export default function ServicesPage() {
           </div>
         </section>
       )}
+    </div>
+  )
+}
+
+function StatusPill({ owned, used }: { owned: boolean; used: boolean }) {
+  if (owned) return <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-100">Активна</span>
+  if (used) return <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-300">Уже была</span>
+  return <span className="rounded-full bg-brand-500/15 px-3 py-1 text-xs text-fuchsia-100">Доступна</span>
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-slate-300">{label}</div>
+      <div className="mt-2 text-2xl font-bold text-white">{value}</div>
     </div>
   )
 }
