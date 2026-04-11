@@ -53,10 +53,12 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
         navigate('/', { replace: true })
       })
       .catch(() => {
-        // Fallback на обычную страницу входа
+        // Авторизация не прошла — показываем приложение как есть
+        // (PrivateRoute перенаправит на /login)
       })
       .finally(() => setChecking(false))
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // намеренно без deps — запускаем один раз при монтировании
 
   if (checking) {
     return (

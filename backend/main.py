@@ -11,6 +11,7 @@ import time
 import io
 import base64
 import logging
+from urllib.parse import parse_qsl
 from typing import Optional, List
 
 import httpx
@@ -471,9 +472,10 @@ async def webapp_auth(initData: str):
     Верифицирует initData по HMAC-SHA256 с ключом 'WebAppData'.
     Сначала пробует SHM /shm/v1/telegram/webapp/auth, затем fallback.
     """
-    # 1. Парсим и верифицируем initData
-    params = dict(pair.split("=", 1) for pair in initData.split("&") if "=" in pair)
+    # 1. Парсим initData (parse_qsl URL-декодирует значения — это нужно для правильного HMAC)
+    params = dict(parse_qsl(initData, keep_blank_values=True))
     received_hash = params.pop("hash", None)
+    params.pop("signature", None)  # Ed25519 signature (Bot API 8.0+) исключается из HMAC check
     if not received_hash:
         raise HTTPException(status_code=401, detail="initData не содержит hash")
 
@@ -485,7 +487,9 @@ async def webapp_auth(initData: str):
     ).digest()
     expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
+    logging.info("WebApp HMAC: expected=%s... got=%s...", expected_hash[:8], received_hash[:8])
     if not hmac.compare_digest(expected_hash, received_hash):
+        logging.warning("WebApp HMAC failed. check_string=%r", data_check_string[:200])
         raise HTTPException(status_code=401, detail="Невалидные данные WebApp")
 
     # 2. Пробуем SHM /shm/v1/telegram/webapp/auth (прямой метод)
