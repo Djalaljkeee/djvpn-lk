@@ -402,6 +402,14 @@ async def _shm_password_login(login: str, password: str) -> Optional[str]:
     return resp.json().get("session_id")
 
 
+def _find_exact_shm_login(users: list[dict], expected_login: str) -> Optional[dict]:
+    """SHM search may return partial matches, so we keep only exact login hits."""
+    for user in users:
+        if (user.get("login") or "").strip() == expected_login:
+            return user
+    return None
+
+
 @app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
     """Авторизация через Telegram Login Widget."""
@@ -443,14 +451,16 @@ async def telegram_auth(req: TelegramAuthRequest):
 
         users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
         users = users_data.get("data", [])
+        exact_user = _find_exact_shm_login(users, tg_login)
 
-        if not users:
+        if not exact_user:
             name = f"{req.first_name or ''} {req.last_name or ''}".strip() or req.username or tg_login
             await shm_request("PUT", "/shm/v1/admin/user", admin_session,
                               json_data={"login": tg_login, "password": tg_password, "name": name})
             logging.info("TG auth fallback: создан пользователь %s", tg_login)
+            shm_session = await _shm_password_login(tg_login, tg_password)
         else:
-            shm_user = users[0]
+            shm_user = exact_user
             shm_uid = shm_user.get("user_id")
             shm_login = shm_user.get("login") or tg_login
             shm_session = await _shm_password_login(shm_login, tg_password)
@@ -560,8 +570,9 @@ async def webapp_auth(initData: str):
 
         users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
         users = users_data.get("data", [])
+        exact_user = _find_exact_shm_login(users, tg_login)
 
-        if not users:
+        if not exact_user:
             first_name = tg_user.get("first_name", "")
             last_name = tg_user.get("last_name", "")
             username = tg_user.get("username", "")
@@ -569,8 +580,9 @@ async def webapp_auth(initData: str):
             await shm_request("PUT", "/shm/v1/admin/user", admin_session,
                               json_data={"login": tg_login, "password": tg_password, "name": name})
             logging.info("WebApp fallback: создан пользователь %s", tg_login)
+            shm_session = await _shm_password_login(tg_login, tg_password)
         else:
-            shm_user = users[0]
+            shm_user = exact_user
             shm_uid = shm_user.get("user_id")
             shm_login = shm_user.get("login") or tg_login
             shm_session = await _shm_password_login(shm_login, tg_password)
