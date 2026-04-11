@@ -383,100 +383,145 @@ async def login(req: LoginRequest):
     return {"token": token, "user": user}
 
 
+def _tg_user_password(tg_id: int) -> str:
+    """Стабильный пароль для TG-пользователей — зависит от bot token, не от JWT_SECRET."""
+    raw = f"{settings.TELEGRAM_BOT_TOKEN}:{tg_id}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+
 @app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
     """Авторизация через Telegram Login Widget."""
-    admin_url = (settings.SHM_ADMIN_URL or settings.SHM_BASE_URL).rstrip("/")
-    logging.warning("TG widget auth START: id=%s admin_url=%s", req.id, admin_url)
+    # 1. Проверяем hash от Telegram
+    if not verify_telegram_auth(req):
+        raise HTTPException(status_code=401, detail="Невалидные данные Telegram")
 
-    payload = {
-        "id": str(req.id),
-        "auth_date": str(req.auth_date),
-        "hash": req.hash,
-    }
-    if req.first_name: payload["first_name"] = req.first_name
-    if req.last_name:  payload["last_name"]  = req.last_name
-    if req.username:   payload["username"]   = req.username
-    if req.photo_url:  payload["photo_url"]  = req.photo_url
+    tg_login = f"@{req.id}"
+    tg_password = _tg_user_password(req.id)
 
-    import base64
-    basic = base64.b64encode(
-        f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
-    ).decode()
+    # 2. Получаем admin-сессию
+    admin_session = await get_admin_session()
 
-    shm_session = None
-    try:
-        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-            resp = await client.post(
-                f"{admin_url}/telegram/web/auth",
-                data=payload,
-                headers={"Authorization": f"Basic {basic}"},
+    # 3. Ищем пользователя
+    users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
+    users = users_data.get("data", [])
+
+    if not users:
+        # Новый пользователь — создаём
+        name = f"{req.first_name or ''} {req.last_name or ''}".strip() or req.username or tg_login
+        await shm_request("PUT", "/shm/v1/admin/user", admin_session,
+                          json_data={"login": tg_login, "password": tg_password, "name": name})
+        users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
+        users = users_data.get("data", [])
+        logging.info("TG auth: создан пользователь %s", tg_login)
+    else:
+        # Пользователь существует — синхронизируем пароль (один раз при несовпадении)
+        shm_uid = users[0].get("user_id")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            test = await client.post(
+                f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+                json={"login": tg_login, "password": tg_password},
             )
-            logging.warning("TG widget POST form → %s: %s", resp.status_code, resp.text[:300])
-            if resp.status_code == 405:
-                resp = await client.get(
-                    f"{admin_url}/telegram/web/auth",
-                    params=payload,
-                    headers={"Authorization": f"Basic {basic}"},
-                )
-                logging.warning("TG widget GET params → %s: %s", resp.status_code, resp.text[:300])
+        if test.status_code != 200:
+            logging.warning("TG auth: пароль не совпадает для %s (uid=%s), синхронизируем", tg_login, shm_uid)
+            await shm_request("POST", "/shm/v1/admin/user", admin_session,
+                              json_data={"user_id": shm_uid, "password": tg_password})
 
-        if resp.status_code in (200, 201):
-            result = resp.json()
-            shm_session = result.get("session_id")
-            logging.warning("TG widget SHM session_id=%s", bool(shm_session))
-    except Exception as exc:
-        logging.warning("TG widget HTTP error: %s", exc)
-
-    if not shm_session:
+    # 4. Входим
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        auth_resp = await client.post(
+            f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+            json={"login": tg_login, "password": tg_password},
+        )
+    if auth_resp.status_code != 200:
+        logging.error("TG auth: login failed для %s: %s", tg_login, auth_resp.text[:200])
         raise HTTPException(status_code=401, detail="Ошибка авторизации через Telegram")
 
+    shm_session = auth_resp.json().get("session_id")
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]
-    user_id = user.get("user_id", 0)
-    token = create_token(shm_session, user_id)
+    logging.info("TG auth: успех id=%s user_id=%s", req.id, user.get("user_id"))
+    token = create_token(shm_session, user.get("user_id", 0))
     return {"token": token, "user": user}
 
 
 @app.get("/api/auth/webapp", response_model=AuthResponse)
 async def webapp_auth(initData: str):
     """Авторизация через Telegram Mini App (WebApp).
-    Бот открывает lk.djvpn.ru как WebApp — auto-auth по initData от Telegram.
+    Верифицирует initData по HMAC-SHA256 с ключом 'WebAppData',
+    затем логинит/создаёт пользователя тем же способом, что и виджет.
     """
-    admin_url = (settings.SHM_ADMIN_URL or settings.SHM_BASE_URL).rstrip("/")
+    # 1. Парсим и верифицируем initData
+    params = dict(pair.split("=", 1) for pair in initData.split("&") if "=" in pair)
+    received_hash = params.pop("hash", None)
+    if not received_hash:
+        raise HTTPException(status_code=401, detail="initData не содержит hash")
 
-    import base64
-    basic = base64.b64encode(
-        f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
-    ).decode()
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    secret_key = hmac.new(
+        b"WebAppData",
+        settings.TELEGRAM_BOT_TOKEN.encode(),
+        hashlib.sha256,
+    ).digest()
+    expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
-    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-        resp = await client.get(
-            f"{admin_url}/telegram/webapp/auth",
-            params={"initData": initData},
-            headers={"Authorization": f"Basic {basic}"},
+    if not hmac.compare_digest(expected_hash, received_hash):
+        raise HTTPException(status_code=401, detail="Невалидные данные WebApp")
+
+    # 2. Извлекаем Telegram user_id из поля user (JSON-строка)
+    user_json_str = params.get("user", "{}")
+    try:
+        tg_user = json.loads(user_json_str)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Невалидный user в initData")
+
+    tg_id = tg_user.get("id")
+    if not tg_id:
+        raise HTTPException(status_code=401, detail="Нет user.id в initData")
+
+    # 3. Логин/создание — тот же подход, что и виджет
+    tg_login = f"@{tg_id}"
+    tg_password = _tg_user_password(tg_id)
+    admin_session = await get_admin_session()
+
+    users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
+    users = users_data.get("data", [])
+
+    if not users:
+        first_name = tg_user.get("first_name", "")
+        last_name = tg_user.get("last_name", "")
+        username = tg_user.get("username", "")
+        name = f"{first_name} {last_name}".strip() or username or tg_login
+        await shm_request("PUT", "/shm/v1/admin/user", admin_session,
+                          json_data={"login": tg_login, "password": tg_password, "name": name})
+        logging.info("WebApp auth: создан пользователь %s", tg_login)
+    else:
+        shm_uid = users[0].get("user_id")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            test = await client.post(
+                f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+                json={"login": tg_login, "password": tg_password},
+            )
+        if test.status_code != 200:
+            logging.warning("WebApp auth: синхронизируем пароль для %s (uid=%s)", tg_login, shm_uid)
+            await shm_request("POST", "/shm/v1/admin/user", admin_session,
+                              json_data={"user_id": shm_uid, "password": tg_password})
+
+    # 4. Входим
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        auth_resp = await client.post(
+            f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
+            json={"login": tg_login, "password": tg_password},
         )
-    logging.warning("TG webapp auth → %s: %s", resp.status_code, resp.text[:300])
-
-    if resp.status_code not in (200, 201):
+    if auth_resp.status_code != 200:
+        logging.error("WebApp auth: login failed для %s: %s", tg_login, auth_resp.text[:200])
         raise HTTPException(status_code=401, detail="Ошибка WebApp авторизации")
 
-    result = resp.json()
-    shm_session = result.get("session_id")
-    if not shm_session:
-        raise HTTPException(status_code=401, detail="SHM не вернул session_id")
-
+    shm_session = auth_resp.json().get("session_id")
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]
-    user_id = user.get("user_id", 0)
-    token = create_token(shm_session, user_id)
-    return {"token": token, "user": user}
-
-    user_data = await shm_request("GET", "/shm/v1/user", shm_session)
-    user = (user_data.get("data") or [{}])[0]
-    user_id = user.get("user_id", 0)
-
-    token = create_token(shm_session, user_id)
+    logging.info("WebApp auth: успех id=%s user_id=%s", tg_id, user.get("user_id"))
+    token = create_token(shm_session, user.get("user_id", 0))
     return {"token": token, "user": user}
 
 
