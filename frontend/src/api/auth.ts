@@ -15,3 +15,8 @@ export const registerWithPassword = async (login: string, password: string, name
   const { data } = await api.post<{ token: string; user: User }>('/auth/register', { login, password, name })
   return data
 }
+
+export const loginWithWebApp = async (initData: string) => {
+  const { data } = await api.get<{ token: string; user: User }>('/auth/webapp', { params: { initData } })
+  return data
+}
