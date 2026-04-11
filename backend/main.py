@@ -385,22 +385,28 @@ async def login(req: LoginRequest):
 
 @app.post("/api/auth/telegram", response_model=AuthResponse)
 async def telegram_auth(req: TelegramAuthRequest):
-    """Авторизация через Telegram Login Widget — делегируем SHM."""
-    logging.info("TG widget auth: id=%s username=%s", req.id, req.username)
-
-    # Передаём данные виджета в SHM — он сам проверяет hash и создаёт/находит пользователя
+    """Авторизация через Telegram Login Widget.
+    Виджет работает на внешнем сайте — вызываем SHM через публичный URL (nginx).
+    """
+    public_url = (settings.SHM_PUBLIC_URL or settings.SHM_BASE_URL).rstrip("/")
     payload = {"id": req.id, "auth_date": req.auth_date, "hash": req.hash}
     if req.first_name: payload["first_name"] = req.first_name
     if req.last_name:  payload["last_name"]  = req.last_name
     if req.username:   payload["username"]   = req.username
     if req.photo_url:  payload["photo_url"]  = req.photo_url
 
+    import base64
+    basic = base64.b64encode(
+        f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
+    ).decode()
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
-            f"{settings.SHM_BASE_URL}/telegram/web/auth",
+            f"{public_url}/telegram/web/auth",
             json=payload,
+            headers={"Authorization": f"Basic {basic}"},
         )
-    logging.warning("TG widget SHM auth → %s: %s", resp.status_code, resp.text[:200])
+    logging.warning("TG widget auth → %s: %s", resp.status_code, resp.text[:300])
 
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=401, detail="Ошибка авторизации через Telegram")
@@ -413,22 +419,29 @@ async def telegram_auth(req: TelegramAuthRequest):
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]
     user_id = user.get("user_id", 0)
-
     token = create_token(shm_session, user_id)
     return {"token": token, "user": user}
 
 
 @app.get("/api/auth/webapp", response_model=AuthResponse)
 async def webapp_auth(initData: str):
-    """Авторизация через Telegram Mini App (WebApp) initData."""
-    logging.info("TG webapp auth: initData length=%d", len(initData))
+    """Авторизация через Telegram Mini App (WebApp).
+    Бот открывает lk.djvpn.ru как WebApp — auto-auth по initData от Telegram.
+    """
+    public_url = (settings.SHM_PUBLIC_URL or settings.SHM_BASE_URL).rstrip("/")
+
+    import base64
+    basic = base64.b64encode(
+        f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
+    ).decode()
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(
-            f"{settings.SHM_BASE_URL}/telegram/webapp/auth",
+            f"{public_url}/telegram/webapp/auth",
             params={"initData": initData},
+            headers={"Authorization": f"Basic {basic}"},
         )
-    logging.warning("TG webapp SHM auth → %s: %s", resp.status_code, resp.text[:200])
+    logging.warning("TG webapp auth → %s: %s", resp.status_code, resp.text[:300])
 
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=401, detail="Ошибка WebApp авторизации")
@@ -437,6 +450,12 @@ async def webapp_auth(initData: str):
     shm_session = result.get("session_id")
     if not shm_session:
         raise HTTPException(status_code=401, detail="SHM не вернул session_id")
+
+    user_data = await shm_request("GET", "/shm/v1/user", shm_session)
+    user = (user_data.get("data") or [{}])[0]
+    user_id = user.get("user_id", 0)
+    token = create_token(shm_session, user_id)
+    return {"token": token, "user": user}
 
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]
