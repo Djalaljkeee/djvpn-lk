@@ -12,7 +12,7 @@ export interface UserService {
   id: number
   service_id: number
   name: string
-  status: number        // 1=active, 2=blocked, 3=deleted
+  status: number
   created: string
   expired?: string
   cost?: number
@@ -27,7 +27,7 @@ export interface Service {
   name: string
   cost: number
   period: number
-  period_type: string   // 'month' | 'day' | 'year'
+  period_type: string
   descr?: string
   category?: string
   status: number
@@ -52,15 +52,24 @@ export interface Payment {
 }
 
 export interface Referral {
-  user_id: number
-  login: string
+  user_id?: number
+  login?: string
   name?: string
-  created: string
-  income: number        // начислено от этого реферала
+  created?: string
+  income?: number
+  total?: number
 }
 
 export interface ReferralStats {
   total_referrals: number
   total_income: number
-  referrals: Referral[]
+  items: number
+  referrals?: Referral[]
+}
+
+export interface PromoApplyResult {
+  ok: boolean
+  status: number
+  message: string
+  code: string
 }
