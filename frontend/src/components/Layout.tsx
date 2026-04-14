@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { useState, useEffect, useRef } from 'react'
 import { useProfile } from '../hooks/useProfile'
 import { BrandLogo } from './BrandLogo'
+import ParticleCanvas from './ParticleCanvas'
 
 const navItems = [
   { to: '/',         label: 'Главная',   icon: HomeIcon,    end: true  },
@@ -40,17 +41,12 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col bg-surface-0 text-white">
       <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden>
-        <div className="absolute -top-24 left-[-8%] h-[22rem] w-[22rem] rounded-full bg-brand-300/20 blur-3xl" />
-        <div className="absolute top-[15%] right-[-5%] h-[20rem] w-[20rem] rounded-full bg-brand-500/18 blur-3xl" />
-        <div className="absolute bottom-[-8%] left-[20%] h-[18rem] w-[18rem] rounded-full bg-brand-700/18 blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.06]"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle at 1px 1px, rgba(255,220,250,0.55) 1px, transparent 0)',
-            backgroundSize: '28px 28px',
-          }}
-        />
+        {/* Global particle animation — fills entire viewport */}
+        <ParticleCanvas className="opacity-60" />
+        {/* Ambient glow blobs */}
+        <div className="absolute -top-24 left-[-8%] h-[22rem] w-[22rem] rounded-full bg-brand-300/15 blur-3xl" />
+        <div className="absolute top-[15%] right-[-5%] h-[20rem] w-[20rem] rounded-full bg-brand-500/12 blur-3xl" />
+        <div className="absolute bottom-[-8%] left-[20%] h-[18rem] w-[18rem] rounded-full bg-brand-700/12 blur-3xl" />
       </div>
 
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[rgba(26,9,35,0.72)] backdrop-blur-2xl">

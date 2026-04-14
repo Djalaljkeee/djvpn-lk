@@ -4,7 +4,6 @@ import { fetchServices, buyService } from '../api/services'
 import { fetchUserServices, changeService, stopService, deleteService, fetchServiceOrders } from '../api/user'
 import { useToast } from '../components/Toast'
 import SetupGuide from '../components/SetupGuide'
-import ParticleCanvas from '../components/ParticleCanvas'
 import type { Service, UserService } from '../types'
 
 function periodLabel(period: number, type: string) {
@@ -298,23 +297,12 @@ export default function ServicesPage() {
 
       {/* ── Hero Section ── */}
       <section className="relative overflow-hidden rounded-[2rem] min-h-[260px] sm:min-h-[300px]">
-        {/* Particle animation background */}
-        <ParticleCanvas />
-
         {/* Dark gradient overlay */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'linear-gradient(145deg, rgba(240,120,228,0.18) 0%, rgba(120,47,168,0.16) 40%, rgba(20,7,31,0.88) 100%)',
-          }}
-        />
-        {/* Subtle dot grid overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.04] pointer-events-none"
-          style={{
-            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,220,250,0.7) 1px, transparent 0)',
-            backgroundSize: '24px 24px',
+              'linear-gradient(145deg, rgba(240,120,228,0.22) 0%, rgba(120,47,168,0.20) 40%, rgba(20,7,31,0.82) 100%)',
           }}
         />
         {/* Border */}
