@@ -98,6 +98,14 @@ textarea {
   .safe-bottom {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
   }
+
+  .animate-glow-pulse {
+    animation: glowPulse 2.5s ease-in-out infinite;
+  }
+
+  .animate-float {
+    animation: floatY 4s ease-in-out infinite;
+  }
 }
 
 @keyframes fadeIn {
@@ -114,4 +122,14 @@ textarea {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(221, 86, 202, 0.25); }
+  50%       { box-shadow: 0 0 28px rgba(221, 86, 202, 0.50); }
+}
+
+@keyframes floatY {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
 }
