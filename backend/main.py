@@ -185,6 +185,26 @@ class PromoApplyResponse(BaseModel):
     code: str = ""
 
 
+class DeviceOut(BaseModel):
+    hwid: str
+    platform: Optional[str] = None
+    deviceModel: Optional[str] = None
+    last_seen: Optional[str] = None
+    userAgent: Optional[str] = None
+
+
+class ServiceDevicesOut(BaseModel):
+    service_id: int
+    service_name: str
+    user_service_id: int
+    devices: list[DeviceOut] = []
+
+
+class DeleteDeviceRequest(BaseModel):
+    hwid: str
+    user_service_id: int
+
+
 # ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------
@@ -325,6 +345,29 @@ async def shm_request(
         return {}
     import logging
     logging.warning("SHM %s %s -> %s: %s", method, path, resp.status_code, resp.text[:500])
+    raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+async def remnawave_request(
+    method: str,
+    path: str,
+    json_data: dict = None,
+    params: dict = None,
+) -> dict:
+    if not settings.REMNA_BASE_URL or not settings.REMNA_TOKEN:
+        raise HTTPException(status_code=503, detail="Remnawave integration not configured")
+    url = f"{settings.REMNA_BASE_URL}{path}"
+    headers = {
+        "Authorization": f"Bearer {settings.REMNA_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.request(method, url, headers=headers, json=json_data, params=params)
+    if resp.status_code in (200, 201):
+        return resp.json() if resp.content else {}
+    if resp.status_code == 404:
+        return {}
+    logging.warning("Remnawave %s %s -> %s: %s", method, path, resp.status_code, resp.text[:500])
     raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
 
@@ -827,6 +870,58 @@ async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current
     if isinstance(result, dict):
         message = result.get("msg") or result.get("message") or message
     return {"ok": True, "status": 200, "message": message, "code": req.code}
+
+
+@app.get("/api/user/devices", response_model=list[ServiceDevicesOut])
+async def get_user_devices(session: dict = Depends(get_current_session)):
+    """Получить HWID-устройства пользователя, сгруппированные по услугам."""
+    import asyncio
+
+    data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
+    raw_list = data.get("data", [])
+
+    async def fetch_devices_for_service(svc: dict) -> ServiceDevicesOut:
+        user_service_id = svc.get("user_service_id")
+        service_info = svc.get("service") or {}
+        service_name = service_info.get("name") or svc.get("name", "")
+        service_id = svc.get("service_id", 0)
+        try:
+            remna_data = await remnawave_request("GET", f"/api/hwid/devices/{user_service_id}")
+            response = remna_data.get("response") or {}
+            devices_raw = response.get("devices") or []
+            devices = [DeviceOut(**d) for d in devices_raw if isinstance(d, dict)]
+        except HTTPException:
+            devices = []
+        return ServiceDevicesOut(
+            service_id=service_id,
+            service_name=service_name,
+            user_service_id=user_service_id,
+            devices=devices,
+        )
+
+    valid_services = [s for s in raw_list if s.get("user_service_id")]
+    results = await asyncio.gather(*[fetch_devices_for_service(s) for s in valid_services])
+    return list(results)
+
+
+@app.delete("/api/user/devices")
+async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(get_current_session)):
+    """Удалить HWID-устройство пользователя."""
+    if not req.hwid:
+        raise HTTPException(status_code=400, detail="hwid обязателен")
+
+    # Проверить, что user_service_id принадлежит текущему пользователю
+    data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
+    raw_list = data.get("data", [])
+    valid_ids = {svc.get("user_service_id") for svc in raw_list}
+    if req.user_service_id not in valid_ids:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
+
+    user_uuid = f"us_{req.user_service_id}"
+    return await remnawave_request(
+        "DELETE", "/api/hwid/devices",
+        json_data={"userUuid": user_uuid, "hwid": req.hwid},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format, parseISO, differenceInDays, isPast } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import type { UserService } from '../../types'
+import type { UserService, Device } from '../../types'
+import DeviceList from './DeviceList'
 
 function StatusBadge({ status }: { status: number }) {
   const map: Record<number, { label: string; cls: string }> = {
@@ -22,11 +24,22 @@ function Info({ label, value, accent = 'text-white' }: { label: string; value: s
   )
 }
 
-export default function ActiveSubscription({ svc }: { svc: UserService }) {
+interface Props {
+  svc: UserService
+  devices?: Device[]
+}
+
+export default function ActiveSubscription({ svc, devices }: Props) {
   const expiredAt = svc.expired ? parseISO(svc.expired.replace(' ', 'T')) : null
   const daysLeft = expiredAt ? differenceInDays(expiredAt, new Date()) : null
   const isExpired = expiredAt ? isPast(expiredAt) : false
   const isUrgent = !isExpired && daysLeft !== null && daysLeft <= 5
+
+  const [localDevices, setLocalDevices] = useState<Device[]>(devices ?? [])
+
+  function handleDeviceDeleted(hwid: string) {
+    setLocalDevices(prev => prev.filter(d => d.hwid !== hwid))
+  }
 
   return (
     <div className="glass glass-hover rounded-[1.75rem] p-5 animate-slide-up">
@@ -58,6 +71,17 @@ export default function ActiveSubscription({ svc }: { svc: UserService }) {
           accent="text-fuchsia-100"
         />
       </div>
+
+      {devices !== undefined && (
+        <div className="mt-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-slate-400 mb-1">Устройства</div>
+          <DeviceList
+            devices={localDevices}
+            user_service_id={svc.id}
+            onDeleted={handleDeviceDeleted}
+          />
+        </div>
+      )}
 
       <div className="mt-4">
         <Link

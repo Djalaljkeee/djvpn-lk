@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
-import { fetchUserServices, fetchProfile } from '../api/user'
-import type { UserService } from '../types'
+import { fetchUserServices, fetchProfile, fetchUserDevices } from '../api/user'
+import type { UserService, Device, ServiceDevices } from '../types'
 import { parseISO, differenceInDays } from 'date-fns'
 import SubscriptionHero from '../components/dashboard/SubscriptionHero'
 import ActiveSubscription from '../components/dashboard/ActiveSubscription'
@@ -12,12 +12,20 @@ export default function DashboardPage() {
   const { setUser } = useAuthStore()
   const { show } = useToast()
   const [services, setServices] = useState<UserService[]>([])
+  const [devicesMap, setDevicesMap] = useState<Record<number, Device[]>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       fetchProfile().then(setUser),
       fetchUserServices().then(setServices),
+      fetchUserDevices().then((list: ServiceDevices[]) => {
+        const map: Record<number, Device[]> = {}
+        for (const item of list) {
+          map[item.user_service_id] = item.devices
+        }
+        setDevicesMap(map)
+      }).catch(() => {}), // не ломаем страницу если Remnawave недоступен
     ])
       .catch(() => show('Не удалось загрузить данные', 'error'))
       .finally(() => setLoading(false))
@@ -49,7 +57,11 @@ export default function DashboardPage() {
             <h2 className="text-xl font-semibold text-white mb-4">Активные подписки</h2>
             <div className="space-y-3">
               {activeServices.map(svc => (
-                <ActiveSubscription key={svc.id} svc={svc} />
+                <ActiveSubscription
+                  key={svc.id}
+                  svc={svc}
+                  devices={devicesMap[svc.id]}
+                />
               ))}
             </div>
           </section>
