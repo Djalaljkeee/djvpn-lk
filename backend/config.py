@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BOT_USERNAME: str = ""  # без @
 
+    # Remnawave HWID
+    REMNA_BASE_URL: str = ""   # https://vpn.example.com
+    REMNA_TOKEN: str = ""      # Bearer-токен Remnawave
+
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 

@@ -73,3 +73,18 @@ export interface PromoApplyResult {
   message: string
   code: string
 }
+
+export interface Device {
+  hwid: string
+  platform?: string
+  deviceModel?: string
+  last_seen?: string
+  userAgent?: string
+}
+
+export interface ServiceDevices {
+  service_id: number
+  service_name: string
+  user_service_id: number
+  devices: Device[]
+}

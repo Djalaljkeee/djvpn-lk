@@ -1,5 +1,5 @@
 import api from './client'
-import type { User, UserService, Payment, PromoApplyResult, ReferralStats } from '../types'
+import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices } from '../types'
 
 export const fetchProfile = () =>
   api.get<User>('/user/profile').then(r => r.data)
@@ -27,3 +27,9 @@ export const applyPromoCode = (code: string) =>
 
 export const fetchServiceOrders = (): Promise<{ service_id: number }[]> =>
   api.get('/user/service/orders').then(r => r.data)
+
+export const fetchUserDevices = () =>
+  api.get<ServiceDevices[]>('/user/devices').then(r => r.data)
+
+export const deleteDevice = (hwid: string, user_service_id: number) =>
+  api.delete('/user/devices', { data: { hwid, user_service_id } }).then(r => r.data)
