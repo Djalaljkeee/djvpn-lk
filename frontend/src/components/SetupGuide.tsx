@@ -191,15 +191,22 @@ export default function SetupGuide({
                     </p>
                   </div>
 
-                  <a
-                    href={data.step2.deeplink}
+                  <button
+                    onClick={() => {
+                      const tg = (window as any).Telegram?.WebApp
+                      if (tg?.openLink) {
+                        tg.openLink(data.step2.deeplink)
+                      } else {
+                        window.location.href = data.step2.deeplink
+                      }
+                    }}
                     className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-brand-600 hover:from-emerald-500 hover:to-brand-500 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     Подключить
-                  </a>
+                  </button>
 
                   {/* QR code */}
                   {data.step2.qr_code && (
