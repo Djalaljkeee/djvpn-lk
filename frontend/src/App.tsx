@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import ServicesPage from './pages/ServicesPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReferralsPage from './pages/ReferralsPage'
+import ProfilePage from './pages/ProfilePage'
 import Layout from './components/Layout'
 
 declare global {
@@ -84,6 +85,7 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="services" element={<ServicesPage />} />
             <Route path="payments" element={<PaymentsPage />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="referrals" element={<ReferralsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
