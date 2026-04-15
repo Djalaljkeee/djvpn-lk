@@ -88,3 +88,23 @@ export interface ServiceDevices {
   user_service_id: number
   devices: Device[]
 }
+
+export interface StatusMonitor {
+  id: number
+  name: string
+  status: number       // 1 = up, 0 = down, 2 = pending
+  ping: number         // ms
+  uptime_24: number | null
+  uptime_720: number | null
+}
+
+export interface StatusGroup {
+  id: number
+  name: string
+  monitors: StatusMonitor[]
+}
+
+export interface StatusData {
+  groups: StatusGroup[]
+  status_url: string
+}

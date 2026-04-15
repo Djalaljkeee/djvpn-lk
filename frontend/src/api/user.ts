@@ -1,5 +1,5 @@
 import api from './client'
-import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices } from '../types'
+import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices, StatusData } from '../types'
 
 export const fetchProfile = () =>
   api.get<User>('/user/profile').then(r => r.data)
@@ -33,3 +33,6 @@ export const fetchUserDevices = () =>
 
 export const deleteDevice = (hwid: string, user_service_id: number) =>
   api.delete('/user/devices', { data: { hwid, user_service_id } }).then(r => r.data)
+
+export const fetchStatus = () =>
+  api.get<StatusData>('/status').then(r => r.data)
