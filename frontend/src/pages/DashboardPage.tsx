@@ -52,22 +52,21 @@ export default function DashboardPage() {
       ) : activeServices.length === 0 ? (
         <SubscriptionHero />
       ) : (
-        <>
-          <section>
-            <h2 className="text-xl font-semibold text-white mb-4">Активные подписки</h2>
-            <div className="space-y-3">
-              {activeServices.map(svc => (
-                <ActiveSubscription
-                  key={svc.id}
-                  svc={svc}
-                  devices={devicesMap[svc.id]}
-                />
-              ))}
-            </div>
-          </section>
-          <ServerStatus />
-        </>
+        <section>
+          <h2 className="text-xl font-semibold text-white mb-4">Активные подписки</h2>
+          <div className="space-y-3">
+            {activeServices.map(svc => (
+              <ActiveSubscription
+                key={svc.id}
+                svc={svc}
+                devices={devicesMap[svc.id]}
+              />
+            ))}
+          </div>
+        </section>
       )}
+
+      <ServerStatus />
     </div>
   )
 }

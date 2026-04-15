@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     REMNA_BASE_URL: str = ""   # https://vpn.example.com
     REMNA_TOKEN: str = ""      # Bearer-токен Remnawave
 
+    # Uptime Kuma status page (e.g. https://kuma.djvpn.ru/status/djvpn)
+    KUMA_STATUS_URL: str = ""
+
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
