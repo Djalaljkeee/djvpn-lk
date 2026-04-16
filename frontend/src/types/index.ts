@@ -142,3 +142,11 @@ export interface ForecastEntry {
   items: ForecastServiceItem[]
   total: number
 }
+
+export interface RemnaUserInfo {
+  user_service_id: number
+  used_traffic_bytes: number | null
+  traffic_limit_bytes: number | null
+  limit_ip: number | null
+  locations: string[]
+}

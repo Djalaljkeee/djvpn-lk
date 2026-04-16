@@ -1,5 +1,5 @@
 import api from './client'
-import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices, StatusData, ForecastEntry } from '../types'
+import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices, StatusData, ForecastEntry, RemnaUserInfo } from '../types'
 
 export const fetchProfile = () =>
   api.get<User>('/user/profile').then(r => r.data)
@@ -39,3 +39,9 @@ export const fetchStatus = () =>
 
 export const fetchForecast = () =>
   api.get<{ data: ForecastEntry[] }>('/user/pay/forecast').then(r => r.data.data ?? [])
+
+export const fetchRemnaInfo = () =>
+  api.get<RemnaUserInfo[]>('/user/remna-info').then(r => r.data)
+
+export const deleteAllDevices = (user_service_id: number) =>
+  api.delete<{ deleted: number; failed: number }>('/user/devices/all', { data: { user_service_id } }).then(r => r.data)

@@ -243,6 +243,18 @@ class DeleteDeviceRequest(BaseModel):
     user_service_id: int
 
 
+class RemnaUserInfo(BaseModel):
+    user_service_id: int
+    used_traffic_bytes: Optional[int] = None
+    traffic_limit_bytes: Optional[int] = None
+    limit_ip: Optional[int] = None
+    locations: list[str] = []
+
+
+class DeleteAllDevicesRequest(BaseModel):
+    user_service_id: int
+
+
 # ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------
@@ -960,6 +972,65 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
         "DELETE", "/api/hwid/devices",
         json_data={"userUuid": user_uuid, "hwid": req.hwid},
     )
+
+
+@app.get("/api/user/remna-info", response_model=list[RemnaUserInfo])
+async def get_remna_info(session: dict = Depends(get_current_session)):
+    """Получить данные Remnawave (трафик, лимит устройств, локации) по каждой услуге."""
+    data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
+    raw_list = data.get("data", [])
+    valid_services = [s for s in raw_list if s.get("user_service_id")]
+
+    async def fetch_remna_user(svc: dict) -> RemnaUserInfo:
+        user_service_id = svc["user_service_id"]
+        try:
+            resp = await remnawave_request("GET", f"/api/users/us_{user_service_id}")
+            user_data = resp.get("response") or resp
+            inbounds = user_data.get("activeUserInbounds") or user_data.get("inbounds") or []
+            tags = []
+            for inb in inbounds:
+                tag = inb.get("tag") or inb.get("inboundTag") or inb.get("name")
+                if tag:
+                    tags.append(tag)
+            return RemnaUserInfo(
+                user_service_id=user_service_id,
+                used_traffic_bytes=user_data.get("usedTrafficBytes"),
+                traffic_limit_bytes=user_data.get("trafficLimitBytes"),
+                limit_ip=user_data.get("limitIp"),
+                locations=tags,
+            )
+        except Exception:
+            return RemnaUserInfo(user_service_id=user_service_id)
+
+    results = await asyncio.gather(*[fetch_remna_user(s) for s in valid_services])
+    return list(results)
+
+
+@app.delete("/api/user/devices/all")
+async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = Depends(get_current_session)):
+    """Удалить все HWID-устройства пользователя для одной услуги."""
+    data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
+    raw_list = data.get("data", [])
+    valid_ids = {svc.get("user_service_id") for svc in raw_list}
+    if req.user_service_id not in valid_ids:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
+
+    remna_data = await remnawave_request("GET", f"/api/hwid/devices/{req.user_service_id}")
+    devices_raw = (remna_data.get("response") or {}).get("devices") or []
+    user_uuid = f"us_{req.user_service_id}"
+
+    deleted, failed = 0, 0
+    for d in devices_raw:
+        hwid = d.get("hwid")
+        if not hwid:
+            continue
+        try:
+            await remnawave_request("DELETE", "/api/hwid/devices",
+                                    json_data={"userUuid": user_uuid, "hwid": hwid})
+            deleted += 1
+        except Exception:
+            failed += 1
+    return {"deleted": deleted, "failed": failed}
 
 
 # ---------------------------------------------------------------------------
