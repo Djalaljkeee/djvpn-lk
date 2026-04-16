@@ -161,6 +161,8 @@ class PaySystemV2Out(BaseModel):
     allow_deletion: Optional[int] = None
     internal: Optional[int] = None
     weight: Optional[int] = None
+    min_sum: Optional[float] = None
+    max_sum: Optional[float] = None
 
 
 class ReferralEntryOut(BaseModel):
