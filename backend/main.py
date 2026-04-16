@@ -186,6 +186,41 @@ class PromoApplyResponse(BaseModel):
     code: str = ""
 
 
+class ForecastNextItem(BaseModel):
+    bonus: float = 0
+    cost: float = 0
+    discount: float = 0
+    months: float = 0
+    name: str = ""
+    qnt: int = 1
+    service_id: Optional[int] = None
+    total: float = 0
+
+class ForecastServiceItem(BaseModel):
+    cost: float = 0
+    discount: float = 0
+    expire: Optional[str] = None
+    months: float = 0
+    name: str = ""
+    next: Optional[ForecastNextItem] = None
+    qnt: int = 1
+    service_id: Optional[str] = None
+    status: Optional[str] = None
+    total: float = 0
+    user_service_id: Optional[str] = None
+    usi: Optional[str] = None
+
+class ForecastEntry(BaseModel):
+    balance: float = 0
+    bonuses: float = 0
+    dept: float = 0
+    items: list[ForecastServiceItem] = []
+    total: float = 0
+
+class ForecastResponse(BaseModel):
+    data: list[ForecastEntry] = []
+
+
 class DeviceOut(BaseModel):
     hwid: str
     platform: Optional[str] = None
@@ -1029,6 +1064,16 @@ async def create_payment(req: PaymentRequest, session: dict = Depends(get_curren
         json_data={"pay_system_id": req.pay_system_id, "amount": req.amount},
     )
     return result
+
+
+@app.get("/api/user/pay/forecast", response_model=ForecastResponse)
+async def get_pay_forecast(session: dict = Depends(get_current_session)):
+    """Payment forecast: proxies GET /shm/v1/user/pay/forecast"""
+    data = await shm_request(
+        "GET", "/shm/v1/user/pay/forecast", session["shm_session"],
+        params={"limit": 25, "offset": 0},
+    )
+    return data
 
 
 # ---------------------------------------------------------------------------
