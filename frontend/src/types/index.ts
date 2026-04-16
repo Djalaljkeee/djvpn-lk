@@ -108,3 +108,37 @@ export interface StatusData {
   groups: StatusGroup[]
   status_url: string
 }
+
+export interface ForecastNextItem {
+  bonus: number
+  cost: number
+  discount: number
+  months: number
+  name: string
+  qnt: number
+  service_id?: number
+  total: number
+}
+
+export interface ForecastServiceItem {
+  cost: number
+  discount: number
+  expire?: string
+  months: number
+  name: string
+  next?: ForecastNextItem
+  qnt: number
+  service_id?: string
+  status?: string
+  total: number
+  user_service_id?: string
+  usi?: string
+}
+
+export interface ForecastEntry {
+  balance: number
+  bonuses: number
+  dept: number
+  items: ForecastServiceItem[]
+  total: number
+}

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { fetchPaySystemsV2, type PaySystemV2 } from '../api/services'
-import { fetchPayments, fetchProfile, applyPromoCode } from '../api/user'
+import { fetchPayments, fetchProfile, applyPromoCode, fetchForecast } from '../api/user'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
-import type { Payment, PromoApplyResult } from '../types'
-import { format, parseISO } from 'date-fns'
+import type { Payment, PromoApplyResult, ForecastEntry } from '../types'
+import { format, parseISO, differenceInDays } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 const QUICK_AMOUNTS = [100, 300, 500, 1000]
@@ -20,6 +20,8 @@ export default function PaymentsPage() {
   const [promoCode, setPromoCode] = useState('')
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoState, setPromoState] = useState<PromoApplyResult | null>(null)
+  const [forecast, setForecast] = useState<ForecastEntry[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -29,6 +31,7 @@ export default function PaymentsPage() {
       }),
       fetchPayments().then(setPayments),
       fetchProfile().then(setUser),
+      fetchForecast().then(setForecast).catch(() => {}),
     ])
       .catch(() => show('Ошибка загрузки данных', 'error'))
       .finally(() => setLoading(false))
@@ -37,6 +40,24 @@ export default function PaymentsPage() {
   const parsedAmount = parseFloat(amount) || 0
   const amountValid = parsedAmount >= 1
   const balance = user?.balance ?? 0
+
+  // Forecast derived data
+  const forecastEntry = forecast[0] ?? null
+  const bonuses = forecastEntry?.bonuses ?? 0
+  const forecastTotal = forecastEntry?.total ?? 0
+  const forecastItems = forecastEntry?.items ?? []
+
+  const nearestItem = forecastItems
+    .filter(item => item.expire && item.status === 'ACTIVE')
+    .sort((a, b) =>
+      new Date(a.expire!.replace(' ', 'T')).getTime() - new Date(b.expire!.replace(' ', 'T')).getTime()
+    )[0] ?? null
+
+  const daysUntilPayment = nearestItem?.expire
+    ? differenceInDays(parseISO(nearestItem.expire.replace(' ', 'T')), new Date())
+    : null
+
+  const needsTopUp = forecastTotal > 0 && balance < forecastTotal
 
   const handlePay = () => {
     if (!selectedPs || !amountValid) return
@@ -64,6 +85,13 @@ export default function PaymentsPage() {
     }
   }
 
+  const daysLabel = () => {
+    if (daysUntilPayment === null) return 'Предстоящие платежи'
+    if (daysUntilPayment <= 0) return 'Оплата просрочена'
+    if (daysUntilPayment === 1) return 'Списание завтра'
+    return `Списание через ${daysUntilPayment} дн.`
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <section className="brand-panel rounded-[2rem] p-5 sm:p-6">
@@ -79,10 +107,60 @@ export default function PaymentsPage() {
           <div className="rounded-[1.75rem] border border-white/10 bg-white/5 px-5 py-4 sm:min-w-[260px]">
             <div className="text-xs uppercase tracking-[0.2em] text-slate-300">Текущий баланс</div>
             <div className="mt-2 text-4xl font-bold text-white">{balance.toFixed(0)} ₽</div>
-            <div className="mt-2 text-sm text-slate-300">Основной баланс: {balance.toFixed(2)} ₽</div>
+            <div className="mt-2 text-sm text-slate-300">Основной: {balance.toFixed(2)} ₽</div>
+            {bonuses > 0 && (
+              <div className="mt-1 text-sm text-fuchsia-300">Бонусы: {bonuses.toFixed(2)} ₽</div>
+            )}
           </div>
         </div>
       </section>
+
+      {/* Payment forecast section */}
+      {forecastEntry && forecastTotal > 0 && (
+        <section className={`rounded-[2rem] p-5 sm:p-6 ${
+          daysUntilPayment !== null && daysUntilPayment <= 3
+            ? 'border border-amber-300/20 bg-amber-500/10'
+            : 'glass'
+        }`}>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Прогноз списания</h2>
+              <p className="mt-1 text-sm text-slate-300">{daysLabel()}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 px-4 py-3 text-lg font-bold text-white">
+              {forecastTotal.toFixed(0)} ₽
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {forecastItems.filter(item => item.next).map((item, idx) => (
+              <div key={item.user_service_id || item.usi || idx} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">{item.name}</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      Следующий тариф: {item.next!.name}
+                      {item.expire && (
+                        <span className="ml-2">
+                          · истекает {format(parseISO(item.expire.replace(' ', 'T')), 'd MMM yyyy', { locale: ru })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sm font-semibold text-white">{item.next!.total.toFixed(0)} ₽</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {needsTopUp && (
+            <div className="mt-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-4 text-sm text-fuchsia-100">
+              <span className="font-semibold">Недостаточно средств.</span> Пополните баланс на{' '}
+              <span className="font-semibold">{(forecastTotal - balance).toFixed(0)} ₽</span> для продления услуги.
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <section className="glass rounded-[2rem] p-5 sm:p-6">
@@ -192,7 +270,7 @@ export default function PaymentsPage() {
               className="flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-brand-500/20 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
               {promoLoading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
-              Применить
+              Активировать
             </button>
           </div>
 
@@ -220,39 +298,49 @@ export default function PaymentsPage() {
       </div>
 
       <section className="glass rounded-[2rem] overflow-hidden">
-        <div className="flex items-center justify-between gap-4 px-5 py-4 sm:px-6">
+        <button
+          onClick={() => setHistoryOpen(v => !v)}
+          className="flex w-full items-center justify-between gap-4 px-5 py-4 sm:px-6 text-left"
+        >
           <div>
-            <h2 className="text-xl font-semibold text-white">Последние транзакции</h2>
-            <p className="mt-1 text-sm text-slate-300">Показываем до 20 последних операций по счету.</p>
+            <h2 className="text-xl font-semibold text-white">История операций</h2>
+            <p className="mt-1 text-sm text-slate-300">{payments.length} операций</p>
           </div>
-          <div className="rounded-2xl bg-white/5 px-4 py-2 text-sm text-slate-200">{payments.length} операций</div>
-        </div>
+          <svg
+            className={`h-5 w-5 shrink-0 text-slate-300 transition-transform duration-200 ${historyOpen ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
 
-        {payments.length > 0 ? (
-          <div className="border-t border-white/10">
-            {payments.slice(0, 20).map((pay, idx) => (
-              <div key={pay.id ?? idx} className="flex flex-col gap-2 border-b border-white/5 px-5 py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-white">
-                    {pay.pay_system_name && typeof pay.pay_system_name === 'string' && isNaN(Number(pay.pay_system_name))
-                      ? pay.pay_system_name
-                      : (pay.amount ?? 0) >= 0 ? 'Пополнение' : 'Списание'}
+        {historyOpen && (
+          payments.length > 0 ? (
+            <div className="border-t border-white/10">
+              {payments.slice(0, 20).map((pay, idx) => (
+                <div key={pay.id ?? idx} className="flex flex-col gap-2 border-b border-white/5 px-5 py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white">
+                      {pay.pay_system_name && typeof pay.pay_system_name === 'string' && isNaN(Number(pay.pay_system_name))
+                        ? pay.pay_system_name
+                        : (pay.amount ?? 0) >= 0 ? 'Пополнение' : 'Списание'}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-300">
+                      {pay.created ? format(parseISO(pay.created.replace(' ', 'T')), 'd MMM yyyy, HH:mm', { locale: ru }) : '—'}
+                      {pay.comment && ` · ${pay.comment}`}
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs leading-5 text-slate-300">
-                    {pay.created ? format(parseISO(pay.created.replace(' ', 'T')), 'd MMM yyyy, HH:mm', { locale: ru }) : '—'}
-                    {pay.comment && ` · ${pay.comment}`}
+                  <div className={`text-sm font-semibold ${(pay.amount ?? 0) >= 0 ? 'text-emerald-200' : 'text-rose-200'}`}>
+                    {(pay.amount ?? 0) >= 0 ? '+' : ''}{(pay.amount ?? 0).toFixed(2)} ₽
                   </div>
                 </div>
-                <div className={`text-sm font-semibold ${(pay.amount ?? 0) >= 0 ? 'text-emerald-200' : 'text-rose-200'}`}>
-                  {(pay.amount ?? 0) >= 0 ? '+' : ''}{(pay.amount ?? 0).toFixed(2)} ₽
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="border-t border-white/10 px-5 py-10 text-center text-sm text-slate-300 sm:px-6">
-            История платежей пока пуста.
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="border-t border-white/10 px-5 py-10 text-center text-sm text-slate-300 sm:px-6">
+              История платежей пока пуста.
+            </div>
+          )
         )}
       </section>
     </div>
