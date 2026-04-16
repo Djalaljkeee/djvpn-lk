@@ -20,6 +20,7 @@ export interface UserService {
   period_type?: string
   descr?: string
   subscription_url?: string
+  remna_uuid?: string
 }
 
 export interface Service {

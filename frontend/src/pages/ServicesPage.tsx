@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
-import { fetchUserServices, changeService, stopService, deleteService, fetchServiceOrders } from '../api/user'
+import { fetchUserServices, changeService, stopService, deleteService, fetchServiceOrders, fetchUserDevices, fetchRemnaInfo, deleteAllDevices } from '../api/user'
 import { useToast } from '../components/Toast'
 import SetupGuide from '../components/SetupGuide'
-import type { Service, UserService } from '../types'
+import type { Service, UserService, RemnaUserInfo, ServiceDevices, Device } from '../types'
+import PlanCard from '../components/dashboard/PlanCard'
+import TrafficSection from '../components/dashboard/TrafficSection'
+import DeviceConnectionCard from '../components/dashboard/DeviceConnectionCard'
+import CountdownBlock from '../components/dashboard/CountdownBlock'
+import LocationsSection from '../components/dashboard/LocationsSection'
+import CtaBanner from '../components/dashboard/CtaBanner'
+import DeviceList from '../components/dashboard/DeviceList'
 
 function periodLabel(period: number, type: string) {
   if (type === 'month') return period === 1 ? 'в месяц' : `за ${period} мес`
@@ -140,13 +148,28 @@ export default function ServicesPage() {
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
   const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
+  const [remnaMap, setRemnaMap] = useState<Record<number, RemnaUserInfo>>({})
+  const [devicesMap, setDevicesMap] = useState<Record<number, Device[]>>({})
+  const [refreshing, setRefreshing] = useState(false)
 
-  const reload = async () => {
-    const [cat, svcs, orders] = await Promise.all([fetchServices(), fetchUserServices(), fetchServiceOrders()])
+  const reload = useCallback(async () => {
+    const [cat, svcs, orders, remnaList, devList] = await Promise.all([
+      fetchServices(),
+      fetchUserServices(),
+      fetchServiceOrders(),
+      fetchRemnaInfo().catch((): RemnaUserInfo[] => []),
+      fetchUserDevices().catch((): ServiceDevices[] => []),
+    ])
     setCatalog(cat)
     setMyServices(svcs)
     setOrderedIds(new Set(orders.map(o => o.service_id)))
-  }
+    const rMap: Record<number, RemnaUserInfo> = {}
+    for (const r of remnaList) rMap[r.user_service_id] = r
+    setRemnaMap(rMap)
+    const dMap: Record<number, Device[]> = {}
+    for (const item of devList) dMap[item.user_service_id] = item.devices
+    setDevicesMap(dMap)
+  }, [])
 
   useEffect(() => {
     reload()
@@ -229,6 +252,25 @@ export default function ServicesPage() {
     }
   }
 
+  const handleRefreshTraffic = async () => {
+    setRefreshing(true)
+    try {
+      const remnaList = await fetchRemnaInfo()
+      const rMap: Record<number, RemnaUserInfo> = {}
+      for (const r of remnaList) rMap[r.user_service_id] = r
+      setRemnaMap(rMap)
+    } catch {
+      show('Не удалось обновить трафик', 'error')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const activeSvc = myServices.find(s => s.status === 1) ?? null
+  const activeRemna = activeSvc ? (remnaMap[activeSvc.id] ?? null) : null
+  const activeDevices = activeSvc ? (devicesMap[activeSvc.id] ?? []) : []
+  const expiredAt = activeSvc?.expired ? parseISO(activeSvc.expired.replace(' ', 'T')) : null
+
   if (loading) {
     return (
       <div className="space-y-5 animate-fade-in">
@@ -293,6 +335,53 @@ export default function ServicesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Active Subscription Detail ── */}
+      {activeSvc && (
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-white">Подписка</h2>
+
+          <PlanCard svc={activeSvc} remnaInfo={activeRemna} />
+
+          <TrafficSection
+            usedBytes={activeRemna?.used_traffic_bytes ?? null}
+            limitBytes={activeRemna?.traffic_limit_bytes ?? null}
+            onRefresh={handleRefreshTraffic}
+            refreshing={refreshing}
+          />
+
+          <DeviceConnectionCard
+            connectedCount={activeDevices.length}
+            limitIp={activeRemna?.limit_ip ?? null}
+          />
+
+          <CountdownBlock expiredAt={expiredAt} />
+
+          {(activeRemna?.locations ?? []).length > 0 && (
+            <LocationsSection locations={activeRemna!.locations} />
+          )}
+
+          <CtaBanner />
+
+          <div className="glass rounded-[1.75rem] p-5">
+            <DeviceList
+              devices={activeDevices}
+              user_service_id={activeSvc.id}
+              totalLimit={activeRemna?.limit_ip ?? undefined}
+              onDeleted={hwid =>
+                setDevicesMap(prev => ({
+                  ...prev,
+                  [activeSvc.id]: (prev[activeSvc.id] ?? []).filter(d => d.hwid !== hwid),
+                }))
+              }
+              onDeleteAll={async () => {
+                await deleteAllDevices(activeSvc.id)
+                setDevicesMap(prev => ({ ...prev, [activeSvc.id]: [] }))
+              }}
+            />
+          </div>
+        </section>
       )}
 
       {/* ── Hero Section ── */}

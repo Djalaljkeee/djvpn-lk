@@ -322,6 +322,7 @@ def normalize_user_service(svc: dict) -> dict:
         "period_type":      svc.get("period_type", "month"),
         "descr":            info.get("descr") or svc.get("descr"),
         "subscription_url": sub_url,
+        "remna_uuid":       data.get("uuid"),
     }
 
 _PAY_SYSTEM_NAMES: dict[str, str] = {
@@ -936,11 +937,14 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
         service_name = service_info.get("name") or svc.get("name", "")
         service_id = svc.get("service_id", 0)
         try:
-            remna_data = await remnawave_request("GET", f"/api/hwid/devices/{user_service_id}")
+            uuid = await _resolve_remna_uuid(user_service_id, svc)
+            if not uuid:
+                raise ValueError("no uuid")
+            remna_data = await remnawave_request("GET", f"/api/hwid/devices/{uuid}")
             response = remna_data.get("response") or {}
             devices_raw = response.get("devices") or []
             devices = [DeviceOut(**d) for d in devices_raw if isinstance(d, dict)]
-        except HTTPException:
+        except Exception:
             devices = []
         return ServiceDevicesOut(
             service_id=service_id,
@@ -967,7 +971,10 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
     if req.user_service_id not in valid_ids:
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
-    user_uuid = f"us_{req.user_service_id}"
+    target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
+    user_uuid = await _resolve_remna_uuid(req.user_service_id, target_svc)
+    if not user_uuid:
+        raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
     return await remnawave_request(
         "DELETE", "/api/hwid/devices",
         json_data={"userUuid": user_uuid, "hwid": req.hwid},
@@ -984,7 +991,10 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     async def fetch_remna_user(svc: dict) -> RemnaUserInfo:
         user_service_id = svc["user_service_id"]
         try:
-            resp = await remnawave_request("GET", f"/api/users/us_{user_service_id}")
+            uuid = await _resolve_remna_uuid(user_service_id, svc)
+            if not uuid:
+                return RemnaUserInfo(user_service_id=user_service_id)
+            resp = await remnawave_request("GET", f"/api/users/{uuid}")
             user_data = resp.get("response") or resp
             inbounds = user_data.get("activeUserInbounds") or user_data.get("inbounds") or []
             tags = []
@@ -1015,9 +1025,12 @@ async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = 
     if req.user_service_id not in valid_ids:
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
-    remna_data = await remnawave_request("GET", f"/api/hwid/devices/{req.user_service_id}")
+    target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
+    user_uuid = await _resolve_remna_uuid(req.user_service_id, target_svc)
+    if not user_uuid:
+        raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
+    remna_data = await remnawave_request("GET", f"/api/hwid/devices/{user_uuid}")
     devices_raw = (remna_data.get("response") or {}).get("devices") or []
-    user_uuid = f"us_{req.user_service_id}"
 
     deleted, failed = 0, 0
     for d in devices_raw:
@@ -1153,11 +1166,9 @@ async def get_pay_forecast(session: dict = Depends(get_current_session)):
 # VPN Setup: /api/vpn/setup
 # ---------------------------------------------------------------------------
 
-async def _fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) -> Optional[str]:
-    """Берёт subscriptionUrl из SHM Marzban-хранилища.
-    Эндпоинт: GET /shm/v1/storage/manage/vpn_mrzb_{id}?user_id={user_id}
-    Требует admin session + user_id для доступа к хранилищу конкретного пользователя.
-    Ответ: text/plain → JSON.
+async def _fetch_storage_data(user_service_id: int, user_id: int = 0) -> dict:
+    """Fetch full JSON from SHM Marzban storage: vpn_mrzb_{id}.
+    Returns dict with keys like subscriptionUrl, uuid, etc.
     """
     url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
@@ -1173,15 +1184,36 @@ async def _fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) ->
                 params=params,
             )
         if resp.status_code != 200:
-            return None
+            return {}
         text = resp.text.strip()
         if not text:
-            return None
-        data = json.loads(text)
-        return data.get("subscriptionUrl") or data.get("subscription_url")
+            return {}
+        return json.loads(text)
     except Exception as e:
-        logging.warning("_fetch_sub_url_from_storage(%s) error: %s", user_service_id, e)
-    return None
+        logging.warning("_fetch_storage_data(%s) error: %s", user_service_id, e)
+    return {}
+
+
+async def _fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) -> Optional[str]:
+    data = await _fetch_storage_data(user_service_id, user_id)
+    return data.get("subscriptionUrl") or data.get("subscription_url")
+
+
+async def _resolve_remna_uuid(user_service_id: int, svc: dict | None = None, user_id: int = 0) -> str | None:
+    """Resolve Remnawave UUID for a user service from SHM data."""
+    if svc:
+        raw_data = svc.get("data") or {}
+        if isinstance(raw_data, str):
+            try:
+                raw_data = json.loads(raw_data)
+            except Exception:
+                raw_data = {}
+        uuid_val = raw_data.get("uuid")
+        if uuid_val:
+            return uuid_val
+
+    storage = await _fetch_storage_data(user_service_id, user_id)
+    return storage.get("uuid")
 
 
 _HAPP_DOWNLOADS = {
