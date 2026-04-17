@@ -32,6 +32,7 @@ export interface Service {
   descr?: string
   category?: string
   status: number
+  order_only_once?: boolean
 }
 
 export interface PaySystem {
@@ -149,5 +150,7 @@ export interface RemnaUserInfo {
   used_traffic_bytes: number | null
   traffic_limit_bytes: number | null
   limit_ip: number | null
+  hwid_device_limit: number | null
+  online_at: string | null
   locations: string[]
 }

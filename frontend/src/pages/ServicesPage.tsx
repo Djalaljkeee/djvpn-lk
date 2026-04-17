@@ -181,7 +181,11 @@ export default function ServicesPage() {
   const changingSvc = changingId !== null ? myServices.find(s => s.id === changingId) : null
 
   const sortedCatalog = useMemo(() => {
-    const activeCatalog = catalog.filter(s => s.status === 1)
+    const activeCatalog = catalog.filter(s => {
+      if (s.status !== 1) return false
+      if (s.order_only_once && orderedIds.has(s.service_id) && !myActiveIds.has(s.service_id)) return false
+      return true
+    })
     const filtered = activeCatalog.filter(s => {
       if (filter === 'mine') return myActiveIds.has(s.service_id)
       if (filter === 'available') return !myActiveIds.has(s.service_id)
@@ -194,7 +198,7 @@ export default function ServicesPage() {
       if (aOwned !== bOwned) return aOwned ? -1 : 1
       return a.cost - b.cost
     })
-  }, [catalog, filter, myActiveIds])
+  }, [catalog, filter, myActiveIds, orderedIds])
 
   const handleBuy = async (serviceId: number) => {
     setBuying(serviceId)
@@ -344,6 +348,31 @@ export default function ServicesPage() {
 
           <PlanCard svc={activeSvc} remnaInfo={activeRemna} />
 
+          {/* Management controls */}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => setSetupTarget(
+                activeSvc.subscription_url ? { url: activeSvc.subscription_url } : { serviceId: activeSvc.id ?? undefined }
+              )}
+              className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/20 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-50 hover:bg-emerald-500/25 transition-all"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
+              </svg>
+              Настроить подключение
+            </button>
+            <button
+              onClick={() => setChangingId(activeSvc.id ?? null)}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-brand-500/18 px-4 py-3 text-sm font-semibold text-white hover:brightness-110 transition-all"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+              Сменить тариф
+            </button>
+          </div>
+
           <TrafficSection
             usedBytes={activeRemna?.used_traffic_bytes ?? null}
             limitBytes={activeRemna?.traffic_limit_bytes ?? null}
@@ -425,8 +454,8 @@ export default function ServicesPage() {
               value={String(catalog.filter(s => s.status === 1).length)}
             />
             <HeroStatCard
-              label="Заказано"
-              value={String(orderedIds.size)}
+              label="Доступных"
+              value={String(sortedCatalog.filter(s => !myActiveIds.has(s.service_id)).length)}
             />
           </div>
         </div>
@@ -470,19 +499,17 @@ export default function ServicesPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sortedCatalog.map(svc => {
             const owned = myActiveIds.has(svc.service_id)
-            const used = !owned && orderedIds.has(svc.service_id)
             const isBuying = buying === svc.service_id
             const success = justBought.has(svc.service_id)
-            const disabled = owned || used || isBuying
+            const disabled = owned || isBuying
 
             return (
               <div
                 key={svc.service_id}
                 className={`glass glass-hover relative flex h-full flex-col rounded-[1.75rem] p-5 transition-all ${
-                  owned ? 'ring-1 ring-emerald-400/30' : used ? 'opacity-80' : ''
+                  owned ? 'ring-1 ring-emerald-400/30' : ''
                 }`}
               >
-                {/* Left accent bar for owned */}
                 {owned && (
                   <div className="absolute left-0 top-6 bottom-6 w-1 rounded-full bg-emerald-400/60" />
                 )}
@@ -495,7 +522,13 @@ export default function ServicesPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <StatusPill owned={owned} used={used} />
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      owned
+                        ? 'bg-emerald-500/15 text-emerald-100'
+                        : 'bg-brand-500/15 text-fuchsia-100'
+                    }`}>
+                      {owned ? 'Активна' : 'Доступна'}
+                    </span>
                     <ShieldIcon className={`h-7 w-7 flex-shrink-0 ${owned ? 'text-emerald-300/70' : 'text-brand-400/50'}`} />
                   </div>
                 </div>
@@ -521,13 +554,13 @@ export default function ServicesPage() {
                   className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all ${
                     success
                       ? 'bg-emerald-500/20 text-emerald-100'
-                      : owned || used
+                      : owned
                         ? 'bg-white/5 text-slate-400'
                         : 'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
                   {isBuying && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
-                  {success ? 'Подключено' : owned ? 'Уже подключена' : used ? 'Уже использовалась' : isBuying ? 'Покупаем…' : 'Подключить тариф'}
+                  {success ? 'Подключено' : owned ? 'Уже подключена' : isBuying ? 'Покупаем…' : 'Подключить тариф'}
                 </button>
               </div>
             )
@@ -540,9 +573,6 @@ export default function ServicesPage() {
         <section className="space-y-4">
           <div>
             <h2 className="text-xl font-semibold text-white">Мои услуги</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Настройка подключения доступна через deeplink и автоматический setup flow.
-            </p>
           </div>
 
           <div className="space-y-3">
@@ -553,49 +583,29 @@ export default function ServicesPage() {
                   key={svc.id}
                   className={`glass rounded-[1.75rem] p-4 sm:p-5 ${svc.status === 1 ? 'ring-1 ring-emerald-500/25' : ''}`}
                 >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-lg font-semibold text-white">{svc.name}</span>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          svc.status === 1 ? 'bg-emerald-500/15 text-emerald-100'
-                          : svc.status === 3 ? 'bg-rose-500/15 text-rose-100'
-                          : 'bg-amber-500/15 text-amber-100'
-                        }`}>
-                          {svc.status === 1 ? 'Активна' : svc.status === 3 ? 'Удалена' : 'Заблокирована'}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-300">
-                        <span>ID услуги: <span className="font-mono text-white">{svc.id}</span></span>
-                        <span>Тариф: <span className="font-mono text-white">{svc.service_id}</span></span>
-                        {svc.expired && (
-                          <span>Истекает: <span className="text-white">{svc.expired.replace('T', ' ').split(' ')[0]}</span></span>
-                        )}
-                      </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-semibold text-white">{svc.name}</span>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        svc.status === 1 ? 'bg-emerald-500/15 text-emerald-100'
+                        : svc.status === 3 ? 'bg-rose-500/15 text-rose-100'
+                        : 'bg-amber-500/15 text-amber-100'
+                      }`}>
+                        {svc.status === 1 ? 'Активна' : svc.status === 3 ? 'Удалена' : 'Заблокирована'}
+                      </span>
                     </div>
-
-                    <button
-                      onClick={() => setSetupTarget(
-                        svc.subscription_url ? { url: svc.subscription_url } : { serviceId: svc.id ?? undefined }
-                      )}
-                      className="w-full rounded-2xl border border-emerald-300/20 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-50 hover:bg-emerald-500/25 hover:brightness-110 transition-all lg:w-auto"
-                    >
-                      Настроить подключение
-                    </button>
+                    {svc.expired && (
+                      <div className="mt-1.5 text-xs text-slate-400">
+                        Истекает: <span className="text-slate-200">{svc.expired.replace('T', ' ').split(' ')[0]}</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                    <button
-                      onClick={() => setChangingId(svc.id ?? null)}
-                      disabled={isActioning}
-                      className="rounded-2xl bg-brand-500/18 px-4 py-3 text-sm font-medium text-white hover:brightness-110 transition-all disabled:opacity-40"
-                    >
-                      Сменить тариф
-                    </button>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <button
                       onClick={() => handleStop(svc)}
                       disabled={isActioning || svc.status !== 1}
-                      className="rounded-2xl bg-amber-500/15 px-4 py-3 text-sm font-medium text-amber-100 hover:brightness-110 transition-all disabled:opacity-40"
+                      className="rounded-2xl bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-100 hover:brightness-110 transition-all disabled:opacity-40"
                     >
                       {isActioning ? 'Выполняем…' : 'Остановить'}
                     </button>
@@ -617,11 +627,6 @@ export default function ServicesPage() {
   )
 }
 
-function StatusPill({ owned, used }: { owned: boolean; used: boolean }) {
-  if (owned) return <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-100">Активна</span>
-  if (used) return <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-slate-300">Уже была</span>
-  return <span className="rounded-full bg-brand-500/15 px-3 py-1 text-xs font-medium text-fuchsia-100">Доступна</span>
-}
 
 function HeroStatCard({ label, value, active }: { label: string; value: string; active?: boolean }) {
   return (
