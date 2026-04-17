@@ -134,6 +134,7 @@ class CatalogServiceOut(BaseModel):
     descr: Optional[str] = None
     category: Optional[str] = None
     status: int = 1
+    order_only_once: bool = False
 
 class PaySystemOut(BaseModel):
     pay_system_id: int
@@ -248,6 +249,8 @@ class RemnaUserInfo(BaseModel):
     used_traffic_bytes: Optional[int] = None
     traffic_limit_bytes: Optional[int] = None
     limit_ip: Optional[int] = None
+    hwid_device_limit: Optional[int] = None
+    online_at: Optional[str] = None
     locations: list[str] = []
 
 
@@ -345,14 +348,15 @@ def normalize_payment(pay: dict) -> dict:
 def normalize_catalog_service(svc: dict) -> dict:
     allow = svc.get("allow_to_order", 1)
     return {
-        "service_id":  svc.get("id") or svc.get("service_id"),
-        "name":        svc.get("name", ""),
-        "cost":        float(svc.get("cost") or 0),
-        "period":      int(svc.get("period_cost") or svc.get("period") or 1),
-        "period_type": svc.get("period_type", "month"),
-        "descr":       svc.get("descr"),
-        "category":    svc.get("category"),
-        "status":      1 if allow else 0,
+        "service_id":     svc.get("id") or svc.get("service_id"),
+        "name":           svc.get("name", ""),
+        "cost":           float(svc.get("cost") or 0),
+        "period":         int(svc.get("period_cost") or svc.get("period") or 1),
+        "period_type":    svc.get("period_type", "month"),
+        "descr":          svc.get("descr"),
+        "category":       svc.get("category"),
+        "status":         1 if allow else 0,
+        "order_only_once": bool(svc.get("order_only_once", False)),
     }
 
 
@@ -1002,11 +1006,16 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
                 tag = inb.get("tag") or inb.get("inboundTag") or inb.get("name")
                 if tag:
                     tags.append(tag)
+            traffic = user_data.get("userTraffic") or {}
+            used = traffic.get("usedTrafficBytes") or user_data.get("usedTrafficBytes")
+            online = traffic.get("onlineAt") or user_data.get("onlineAt")
             return RemnaUserInfo(
                 user_service_id=user_service_id,
-                used_traffic_bytes=user_data.get("usedTrafficBytes"),
+                used_traffic_bytes=used,
                 traffic_limit_bytes=user_data.get("trafficLimitBytes"),
                 limit_ip=user_data.get("limitIp"),
+                hwid_device_limit=user_data.get("hwidDeviceLimit"),
+                online_at=online,
                 locations=tags,
             )
         except Exception:
