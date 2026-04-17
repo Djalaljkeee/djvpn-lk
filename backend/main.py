@@ -939,13 +939,15 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
     raw_list = data.get("data", [])
 
+    user_id = session.get("user_id", 0)
+
     async def fetch_devices_for_service(svc: dict) -> ServiceDevicesOut:
         user_service_id = svc.get("user_service_id")
         service_info = svc.get("service") or {}
         service_name = service_info.get("name") or svc.get("name", "")
         service_id = svc.get("service_id", 0)
         try:
-            uuid = await _resolve_remna_uuid(user_service_id, svc)
+            uuid = await _resolve_remna_uuid(user_service_id, svc, user_id)
             if not uuid:
                 raise ValueError("no uuid")
             remna_data = await remnawave_request("GET", f"/api/hwid/devices/{uuid}")
@@ -981,7 +983,7 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
     target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
-    user_uuid = await _resolve_remna_uuid(req.user_service_id, target_svc)
+    user_uuid = await _resolve_remna_uuid(req.user_service_id, target_svc, session.get("user_id", 0))
     if not user_uuid:
         raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
     return await remnawave_request(
@@ -996,12 +998,14 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
     raw_list = data.get("data", [])
     valid_services = [s for s in raw_list if s.get("user_service_id")]
+    user_id = session.get("user_id", 0)
 
     async def fetch_remna_user(svc: dict) -> RemnaUserInfo:
         user_service_id = svc["user_service_id"]
         try:
-            uuid = await _resolve_remna_uuid(user_service_id, svc)
+            uuid = await _resolve_remna_uuid(user_service_id, svc, user_id)
             if not uuid:
+                logging.warning("get_remna_info usi=%s: no uuid", user_service_id)
                 return RemnaUserInfo(user_service_id=user_service_id)
             resp = await remnawave_request("GET", f"/api/users/{uuid}")
             user_data = resp.get("response") or resp
@@ -1041,7 +1045,7 @@ async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = 
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
     target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
-    user_uuid = await _resolve_remna_uuid(req.user_service_id, target_svc)
+    user_uuid = await _resolve_remna_uuid(req.user_service_id, target_svc, session.get("user_id", 0))
     if not user_uuid:
         raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
     remna_data = await remnawave_request("GET", f"/api/hwid/devices/{user_uuid}")
@@ -1215,7 +1219,13 @@ async def _fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) ->
 
 
 async def _resolve_remna_uuid(user_service_id: int, svc: dict | None = None, user_id: int = 0) -> str | None:
-    """Resolve Remnawave UUID for a user service from SHM data."""
+    """Resolve Remnawave UUID for a user service.
+
+    Lookup chain:
+    1. svc.data.uuid (inline in SHM user/service response)
+    2. SHM storage vpn_mrzb_{user_service_id}.uuid
+    3. Remnawave /api/users/by-username/us_{shm_user_id}  (fallback — user-wide)
+    """
     if svc:
         raw_data = svc.get("data") or {}
         if isinstance(raw_data, str):
@@ -1228,7 +1238,24 @@ async def _resolve_remna_uuid(user_service_id: int, svc: dict | None = None, use
             return uuid_val
 
     storage = await _fetch_storage_data(user_service_id, user_id)
-    return storage.get("uuid")
+    uuid_val = storage.get("uuid")
+    if uuid_val:
+        return uuid_val
+
+    # Fallback: lookup by username convention us_<shm_user_id>
+    if user_id and settings.REMNA_BASE_URL and settings.REMNA_TOKEN:
+        try:
+            resp = await remnawave_request("GET", f"/api/users/by-username/us_{user_id}")
+            payload = resp.get("response") or resp
+            if isinstance(payload, list):
+                payload = payload[0] if payload else {}
+            uuid_val = (payload or {}).get("uuid")
+            if uuid_val:
+                return uuid_val
+        except Exception as e:
+            logging.warning("_resolve_remna_uuid by-username us_%s: %s", user_id, e)
+
+    return None
 
 
 _HAPP_DOWNLOADS = {
