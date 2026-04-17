@@ -413,10 +413,14 @@ async def remnawave_request(
         raise HTTPException(status_code=503, detail="Remnawave integration not configured")
     url = f"{settings.REMNA_BASE_URL}{path}"
     headers = {
-        "Authorization": f"Bearer {settings.REMNA_TOKEN}",
-        "Content-Type": "application/json",
+        "Authorization":      f"Bearer {settings.REMNA_TOKEN}",
+        "X-Api-Key":          settings.REMNA_TOKEN,
+        "Content-Type":       "application/json",
+        "X-Forwarded-Proto":  "https",
+        "X-Forwarded-For":    "127.0.0.1",
+        "X-Real-IP":          "127.0.0.1",
     }
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
         resp = await client.request(method, url, headers=headers, json=json_data, params=params)
     if resp.status_code in (200, 201):
         return resp.json() if resp.content else {}
@@ -948,7 +952,8 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
             response = remna_data.get("response") or {}
             devices_raw = response.get("devices") or []
             devices = [DeviceOut(**d) for d in devices_raw if isinstance(d, dict)]
-        except Exception:
+        except Exception as e:
+            logging.warning("get_devices usi=%s: %s", user_service_id, e)
             devices = []
         return ServiceDevicesOut(
             service_id=service_id,
@@ -980,7 +985,7 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
     if not user_uuid:
         raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
     return await remnawave_request(
-        "DELETE", "/api/hwid/devices",
+        "POST", "/api/hwid/devices/delete",
         json_data={"userUuid": user_uuid, "hwid": req.hwid},
     )
 
@@ -1018,7 +1023,8 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
                 online_at=online,
                 locations=tags,
             )
-        except Exception:
+        except Exception as e:
+            logging.warning("get_remna_info usi=%s: %s", user_service_id, e)
             return RemnaUserInfo(user_service_id=user_service_id)
 
     results = await asyncio.gather(*[fetch_remna_user(s) for s in valid_services])
@@ -1047,7 +1053,7 @@ async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = 
         if not hwid:
             continue
         try:
-            await remnawave_request("DELETE", "/api/hwid/devices",
+            await remnawave_request("POST", "/api/hwid/devices/delete",
                                     json_data={"userUuid": user_uuid, "hwid": hwid})
             deleted += 1
         except Exception:
