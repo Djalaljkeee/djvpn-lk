@@ -1234,7 +1234,7 @@ async def _resolve_remna_uuid(user_service_id: int, svc: dict | None = None, use
     2. SHM storage vpn_mrzb_{user_service_id}.uuid  (requires user_id query)
     3. Remnawave /api/users/by-username/us_{shm_user_id}  (fallback — user-wide)
     """
-    logging.info("_resolve_remna_uuid: usi=%s user_id=%s has_svc=%s", user_service_id, user_id, bool(svc))
+    logging.warning("_resolve_remna_uuid: usi=%s user_id=%s has_svc=%s", user_service_id, user_id, bool(svc))
     if svc:
         raw_data = svc.get("data") or {}
         if isinstance(raw_data, str):
@@ -1243,12 +1243,12 @@ async def _resolve_remna_uuid(user_service_id: int, svc: dict | None = None, use
             except Exception:
                 raw_data = {}
         uuid_val = raw_data.get("uuid")
-        logging.info("_resolve_remna_uuid: step1 svc.data keys=%s uuid=%s", list(raw_data.keys()) if isinstance(raw_data, dict) else None, uuid_val)
+        logging.warning("_resolve_remna_uuid: step1 svc.data keys=%s uuid=%s", list(raw_data.keys()) if isinstance(raw_data, dict) else None, uuid_val)
         if uuid_val:
             return uuid_val
 
     storage = await _fetch_storage_data(user_service_id, user_id)
-    logging.info("_resolve_remna_uuid: step2 storage keys=%s uuid=%s", list(storage.keys()) if storage else None, storage.get("uuid") if storage else None)
+    logging.warning("_resolve_remna_uuid: step2 storage keys=%s uuid=%s", list(storage.keys()) if storage else None, storage.get("uuid") if storage else None)
     uuid_val = storage.get("uuid")
     if uuid_val:
         return uuid_val
@@ -1261,7 +1261,7 @@ async def _resolve_remna_uuid(user_service_id: int, svc: dict | None = None, use
             if isinstance(payload, list):
                 payload = payload[0] if payload else {}
             uuid_val = (payload or {}).get("uuid")
-            logging.info("_resolve_remna_uuid: step3 by-username us_%s uuid=%s", user_id, uuid_val)
+            logging.warning("_resolve_remna_uuid: step3 by-username us_%s uuid=%s", user_id, uuid_val)
             if uuid_val:
                 return uuid_val
         except Exception as e:
