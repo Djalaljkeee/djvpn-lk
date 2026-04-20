@@ -1,5 +1,5 @@
 import api from './client'
-import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices, StatusData, ForecastEntry, RemnaUserInfo } from '../types'
+import type { User, UserService, Payment, PromoApplyResult, ReferralStats, ServiceDevices, StatusData, ForecastEntry, RemnaUserInfo, ServiceActionResult } from '../types'
 
 export const fetchProfile = () =>
   api.get<User>('/user/profile').then(r => r.data)
@@ -14,7 +14,7 @@ export const fetchReferrals = () =>
   api.get<ReferralStats>('/user/referrals').then(r => r.data)
 
 export const changeService = (user_service_id: number, service_id: number) =>
-  api.post('/user/service/change', { user_service_id, service_id }).then(r => r.data)
+  api.post<ServiceActionResult>('/user/service/change', { user_service_id, service_id }).then(r => r.data)
 
 export const stopService = (user_service_id: number) =>
   api.post('/user/service/stop', { user_service_id }).then(r => r.data)

@@ -76,6 +76,14 @@ export interface PromoApplyResult {
   code: string
 }
 
+export interface ServiceActionResult {
+  success: boolean
+  needs_topup: boolean
+  amount_needed: number
+  balance: number
+  message: string
+}
+
 export interface Device {
   hwid: string
   platform?: string

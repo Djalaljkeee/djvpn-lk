@@ -39,11 +39,13 @@ function ChangeTariffModal({
   catalog,
   onClose,
   onChanged,
+  onNeedsTopup,
 }: {
   svc: UserService
   catalog: Service[]
   onClose: () => void
   onChanged: (services: UserService[], confirmed: boolean) => void
+  onNeedsTopup: (prompt: { amount: number; balance: number }) => void
 }) {
   const { show } = useToast()
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -56,16 +58,23 @@ function ChangeTariffModal({
     if (!selectedId || !svc.id) return
     setLoading(true)
     try {
-      await changeService(svc.id, selectedId)
+      const res = await changeService(svc.id, selectedId)
+      if (res?.needs_topup) {
+        const services = await fetchUserServices()
+        onChanged(services, false)
+        onNeedsTopup({ amount: res.amount_needed, balance: res.balance })
+        onClose()
+        return
+      }
       const result = await waitForServiceChange(svc.id, svc.service_id)
       onChanged(result.services, result.confirmed)
-      if (result.confirmed) {
-        show('Тариф обновлен и уже отражен в списке услуг', 'success')
-        onClose()
-      } else {
-        show('Запрос принят. Биллинг обновляет тариф, список уже перезагружен.', 'success')
-        onClose()
-      }
+      show(
+        result.confirmed
+          ? 'Тариф обновлён и уже отражён в списке услуг'
+          : 'Запрос принят. Биллинг обновляет тариф, список уже перезагружен.',
+        'success',
+      )
+      onClose()
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Ошибка смены тарифа', 'error')
     } finally {
@@ -295,6 +304,7 @@ export default function ServicesPage() {
           catalog={catalog}
           onClose={() => setChangingId(null)}
           onChanged={(services, _confirmed) => setMyServices(services)}
+          onNeedsTopup={prompt => setTopupPrompt(prompt)}
         />
       )}
 
