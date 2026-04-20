@@ -89,6 +89,13 @@ class BuyServiceResponse(BaseModel):
     balance: float = 0.0
     message: str = ""
 
+class ChangeServiceResponse(BaseModel):
+    success: bool = True
+    needs_topup: bool = False
+    amount_needed: float = 0.0
+    balance: float = 0.0
+    message: str = ""
+
 
 # ---------------------------------------------------------------------------
 # Response models
@@ -868,17 +875,79 @@ async def get_referrals(session: dict = Depends(get_current_session)):
     }
 
 
-@app.post("/api/user/service/change", response_model=UserServiceOut)
+def _is_insufficient_funds_msg(text: str) -> bool:
+    if not text:
+        return False
+    low = text.lower()
+    return any(marker in low for marker in (
+        "no money", "insufficient", "not enough", "недостаточно", "недостаточ",
+    ))
+
+
+@app.post("/api/user/service/change", response_model=ChangeServiceResponse)
 async def change_service(req: ChangeServiceRequest, session: dict = Depends(get_current_session)):
-    """Сменить тариф: POST /shm/v1/user/service/change"""
-    result = await shm_request(
-        "POST", "/shm/v1/user/service/change", session["shm_session"],
-        json_data={"user_service_id": req.user_service_id, "service_id": req.service_id},
-    )
-    data = result.get("data", result) if isinstance(result, dict) else {}
-    if isinstance(data, list):
-        data = data[0] if data else {}
-    return normalize_user_service(data)
+    """Сменить тариф: POST /shm/v1/user/service/change.
+
+    SHM фиксирует смену тарифа даже при нехватке средств — по аналогии с
+    /api/services/buy возвращаем needs_topup + недостающую сумму, а не
+    бросаем ошибку. Фронт покажет топап-модалку.
+    """
+    insufficient_funds = False
+    try:
+        result = await shm_request(
+            "POST", "/shm/v1/user/service/change", session["shm_session"],
+            json_data={"user_service_id": req.user_service_id, "service_id": req.service_id},
+        )
+    except HTTPException as exc:
+        detail_text = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        if exc.status_code == 402 or _is_insufficient_funds_msg(detail_text):
+            insufficient_funds = True
+            result = {}
+        elif 400 <= exc.status_code < 500:
+            raise HTTPException(status_code=400, detail=detail_text or "Ошибка смены тарифа")
+        else:
+            raise HTTPException(status_code=502, detail="SHM недоступен")
+
+    # SHM может вернуть {"status": 4xx, "msg": "..."} с HTTP 200
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        msg = result.get("msg") or "Ошибка смены тарифа"
+        if _is_insufficient_funds_msg(msg):
+            insufficient_funds = True
+        else:
+            raise HTTPException(status_code=400, detail=msg)
+
+    # Best-effort: посчитать баланс и стоимость нового тарифа.
+    try:
+        admin_session = await get_admin_session()
+        user_data, catalog_data = await asyncio.gather(
+            shm_request("GET", "/shm/v1/user", session["shm_session"]),
+            shm_request("GET", "/shm/v1/admin/service", admin_session),
+        )
+        user_info = (user_data.get("data") or [{}])[0]
+        balance = float(user_info.get("balance") or 0)
+
+        cost = 0.0
+        for s in catalog_data.get("data", []):
+            sid = s.get("id") or s.get("service_id")
+            if sid == req.service_id:
+                cost = float(s.get("cost") or 0)
+                break
+
+        amount_needed = round(max(0.0, cost - balance), 2)
+        if amount_needed > 0 or insufficient_funds:
+            return ChangeServiceResponse(
+                success=True,
+                needs_topup=True,
+                amount_needed=amount_needed,
+                balance=round(balance, 2),
+                message=f"Тариф изменён. Для активации пополните баланс на {amount_needed:.2f} ₽",
+            )
+    except HTTPException:
+        pass  # вторичная проверка — не валим основной ответ
+    except Exception:
+        logging.warning("change_service: balance/catalog check failed", exc_info=True)
+
+    return ChangeServiceResponse(success=True, message="Тариф успешно изменён")
 
 
 @app.post("/api/user/service/stop")
