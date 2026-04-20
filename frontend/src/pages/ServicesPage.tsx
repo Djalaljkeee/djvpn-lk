@@ -85,7 +85,7 @@ function ChangeTariffModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full rounded-t-[2rem] border border-white/10 bg-[rgba(32,11,44,0.96)] p-5 shadow-2xl backdrop-blur-2xl animate-slide-up sm:max-w-lg sm:rounded-[2rem]">
+      <div className="relative flex w-full max-h-[90vh] flex-col rounded-t-[2rem] border border-white/10 bg-[rgba(32,11,44,0.96)] p-5 shadow-2xl backdrop-blur-2xl animate-slide-up sm:max-w-lg sm:rounded-[2rem]">
         <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -99,7 +99,7 @@ function ChangeTariffModal({
           </button>
         </div>
 
-        <div className="mt-5 space-y-3">
+        <div className="mt-5 flex-1 min-h-0 space-y-3 overflow-y-auto pr-1">
           {available.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
               Сейчас нет доступных вариантов для смены тарифа.
@@ -133,7 +133,7 @@ function ChangeTariffModal({
         <button
           onClick={handleChange}
           disabled={!selectedId || loading}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand disabled:opacity-50 hover:brightness-110 transition-all"
+          className="mt-5 flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand disabled:opacity-50 hover:brightness-110 transition-all"
         >
           {loading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
           {loading ? 'Меняем тариф и ждём ответ биллинга' : 'Подтвердить смену тарифа'}
