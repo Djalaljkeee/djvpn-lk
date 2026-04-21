@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
@@ -82,10 +83,10 @@ function ChangeTariffModal({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex w-full max-h-[90vh] flex-col rounded-t-[2rem] border border-white/10 bg-[rgba(32,11,44,0.96)] p-5 shadow-2xl backdrop-blur-2xl animate-slide-up sm:max-w-lg sm:rounded-[2rem]">
+      <div className="relative flex w-full max-h-[90dvh] flex-col rounded-t-[2rem] border border-white/10 bg-[rgba(32,11,44,0.96)] p-5 shadow-2xl backdrop-blur-2xl animate-slide-up sm:max-w-lg sm:rounded-[2rem]">
         <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -139,7 +140,8 @@ function ChangeTariffModal({
           {loading ? 'Меняем тариф и ждём ответ биллинга' : 'Подтвердить смену тарифа'}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -316,10 +318,10 @@ export default function ServicesPage() {
         />
       )}
 
-      {topupPrompt && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+      {topupPrompt && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4">
           <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => setTopupPrompt(null)} />
-          <div className="relative w-full rounded-t-[2rem] bg-[rgba(32,11,44,0.96)] p-5 animate-slide-up sm:max-w-md sm:rounded-[2rem]">
+          <div className="relative w-full max-h-[90dvh] overflow-y-auto rounded-t-[2rem] bg-[rgba(32,11,44,0.96)] p-5 animate-slide-up sm:max-w-md sm:rounded-[2rem]">
             <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
             <div className="text-4xl">💳</div>
             <h2 className="mt-3 text-xl font-bold text-white">Недостаточно средств</h2>
@@ -348,7 +350,8 @@ export default function ServicesPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ── Active Subscription Detail ── */}
