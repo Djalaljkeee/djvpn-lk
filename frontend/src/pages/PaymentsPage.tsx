@@ -18,6 +18,15 @@ export default function PaymentsPage() {
   const [promoState, setPromoState] = useState<PromoApplyResult | null>(null)
   const [forecast, setForecast] = useState<ForecastEntry[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [amount, setAmount] = useState('')
+  const suggestedAmounts = [199, 499, 899, 1599]
+
+  const buildPayUrl = (shm_url: string) => {
+    const n = Number(amount)
+    if (!Number.isFinite(n) || n <= 0) return shm_url
+    const separator = shm_url.includes('?') ? '&' : '?'
+    return `${shm_url}${separator}amount=${n}`
+  }
 
   useEffect(() => {
     Promise.all([
@@ -172,6 +181,34 @@ export default function PaymentsPage() {
       {/* Top-up: payment systems */}
       <section className="glass rounded-[2rem] p-5">
         <h2 className="mb-4 text-xl font-semibold text-white">Пополнение баланса</h2>
+
+        <div className="mb-4 space-y-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="Сумма пополнения, ₽"
+            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-400 outline-none focus:border-brand-300/50"
+          />
+          <div className="flex flex-wrap gap-2">
+            {suggestedAmounts.map(v => (
+              <button
+                key={v}
+                onClick={() => setAmount(String(v))}
+                className={`rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  amount === String(v)
+                    ? 'border-brand-300/60 bg-brand-500/20 text-white'
+                    : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {v} ₽
+              </button>
+            ))}
+          </div>
+        </div>
+
         {loading ? (
           <div className="space-y-2 animate-pulse">
             <div className="h-16 rounded-2xl bg-white/5" />
@@ -182,7 +219,7 @@ export default function PaymentsPage() {
             {paySystems.map(ps => (
               <button
                 key={ps.name}
-                onClick={() => window.open(ps.shm_url, '_blank')}
+                onClick={() => window.open(buildPayUrl(ps.shm_url), '_blank')}
                 className="w-full rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors"
               >
                 <div className="font-medium text-white">{ps.name}</div>
