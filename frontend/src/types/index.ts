@@ -6,6 +6,7 @@ export interface User {
   credit: number
   status: number
   created?: string
+  email?: string
 }
 
 export interface UserService {

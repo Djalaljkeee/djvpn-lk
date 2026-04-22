@@ -45,3 +45,6 @@ export const fetchRemnaInfo = () =>
 
 export const deleteAllDevices = (user_service_id: number) =>
   api.delete<{ deleted: number; failed: number }>('/user/devices/all', { data: { user_service_id } }).then(r => r.data)
+
+export const updateEmail = (email: string) =>
+  api.put<{ ok: boolean; email: string }>('/user/email', { email }).then(r => r.data)

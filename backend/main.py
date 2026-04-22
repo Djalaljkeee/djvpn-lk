@@ -109,6 +109,7 @@ class UserProfile(BaseModel):
     credit: float = 0
     status: int = 1
     created: Optional[str] = None
+    email: Optional[str] = None
 
 class UserServiceOut(BaseModel):
     id: Optional[int] = None
@@ -263,6 +264,10 @@ class RemnaUserInfo(BaseModel):
 
 class DeleteAllDevicesRequest(BaseModel):
     user_service_id: int
+
+
+class UpdateEmailRequest(BaseModel):
+    email: str
 
 
 # ---------------------------------------------------------------------------
@@ -796,6 +801,26 @@ async def register(req: RegisterRequest):
 async def get_profile(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user", session["shm_session"])
     return (data.get("data") or [{}])[0]
+
+
+_EMAIL_RE = __import__("re").compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+@app.put("/api/user/email")
+async def update_email(req: UpdateEmailRequest, session: dict = Depends(get_current_session)):
+    """Привязать/изменить email пользователя: PUT /shm/v1/user/email"""
+    email = (req.email or "").strip()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Некорректный email")
+
+    result = await shm_request(
+        "PUT", "/shm/v1/user/email", session["shm_session"],
+        json_data={"email": email},
+    )
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        msg = result.get("msg") or "Не удалось сохранить email"
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "email": email}
 
 
 @app.get("/api/user/services", response_model=list[UserServiceOut])
