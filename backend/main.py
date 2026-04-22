@@ -977,7 +977,7 @@ async def delete_service(req: DeleteServiceRequest, session: dict = Depends(get_
 
 @app.get("/api/user/service/orders")
 async def get_service_orders(session: dict = Depends(get_current_session)):
-    """История заказов услуг пользователя: GET /shm/v1/service/order"""
+    """Услуги, доступные к заказу текущим пользователем: GET /shm/v1/service/order"""
     data = await shm_request(
         "GET", "/shm/v1/service/order", session["shm_session"],
         params={"limit": 100, "offset": 0},

@@ -37,7 +37,7 @@ export default function DashboardPage() {
       const dMap: Record<number, number> = {}
       for (const item of devList) dMap[item.user_service_id] = item.devices.length
       setDevicesMap(dMap)
-      setTrialAvailable(!orders.some(o => o.service_id === TRIAL_SERVICE_ID))
+      setTrialAvailable(orders.some(o => o.service_id === TRIAL_SERVICE_ID))
     } catch {
       show('Не удалось загрузить данные', 'error')
     } finally {
