@@ -24,8 +24,10 @@ export default function PaymentsPage() {
   const buildPayUrl = (shm_url: string) => {
     const n = Number(amount)
     if (!Number.isFinite(n) || n <= 0) return shm_url
-    const separator = shm_url.includes('?') ? '&' : '?'
-    return `${shm_url}${separator}amount=${n}`
+    const [base, query = ''] = shm_url.split('?')
+    const params = new URLSearchParams(query)
+    params.set('amount', String(n))
+    return `${base}?${params.toString()}`
   }
 
   useEffect(() => {
