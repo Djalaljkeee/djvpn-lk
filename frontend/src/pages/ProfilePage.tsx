@@ -281,11 +281,11 @@ export default function ProfilePage() {
       {/* Email modal */}
       {emailModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm animate-fade-in"
           onClick={() => !emailSaving && setEmailModalOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 shadow-xl sm:rounded-2xl animate-slide-up"
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-surface-1 p-5 shadow-xl animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
