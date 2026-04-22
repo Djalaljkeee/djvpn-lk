@@ -4,8 +4,9 @@ interface Props {
 }
 
 export default function DeviceConnectionCard({ connectedCount, limitIp }: Props) {
-  const total = limitIp ?? 3
-  const dots = Math.max(total, 1)
+  const limit = limitIp ?? 5
+  const dots = Math.max(limit, 1)
+  const overLimit = connectedCount > limit
 
   return (
     <div className="glass rounded-[1.75rem] p-5">
@@ -20,7 +21,9 @@ export default function DeviceConnectionCard({ connectedCount, limitIp }: Props)
           <div>
             <div className="text-sm font-semibold text-white">Подключить устройство</div>
             <div className="mt-0.5 text-xs text-slate-400">
-              {connectedCount} из {limitIp ?? '?'} подключено
+              <span className={overLimit ? 'font-semibold text-rose-400' : ''}>{connectedCount}</span>
+              {' / '}
+              {limit} подключено
             </div>
           </div>
         </div>
@@ -30,7 +33,7 @@ export default function DeviceConnectionCard({ connectedCount, limitIp }: Props)
             <span
               key={i}
               className={`h-2 w-2 rounded-full transition-colors ${
-                i < connectedCount ? 'bg-brand-400' : 'bg-white/20'
+                i < connectedCount ? (overLimit ? 'bg-rose-400' : 'bg-brand-400') : 'bg-white/20'
               }`}
             />
           ))}

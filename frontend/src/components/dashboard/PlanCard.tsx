@@ -22,7 +22,7 @@ export default function PlanCard({ svc, remnaInfo }: Props) {
   const trial = isTrial(svc)
   const expiredAt = svc.expired ? parseISO(svc.expired.replace(' ', 'T')) : null
   const daysLeft = expiredAt ? differenceInDays(expiredAt, new Date()) : null
-  const limitIp = remnaInfo?.limit_ip ?? null
+  const limitIp = remnaInfo?.hwid_device_limit ?? remnaInfo?.limit_ip ?? null
   const trafficLimit = remnaInfo?.traffic_limit_bytes ?? null
 
   return (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
-import { fetchUserServices, fetchProfile, fetchRemnaInfo, fetchUserDevices } from '../api/user'
+import { fetchUserServices, fetchProfile, fetchRemnaInfo, fetchUserDevices, fetchServiceOrders } from '../api/user'
 import { buyService } from '../api/services'
 import type { UserService, RemnaUserInfo, ServiceDevices } from '../types'
 import SubscriptionHero from '../components/dashboard/SubscriptionHero'
@@ -17,16 +17,18 @@ export default function DashboardPage() {
   const [services, setServices] = useState<UserService[]>([])
   const [remnaMap, setRemnaMap] = useState<Record<number, RemnaUserInfo>>({})
   const [devicesMap, setDevicesMap] = useState<Record<number, number>>({})
+  const [trialAvailable, setTrialAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activating, setActivating] = useState(false)
 
   const loadAll = useCallback(async () => {
     try {
-      const [, svcs, remnaList, devList] = await Promise.all([
+      const [, svcs, remnaList, devList, orders] = await Promise.all([
         fetchProfile().then(setUser),
         fetchUserServices(),
         fetchRemnaInfo().catch((): RemnaUserInfo[] => []),
         fetchUserDevices().catch((): ServiceDevices[] => []),
+        fetchServiceOrders().catch((): { service_id: number }[] => []),
       ])
       setServices(svcs)
       const rMap: Record<number, RemnaUserInfo> = {}
@@ -35,6 +37,7 @@ export default function DashboardPage() {
       const dMap: Record<number, number> = {}
       for (const item of devList) dMap[item.user_service_id] = item.devices.length
       setDevicesMap(dMap)
+      setTrialAvailable(!orders.some(o => o.service_id === TRIAL_SERVICE_ID))
     } catch {
       show('Не удалось загрузить данные', 'error')
     } finally {
@@ -45,7 +48,6 @@ export default function DashboardPage() {
   useEffect(() => { loadAll() }, [loadAll])
 
   const activeServices = services.filter(s => s.status === 1)
-  const hasServices = services.length > 0
 
   const handleActivateTrial = async () => {
     setActivating(true)
@@ -83,10 +85,10 @@ export default function DashboardPage() {
             />
           ))}
         </>
-      ) : hasServices ? (
-        <SubscriptionHero />
-      ) : (
+      ) : trialAvailable ? (
         <TrialOfferCard onActivate={handleActivateTrial} loading={activating} />
+      ) : (
+        <SubscriptionHero />
       )}
 
       <ServerStatus />
