@@ -132,7 +132,17 @@ export default function DeviceList({ devices, user_service_id, onDeleted, totalL
 
       {/* Subheader count */}
       <div className="text-xs text-slate-400 mb-3">
-        {devices.length} / {totalLimit ?? '?'} устройства
+        {totalLimit !== undefined ? (
+          <>
+            <span className={devices.length > totalLimit ? 'font-semibold text-rose-400' : 'text-white'}>
+              {devices.length}
+            </span>
+            {' / '}
+            {totalLimit} устройства
+          </>
+        ) : (
+          <>{devices.length} / 5 устройства</>
+        )}
       </div>
 
       {devices.length === 0 ? (

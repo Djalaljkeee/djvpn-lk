@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
-import { fetchUserServices, changeService, stopService, deleteService, fetchServiceOrders, fetchUserDevices, fetchRemnaInfo, deleteAllDevices } from '../api/user'
+import { fetchUserServices, changeService, fetchServiceOrders, fetchUserDevices, fetchRemnaInfo, deleteAllDevices } from '../api/user'
 import { useToast } from '../components/Toast'
 import SetupGuide from '../components/SetupGuide'
 import type { Service, UserService, RemnaUserInfo, ServiceDevices, Device } from '../types'
@@ -156,12 +156,12 @@ export default function ServicesPage() {
   const [justBought, setJustBought] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState<'all' | 'available' | 'mine'>('all')
   const [changingId, setChangingId] = useState<number | null>(null)
-  const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
   const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
   const [remnaMap, setRemnaMap] = useState<Record<number, RemnaUserInfo>>({})
   const [devicesMap, setDevicesMap] = useState<Record<number, Device[]>>({})
   const [refreshing, setRefreshing] = useState(false)
+  const [catalogOpen, setCatalogOpen] = useState(false)
 
   const reload = useCallback(async () => {
     const [cat, svcs, orders, remnaList, devList] = await Promise.all([
@@ -234,36 +234,6 @@ export default function ServicesPage() {
       show(e?.response?.data?.detail || 'Ошибка при покупке услуги', 'error')
     } finally {
       setBuying(null)
-    }
-  }
-
-  const handleStop = async (svc: UserService) => {
-    if (!svc.id) return
-    if (!confirm(`Остановить услугу «${svc.name}»?`)) return
-    setActionLoading(svc.id)
-    try {
-      await stopService(svc.id)
-      await reload()
-      show('Услуга остановлена', 'success')
-    } catch (e: any) {
-      show(e?.response?.data?.detail || 'Ошибка остановки', 'error')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  const handleDelete = async (svc: UserService) => {
-    if (!svc.id) return
-    if (!confirm(`Удалить услугу «${svc.name}»? Это действие необратимо.`)) return
-    setActionLoading(svc.id)
-    try {
-      await deleteService(svc.id)
-      await reload()
-      show('Услуга удалена', 'success')
-    } catch (e: any) {
-      show(e?.response?.data?.detail || 'Ошибка удаления', 'error')
-    } finally {
-      setActionLoading(null)
     }
   }
 
@@ -395,7 +365,7 @@ export default function ServicesPage() {
 
           <DeviceConnectionCard
             connectedCount={activeDevices.length}
-            limitIp={activeRemna?.limit_ip ?? null}
+            limitIp={activeRemna?.hwid_device_limit ?? activeRemna?.limit_ip ?? null}
           />
 
           <CountdownBlock expiredAt={expiredAt} />
@@ -404,13 +374,13 @@ export default function ServicesPage() {
             <LocationsSection locations={activeRemna!.locations} />
           )}
 
-          <CtaBanner />
+          <CtaBanner onClick={() => setCatalogOpen(open => !open)} open={catalogOpen} />
 
           <div className="glass rounded-[1.75rem] p-5">
             <DeviceList
               devices={activeDevices}
               user_service_id={activeSvc.id}
-              totalLimit={activeRemna?.limit_ip ?? undefined}
+              totalLimit={activeRemna?.hwid_device_limit ?? activeRemna?.limit_ip ?? undefined}
               onDeleted={hwid =>
                 setDevicesMap(prev => ({
                   ...prev,
@@ -426,234 +396,105 @@ export default function ServicesPage() {
         </section>
       )}
 
-      {/* ── Hero Section ── */}
-      <section className="relative overflow-hidden rounded-[2rem] min-h-[260px] sm:min-h-[300px]">
-        {/* Dark gradient overlay */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              'linear-gradient(145deg, rgba(240,120,228,0.22) 0%, rgba(120,47,168,0.20) 40%, rgba(20,7,31,0.82) 100%)',
-          }}
-        />
-        {/* Border */}
-        <div className="absolute inset-0 rounded-[2rem] border border-white/10 pointer-events-none" />
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col gap-6 p-5 sm:p-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-xl">
-            {/* Eyebrow */}
-            <div className="flex items-center gap-2">
-              <ShieldIcon className="h-4 w-4 text-brand-300 animate-float" />
-              <span className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-200/80">Тарифы DJ VPN</span>
-            </div>
-            <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl leading-tight">
-              Выберите&nbsp;
-              <span className="gradient-text">свой тариф</span>
-            </h1>
-            <p className="mt-3 text-sm leading-6 text-slate-300 sm:text-base">
-              Активные услуги подняты наверх. Остальные отсортированы по стоимости.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3 sm:min-w-[300px]">
-            <HeroStatCard
-              label="Активных"
-              value={String(myActiveIds.size)}
-              active={myActiveIds.size > 0}
-            />
-            <HeroStatCard
-              label="Тарифов"
-              value={String(catalog.filter(s => s.status === 1).length)}
-            />
-            <HeroStatCard
-              label="Доступных"
-              value={String(sortedCatalog.filter(s => !myActiveIds.has(s.service_id)).length)}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ── Filter Bar ── */}
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-white">Каталог тарифов</h2>
-          <p className="mt-1 text-sm text-slate-400">Сначала подключенные услуги, затем остальные по возрастанию цены.</p>
-        </div>
-
-        <div className="flex w-full gap-1.5 rounded-2xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm sm:w-auto">
-          {([
-            { key: 'all', label: 'Все' },
-            { key: 'available', label: 'Доступные' },
-            { key: 'mine', label: 'Мои' },
-          ] as const).map(item => (
-            <button
-              key={item.key}
-              onClick={() => setFilter(item.key)}
-              className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                filter === item.key
-                  ? 'bg-gradient-to-r from-brand-600/30 to-brand-700/20 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Service Cards ── */}
-      {sortedCatalog.length === 0 ? (
-        <div className="glass rounded-[2rem] p-10 text-center">
-          <div className="text-5xl">🔎</div>
-          <p className="mt-3 text-sm text-slate-300">По выбранному фильтру пока нет тарифов.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {sortedCatalog.map(svc => {
-            const owned = myActiveIds.has(svc.service_id)
-            const isBuying = buying === svc.service_id
-            const success = justBought.has(svc.service_id)
-            const disabled = owned || isBuying
-
-            return (
-              <div
-                key={svc.service_id}
-                className={`glass glass-hover relative flex h-full flex-col rounded-[1.75rem] p-5 transition-all ${
-                  owned ? 'ring-1 ring-emerald-400/30' : ''
+      {/* ── Catalog ── */}
+      {(!activeSvc || catalogOpen) && (
+        <>
+          <section className="flex w-full gap-1.5 rounded-2xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm">
+            {([
+              { key: 'all', label: 'Все' },
+              { key: 'available', label: 'Доступные' },
+              { key: 'mine', label: 'Мои' },
+            ] as const).map(item => (
+              <button
+                key={item.key}
+                onClick={() => setFilter(item.key)}
+                className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                  filter === item.key
+                    ? 'bg-gradient-to-r from-brand-600/30 to-brand-700/20 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
                 }`}
               >
-                {owned && (
-                  <div className="absolute left-0 top-6 bottom-6 w-1 rounded-full bg-emerald-400/60" />
-                )}
+                {item.label}
+              </button>
+            ))}
+          </section>
 
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-lg font-semibold text-white">{svc.name}</div>
-                    {svc.category && (
-                      <div className="mt-1 text-xs uppercase tracking-[0.2em] text-fuchsia-100/70">{svc.category}</div>
+          {sortedCatalog.length === 0 ? (
+            <div className="glass rounded-[2rem] p-10 text-center">
+              <div className="text-5xl">🔎</div>
+              <p className="mt-3 text-sm text-slate-300">По выбранному фильтру пока нет тарифов.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {sortedCatalog.map(svc => {
+                const owned = myActiveIds.has(svc.service_id)
+                const isBuying = buying === svc.service_id
+                const success = justBought.has(svc.service_id)
+                const disabled = owned || isBuying
+
+                return (
+                  <div
+                    key={svc.service_id}
+                    className={`glass glass-hover relative flex h-full flex-col rounded-[1.75rem] p-5 transition-all ${
+                      owned ? 'ring-1 ring-emerald-400/30' : ''
+                    }`}
+                  >
+                    {owned && (
+                      <div className="absolute left-0 top-6 bottom-6 w-1 rounded-full bg-emerald-400/60" />
                     )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      owned
-                        ? 'bg-emerald-500/15 text-emerald-100'
-                        : 'bg-brand-500/15 text-fuchsia-100'
-                    }`}>
-                      {owned ? 'Активна' : 'Доступна'}
-                    </span>
-                    <ShieldIcon className={`h-7 w-7 flex-shrink-0 ${owned ? 'text-emerald-300/70' : 'text-brand-400/50'}`} />
-                  </div>
-                </div>
 
-                {svc.descr && <p className="mt-4 text-sm leading-6 text-slate-200">{svc.descr}</p>}
-
-                <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
-                      <div className="mt-1 text-4xl font-black gradient-text leading-none">{svc.cost} ₽</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Период</div>
-                      <div className="mt-1 font-mono text-sm text-white">{periodLabel(svc.period, svc.period_type)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => !disabled && handleBuy(svc.service_id)}
-                  disabled={disabled}
-                  className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all ${
-                    success
-                      ? 'bg-emerald-500/20 text-emerald-100'
-                      : owned
-                        ? 'bg-white/5 text-slate-400'
-                        : 'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]'
-                  }`}
-                >
-                  {isBuying && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
-                  {success ? 'Подключено' : owned ? 'Уже подключена' : isBuying ? 'Покупаем…' : 'Подключить тариф'}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── My Services ── */}
-      {myServices.length > 0 && (
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold text-white">Мои услуги</h2>
-          </div>
-
-          <div className="space-y-3">
-            {myServices.map(svc => {
-              const isActioning = actionLoading === svc.id
-              return (
-                <div
-                  key={svc.id}
-                  className={`glass rounded-[1.75rem] p-4 sm:p-5 ${svc.status === 1 ? 'ring-1 ring-emerald-500/25' : ''}`}
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-base font-semibold text-white">{svc.name}</span>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        svc.status === 1 ? 'bg-emerald-500/15 text-emerald-100'
-                        : svc.status === 3 ? 'bg-rose-500/15 text-rose-100'
-                        : 'bg-amber-500/15 text-amber-100'
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-lg font-semibold text-white">{svc.name}</div>
+                        {svc.category && (
+                          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-fuchsia-100/70">{svc.category}</div>
+                        )}
+                      </div>
+                      <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
+                        owned
+                          ? 'bg-emerald-500/15 text-emerald-100'
+                          : 'bg-brand-500/15 text-fuchsia-100'
                       }`}>
-                        {svc.status === 1 ? 'Активна' : svc.status === 3 ? 'Удалена' : 'Заблокирована'}
+                        {owned ? 'Активна' : 'Доступна'}
                       </span>
                     </div>
-                    {svc.expired && (
-                      <div className="mt-1.5 text-xs text-slate-400">
-                        Истекает: <span className="text-slate-200">{svc.expired.replace('T', ' ').split(' ')[0]}</span>
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {svc.descr && <p className="mt-4 text-sm leading-6 text-slate-200">{svc.descr}</p>}
+
+                    <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
+                          <div className="mt-1 text-4xl font-black gradient-text leading-none">{svc.cost} ₽</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Период</div>
+                          <div className="mt-1 font-mono text-sm text-white">{periodLabel(svc.period, svc.period_type)}</div>
+                        </div>
+                      </div>
+                    </div>
+
                     <button
-                      onClick={() => handleStop(svc)}
-                      disabled={isActioning || svc.status !== 1}
-                      className="rounded-2xl bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-100 hover:brightness-110 transition-all disabled:opacity-40"
+                      onClick={() => !disabled && handleBuy(svc.service_id)}
+                      disabled={disabled}
+                      className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all ${
+                        success
+                          ? 'bg-emerald-500/20 text-emerald-100'
+                          : owned
+                            ? 'bg-white/5 text-slate-400'
+                            : 'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]'
+                      }`}
                     >
-                      {isActioning ? 'Выполняем…' : 'Остановить'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(svc)}
-                      disabled={isActioning}
-                      className="rounded-2xl bg-rose-500/15 px-4 py-3 text-sm font-medium text-rose-100 hover:brightness-110 transition-all disabled:opacity-40"
-                    >
-                      Удалить
+                      {isBuying && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                      {success ? 'Подключено' : owned ? 'Уже подключена' : isBuying ? 'Покупаем…' : 'Подключить тариф'}
                     </button>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
-  )
-}
-
-
-function HeroStatCard({ label, value, active }: { label: string; value: string; active?: boolean }) {
-  return (
-    <div className={`rounded-2xl border border-white/10 bg-black/30 backdrop-blur-sm p-4 text-center ${active ? 'animate-glow-pulse' : ''}`}>
-      <div className="text-2xl font-black text-white">{value}</div>
-      <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</div>
-    </div>
-  )
-}
-
-function ShieldIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-    </svg>
   )
 }

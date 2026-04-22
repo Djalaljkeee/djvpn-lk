@@ -19,7 +19,8 @@ export default function CompactSubscriptionCard({ svc, remna, devicesCount = 0 }
   const navigate = useNavigate()
   const expiredAt = svc.expired ? parseISO(svc.expired.replace(' ', 'T')) : null
   const daysLeft = expiredAt ? Math.max(0, differenceInDays(expiredAt, new Date())) : null
-  const limitIp = remna?.limit_ip ?? null
+  const limitIp = remna?.hwid_device_limit ?? remna?.limit_ip ?? 5
+  const overLimit = devicesCount > limitIp
 
   return (
     <div className="glass rounded-[1.75rem] p-5">
@@ -48,7 +49,8 @@ export default function CompactSubscriptionCard({ svc, remna, devicesCount = 0 }
         </div>
         <div className="rounded-xl border border-white/8 bg-white/5 p-3 text-center">
           <div className="text-lg font-bold text-white">
-            {devicesCount}/{limitIp ?? '?'}
+            <span className={overLimit ? 'text-rose-400' : ''}>{devicesCount}</span>
+            <span className="text-slate-400">/{limitIp}</span>
           </div>
           <div className="text-[10px] uppercase tracking-[0.15em] text-slate-400 mt-0.5">устр.</div>
         </div>
