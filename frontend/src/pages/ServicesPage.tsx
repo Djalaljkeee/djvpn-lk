@@ -150,7 +150,7 @@ export default function ServicesPage() {
   const navigate = useNavigate()
   const [catalog, setCatalog] = useState<Service[]>([])
   const [myServices, setMyServices] = useState<UserService[]>([])
-  const [orderedIds, setOrderedIds] = useState<Set<number>>(new Set())
+  const [availableIds, setAvailableIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [buying, setBuying] = useState<number | null>(null)
   const [justBought, setJustBought] = useState<Set<number>>(new Set())
@@ -173,7 +173,7 @@ export default function ServicesPage() {
     ])
     setCatalog(cat)
     setMyServices(svcs)
-    setOrderedIds(new Set(orders.map(o => o.service_id)))
+    setAvailableIds(new Set(orders.map(o => o.service_id)))
     const rMap: Record<number, RemnaUserInfo> = {}
     for (const r of remnaList) rMap[r.user_service_id] = r
     setRemnaMap(rMap)
@@ -194,8 +194,8 @@ export default function ServicesPage() {
   const sortedCatalog = useMemo(() => {
     const activeCatalog = catalog.filter(s => {
       if (s.status !== 1) return false
-      if (s.order_only_once && orderedIds.has(s.service_id) && !myActiveIds.has(s.service_id)) return false
-      return true
+      if (myActiveIds.has(s.service_id)) return true
+      return availableIds.has(s.service_id)
     })
     const filtered = activeCatalog.filter(s => {
       if (filter === 'mine') return myActiveIds.has(s.service_id)
@@ -209,7 +209,7 @@ export default function ServicesPage() {
       if (aOwned !== bOwned) return aOwned ? -1 : 1
       return a.cost - b.cost
     })
-  }, [catalog, filter, myActiveIds, orderedIds])
+  }, [catalog, filter, myActiveIds, availableIds])
 
   const handleBuy = async (serviceId: number) => {
     setBuying(serviceId)
@@ -267,6 +267,105 @@ export default function ServicesPage() {
       </div>
     )
   }
+
+  const catalogContent = (
+    <div className="space-y-4 animate-fade-in">
+      <section className="flex w-full gap-1.5 rounded-2xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm">
+        {([
+          { key: 'all', label: 'Все' },
+          { key: 'available', label: 'Доступные' },
+          { key: 'mine', label: 'Мои' },
+        ] as const).map(item => (
+          <button
+            key={item.key}
+            onClick={() => setFilter(item.key)}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+              filter === item.key
+                ? 'bg-gradient-to-r from-brand-600/30 to-brand-700/20 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </section>
+
+      {sortedCatalog.length === 0 ? (
+        <div className="glass rounded-[2rem] p-10 text-center">
+          <div className="text-5xl">🔎</div>
+          <p className="mt-3 text-sm text-slate-300">По выбранному фильтру пока нет тарифов.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {sortedCatalog.map(svc => {
+            const owned = myActiveIds.has(svc.service_id)
+            const isBuying = buying === svc.service_id
+            const success = justBought.has(svc.service_id)
+            const disabled = owned || isBuying
+
+            return (
+              <div
+                key={svc.service_id}
+                className={`glass glass-hover relative flex h-full flex-col rounded-[1.75rem] p-5 transition-all ${
+                  owned ? 'ring-1 ring-emerald-400/30' : ''
+                }`}
+              >
+                {owned && (
+                  <div className="absolute left-0 top-6 bottom-6 w-1 rounded-full bg-emerald-400/60" />
+                )}
+
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold text-white">{svc.name}</div>
+                    {svc.category && (
+                      <div className="mt-1 text-xs uppercase tracking-[0.2em] text-fuchsia-100/70">{svc.category}</div>
+                    )}
+                  </div>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
+                    owned
+                      ? 'bg-emerald-500/15 text-emerald-100'
+                      : 'bg-brand-500/15 text-fuchsia-100'
+                  }`}>
+                    {owned ? 'Активна' : 'Доступна'}
+                  </span>
+                </div>
+
+                {svc.descr && <p className="mt-4 text-sm leading-6 text-slate-200">{svc.descr}</p>}
+
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
+                      <div className="mt-1 text-4xl font-black gradient-text leading-none">{svc.cost} ₽</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Период</div>
+                      <div className="mt-1 font-mono text-sm text-white">{periodLabel(svc.period, svc.period_type)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => !disabled && handleBuy(svc.service_id)}
+                  disabled={disabled}
+                  className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all ${
+                    success
+                      ? 'bg-emerald-500/20 text-emerald-100'
+                      : owned
+                        ? 'bg-white/5 text-slate-400'
+                        : 'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]'
+                  }`}
+                >
+                  {isBuying && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                  {success ? 'Подключено' : owned ? 'Уже подключена' : isBuying ? 'Покупаем…' : 'Подключить тариф'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -376,6 +475,8 @@ export default function ServicesPage() {
 
           <CtaBanner onClick={() => setCatalogOpen(open => !open)} open={catalogOpen} />
 
+          {catalogOpen && catalogContent}
+
           <div className="glass rounded-[1.75rem] p-5">
             <DeviceList
               devices={activeDevices}
@@ -396,105 +497,7 @@ export default function ServicesPage() {
         </section>
       )}
 
-      {/* ── Catalog ── */}
-      {(!activeSvc || catalogOpen) && (
-        <>
-          <section className="flex w-full gap-1.5 rounded-2xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm">
-            {([
-              { key: 'all', label: 'Все' },
-              { key: 'available', label: 'Доступные' },
-              { key: 'mine', label: 'Мои' },
-            ] as const).map(item => (
-              <button
-                key={item.key}
-                onClick={() => setFilter(item.key)}
-                className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                  filter === item.key
-                    ? 'bg-gradient-to-r from-brand-600/30 to-brand-700/20 text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </section>
-
-          {sortedCatalog.length === 0 ? (
-            <div className="glass rounded-[2rem] p-10 text-center">
-              <div className="text-5xl">🔎</div>
-              <p className="mt-3 text-sm text-slate-300">По выбранному фильтру пока нет тарифов.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {sortedCatalog.map(svc => {
-                const owned = myActiveIds.has(svc.service_id)
-                const isBuying = buying === svc.service_id
-                const success = justBought.has(svc.service_id)
-                const disabled = owned || isBuying
-
-                return (
-                  <div
-                    key={svc.service_id}
-                    className={`glass glass-hover relative flex h-full flex-col rounded-[1.75rem] p-5 transition-all ${
-                      owned ? 'ring-1 ring-emerald-400/30' : ''
-                    }`}
-                  >
-                    {owned && (
-                      <div className="absolute left-0 top-6 bottom-6 w-1 rounded-full bg-emerald-400/60" />
-                    )}
-
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-lg font-semibold text-white">{svc.name}</div>
-                        {svc.category && (
-                          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-fuchsia-100/70">{svc.category}</div>
-                        )}
-                      </div>
-                      <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-                        owned
-                          ? 'bg-emerald-500/15 text-emerald-100'
-                          : 'bg-brand-500/15 text-fuchsia-100'
-                      }`}>
-                        {owned ? 'Активна' : 'Доступна'}
-                      </span>
-                    </div>
-
-                    {svc.descr && <p className="mt-4 text-sm leading-6 text-slate-200">{svc.descr}</p>}
-
-                    <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
-                          <div className="mt-1 text-4xl font-black gradient-text leading-none">{svc.cost} ₽</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Период</div>
-                          <div className="mt-1 font-mono text-sm text-white">{periodLabel(svc.period, svc.period_type)}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => !disabled && handleBuy(svc.service_id)}
-                      disabled={disabled}
-                      className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all ${
-                        success
-                          ? 'bg-emerald-500/20 text-emerald-100'
-                          : owned
-                            ? 'bg-white/5 text-slate-400'
-                            : 'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]'
-                      }`}
-                    >
-                      {isBuying && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
-                      {success ? 'Подключено' : owned ? 'Уже подключена' : isBuying ? 'Покупаем…' : 'Подключить тариф'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
+      {!activeSvc && catalogContent}
     </div>
   )
 }
