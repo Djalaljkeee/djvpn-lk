@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
+import { updateEmail, fetchProfile } from '../api/user'
 
 const TOS_TEXT = `Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между пользователем (далее — «Пользователь») и сервисом DJ VPN (далее — «Сервис») относительно использования услуг.
 
@@ -81,10 +82,13 @@ const TOS_TEXT = `Настоящее Пользовательское согла
 11.1. Споры решаются в соответствии с применимым правом.`
 
 export default function ProfilePage() {
-  const { user, logout } = useAuthStore()
+  const { user, setUser, logout } = useAuthStore()
   const navigate = useNavigate()
   const { show } = useToast()
   const [tosOpen, setTosOpen] = useState(false)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [emailInput, setEmailInput] = useState('')
+  const [emailSaving, setEmailSaving] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -99,6 +103,37 @@ export default function ProfilePage() {
   const avatar = (user?.name?.[0] ?? login[0] ?? 'U').toUpperCase()
   const balance = user?.balance ?? 0
   const discount = user?.credit ?? 0
+  const email = user?.email?.trim() || ''
+
+  const openEmailModal = () => {
+    setEmailInput(email)
+    setEmailModalOpen(true)
+  }
+
+  const handleSaveEmail = async () => {
+    const value = emailInput.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      show('Введите корректный email', 'error')
+      return
+    }
+    setEmailSaving(true)
+    try {
+      await updateEmail(value)
+      try {
+        const fresh = await fetchProfile()
+        setUser(fresh)
+      } catch {
+        if (user) setUser({ ...user, email: value })
+      }
+      setEmailModalOpen(false)
+      show(email ? 'Email обновлён' : 'Email успешно привязан', 'success')
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Не удалось сохранить email'
+      show(typeof msg === 'string' ? msg : 'Не удалось сохранить email', 'error')
+    } finally {
+      setEmailSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-4 animate-fade-in pb-4">
@@ -130,16 +165,29 @@ export default function ProfilePage() {
           </div>
 
           {/* Email */}
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-slate-300">
               <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
               </svg>
               Email
             </div>
-            <button className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 transition-colors">
-              Привязать
-            </button>
+            {email ? (
+              <button
+                onClick={openEmailModal}
+                className="truncate text-right text-sm text-white underline-offset-2 hover:underline"
+                title={email}
+              >
+                {email}
+              </button>
+            ) : (
+              <button
+                onClick={openEmailModal}
+                className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 transition-colors"
+              >
+                Привязать
+              </button>
+            )}
           </div>
 
           {/* Дата рождения */}
@@ -156,12 +204,17 @@ export default function ProfilePage() {
 
         {/* Action buttons */}
         <div className="mt-3 space-y-2">
-          <button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors">
-            <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-            </svg>
-            Указать email
-          </button>
+          {!email && (
+            <button
+              onClick={openEmailModal}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+            >
+              <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+              </svg>
+              Указать email
+            </button>
+          )}
           <button className="flex w-full items-center justify-center rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors">
             Указать дату рождения и получить бонус
           </button>
@@ -224,6 +277,66 @@ export default function ProfilePage() {
         </svg>
         Выйти
       </button>
+
+      {/* Email modal */}
+      {emailModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
+          onClick={() => !emailSaving && setEmailModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 shadow-xl sm:rounded-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">
+                {email ? 'Изменить email' : 'Привязать email'}
+              </h3>
+              <button
+                onClick={() => !emailSaving && setEmailModalOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-slate-300 hover:bg-white/20 transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-3 text-sm text-slate-400">
+              Укажите email — он будет использоваться для чеков и восстановления доступа.
+            </p>
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoFocus
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !emailSaving) handleSaveEmail()
+              }}
+              placeholder="you@example.com"
+              disabled={emailSaving}
+              className="w-full rounded-xl border border-white/10 bg-surface-2 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-brand-500 focus:outline-none disabled:opacity-60"
+            />
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setEmailModalOpen(false)}
+                disabled={emailSaving}
+                className="flex-1 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors disabled:opacity-60"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSaveEmail}
+                disabled={emailSaving}
+                className="flex-1 rounded-2xl bg-brand-600 py-3 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-60"
+              >
+                {emailSaving ? 'Сохранение...' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Terms of Service modal */}
       {tosOpen && (
