@@ -7,6 +7,7 @@ export interface User {
   status: number
   created?: string
   email?: string
+  email_verified?: boolean
 }
 
 export interface UserService {

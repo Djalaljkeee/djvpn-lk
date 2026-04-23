@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
-import { updateEmail, fetchProfile } from '../api/user'
+import { updateEmail, fetchProfile, requestEmailVerification, verifyEmailToken } from '../api/user'
 
 const TOS_TEXT = `Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между пользователем (далее — «Пользователь») и сервисом DJ VPN (далее — «Сервис») относительно использования услуг.
 
@@ -89,6 +89,10 @@ export default function ProfilePage() {
   const [emailModalOpen, setEmailModalOpen] = useState(false)
   const [emailInput, setEmailInput] = useState('')
   const [emailSaving, setEmailSaving] = useState(false)
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  const [verifyResending, setVerifyResending] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -104,10 +108,18 @@ export default function ProfilePage() {
   const balance = user?.balance ?? 0
   const discount = user?.credit ?? 0
   const email = user?.email?.trim() || ''
+  const emailVerified = user?.email_verified === true
 
   const openEmailModal = () => {
     setEmailInput(email)
     setEmailModalOpen(true)
+  }
+
+  const refreshProfile = async () => {
+    try {
+      const fresh = await fetchProfile()
+      setUser(fresh)
+    } catch {}
   }
 
   const handleSaveEmail = async () => {
@@ -118,20 +130,64 @@ export default function ProfilePage() {
     }
     setEmailSaving(true)
     try {
-      await updateEmail(value)
+      const result = await updateEmail(value)
       try {
         const fresh = await fetchProfile()
         setUser(fresh)
       } catch {
-        if (user) setUser({ ...user, email: value })
+        if (user) setUser({ ...user, email: value, email_verified: false })
       }
       setEmailModalOpen(false)
-      show(email ? 'Email обновлён' : 'Email успешно привязан', 'success')
+      if (result.verification_sent) {
+        show('Email сохранён. Отправили код подтверждения', 'success')
+        setVerifyCode('')
+        setVerifyModalOpen(true)
+      } else {
+        show(email ? 'Email обновлён' : 'Email успешно привязан', 'success')
+      }
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Не удалось сохранить email'
       show(typeof msg === 'string' ? msg : 'Не удалось сохранить email', 'error')
     } finally {
       setEmailSaving(false)
+    }
+  }
+
+  const openVerifyModal = async () => {
+    setVerifyCode('')
+    setVerifyModalOpen(true)
+  }
+
+  const handleResendVerification = async () => {
+    setVerifyResending(true)
+    try {
+      await requestEmailVerification()
+      show('Письмо с кодом отправлено', 'success')
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Не удалось отправить письмо'
+      show(typeof msg === 'string' ? msg : 'Не удалось отправить письмо', 'error')
+    } finally {
+      setVerifyResending(false)
+    }
+  }
+
+  const handleVerifyCode = async () => {
+    const code = verifyCode.trim()
+    if (!code) {
+      show('Введите код из письма', 'error')
+      return
+    }
+    setVerifyBusy(true)
+    try {
+      await verifyEmailToken(code)
+      await refreshProfile()
+      setVerifyModalOpen(false)
+      show('Email подтверждён', 'success')
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Неверный код'
+      show(typeof msg === 'string' ? msg : 'Неверный код', 'error')
+    } finally {
+      setVerifyBusy(false)
     }
   }
 
@@ -173,13 +229,37 @@ export default function ProfilePage() {
               Email
             </div>
             {email ? (
-              <button
-                onClick={openEmailModal}
-                className="truncate text-right text-sm text-white underline-offset-2 hover:underline"
-                title={email}
-              >
-                {email}
-              </button>
+              <div className="flex min-w-0 items-center gap-2">
+                {emailVerified ? (
+                  <span
+                    title="Email подтверждён"
+                    className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                    Подтверждён
+                  </span>
+                ) : (
+                  <button
+                    onClick={openVerifyModal}
+                    title="Email не подтверждён — подтвердите кодом из письма"
+                    className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 hover:bg-amber-500/20 transition-colors"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                    </svg>
+                    Подтвердить
+                  </button>
+                )}
+                <button
+                  onClick={openEmailModal}
+                  className="truncate text-right text-sm text-white underline-offset-2 hover:underline"
+                  title={email}
+                >
+                  {email}
+                </button>
+              </div>
             ) : (
               <button
                 onClick={openEmailModal}
@@ -213,6 +293,17 @@ export default function ProfilePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
               </svg>
               Указать email
+            </button>
+          )}
+          {email && !emailVerified && (
+            <button
+              onClick={openVerifyModal}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-500/10 py-3 text-sm font-medium text-amber-200 hover:bg-amber-500/20 transition-colors"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              Подтвердить email
             </button>
           )}
           <button className="flex w-full items-center justify-center rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors">
@@ -332,6 +423,74 @@ export default function ProfilePage() {
                 className="flex-1 rounded-2xl bg-brand-600 py-3 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-60"
               >
                 {emailSaving ? 'Сохранение...' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email verification modal */}
+      {verifyModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
+          onClick={() => !verifyBusy && setVerifyModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 shadow-xl sm:rounded-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">Подтверждение email</h3>
+              <button
+                onClick={() => !verifyBusy && setVerifyModalOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-slate-300 hover:bg-white/20 transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-3 text-sm text-slate-400">
+              На адрес <span className="text-white">{email}</span> отправлено письмо с кодом. Введите его ниже, чтобы подтвердить email.
+            </p>
+            <input
+              type="text"
+              inputMode="text"
+              autoFocus
+              value={verifyCode}
+              onChange={(e) => setVerifyCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !verifyBusy) handleVerifyCode()
+              }}
+              placeholder="Код из письма"
+              disabled={verifyBusy}
+              className="w-full rounded-xl border border-white/10 bg-surface-2 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-brand-500 focus:outline-none disabled:opacity-60"
+            />
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+              <span>Не пришло письмо?</span>
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={verifyResending || verifyBusy}
+                className="font-medium text-fuchsia-200 hover:text-white disabled:opacity-60"
+              >
+                {verifyResending ? 'Отправка…' : 'Отправить снова'}
+              </button>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setVerifyModalOpen(false)}
+                disabled={verifyBusy}
+                className="flex-1 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors disabled:opacity-60"
+              >
+                Позже
+              </button>
+              <button
+                onClick={handleVerifyCode}
+                disabled={verifyBusy}
+                className="flex-1 rounded-2xl bg-brand-600 py-3 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-60"
+              >
+                {verifyBusy ? 'Проверка...' : 'Подтвердить'}
               </button>
             </div>
           </div>

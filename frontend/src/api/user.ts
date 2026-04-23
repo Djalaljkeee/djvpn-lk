@@ -47,4 +47,14 @@ export const deleteAllDevices = (user_service_id: number) =>
   api.delete<{ deleted: number; failed: number }>('/user/devices/all', { data: { user_service_id } }).then(r => r.data)
 
 export const updateEmail = (email: string) =>
-  api.put<{ ok: boolean; email: string }>('/user/email', { email }).then(r => r.data)
+  api
+    .put<{ ok: boolean; email: string; verification_sent?: boolean }>('/user/email', { email })
+    .then(r => r.data)
+
+export const requestEmailVerification = () =>
+  api.post<{ ok: boolean; email: string; message: string }>('/user/email/request-verify').then(r => r.data)
+
+export const verifyEmailToken = (token: string) =>
+  api
+    .post<{ ok: boolean; verified: boolean; message: string }>('/user/email/verify', { token })
+    .then(r => r.data)

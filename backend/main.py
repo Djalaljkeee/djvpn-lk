@@ -17,13 +17,14 @@ from typing import Optional, List
 
 import httpx
 import segno
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response as FastResponse
 from jose import jwt, JWTError
 from pydantic import BaseModel
+import secrets
 
 from config import settings
 
@@ -52,6 +53,25 @@ class RegisterRequest(BaseModel):
     login: str
     password: str
     name: Optional[str] = None
+    email: Optional[str] = None
+    captcha_token: Optional[str] = None
+    captcha_code: Optional[str] = None
+
+
+class EmailVerifyRequest(BaseModel):
+    token: str
+
+
+class EmailVerifyResponse(BaseModel):
+    ok: bool = True
+    verified: bool = False
+    message: str = ""
+
+
+class CaptchaResponse(BaseModel):
+    token: str
+    image: str  # data:image/png;base64,...
+    content_type: str = "image/png"
 
 class TelegramAuthRequest(BaseModel):
     id: int
@@ -110,6 +130,7 @@ class UserProfile(BaseModel):
     status: int = 1
     created: Optional[str] = None
     email: Optional[str] = None
+    email_verified: Optional[bool] = None
 
 class UserServiceOut(BaseModel):
     id: Optional[int] = None
@@ -154,6 +175,7 @@ class PaySystemOut(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: UserProfile
+    email_verification_sent: bool = False
 
 class WebappUrlResponse(BaseModel):
     url: str
@@ -493,6 +515,108 @@ async def get_public_config():
 
 
 # ---------------------------------------------------------------------------
+# Captcha (no auth required, backed by SHM /user/captcha)
+# ---------------------------------------------------------------------------
+
+# token → (shm_session_id_cookie_value, created_at). Позволяет прокидывать
+# куку SHM-капчи между фронтом и SHM без раскрытия session_id наружу.
+_CAPTCHA_SESSIONS: dict[str, tuple[str, float]] = {}
+_CAPTCHA_TTL = 600  # 10 минут
+
+
+def _gc_captcha_sessions() -> None:
+    now = time.time()
+    expired = [k for k, (_, ts) in _CAPTCHA_SESSIONS.items() if now - ts > _CAPTCHA_TTL]
+    for k in expired:
+        _CAPTCHA_SESSIONS.pop(k, None)
+
+
+@app.get("/api/captcha", response_model=CaptchaResponse)
+async def get_captcha():
+    """Получить капчу от SHM. Возвращает изображение (base64) и token,
+    который фронт должен передать вместе с ответом пользователя.
+    """
+    _gc_captcha_sessions()
+    url = f"{settings.SHM_BASE_URL}/shm/v1/user/captcha"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            resp = await client.get(url)
+    except Exception as exc:
+        logging.error("captcha: SHM error: %s", exc)
+        raise HTTPException(status_code=503, detail="SHM недоступен")
+
+    if resp.status_code != 200:
+        logging.warning("captcha: SHM %s: %s", resp.status_code, resp.text[:200])
+        raise HTTPException(status_code=resp.status_code, detail="Не удалось получить капчу")
+
+    content_type = resp.headers.get("content-type", "image/png").split(";")[0].strip()
+    body = resp.content
+
+    image_b64 = base64.b64encode(body).decode()
+    data_uri = f"data:{content_type};base64,{image_b64}"
+
+    # SHM может выдавать session-id капчи как cookie (session_id) или как header.
+    shm_cookie = resp.cookies.get("session_id") or resp.headers.get("session-id") or ""
+    if not shm_cookie:
+        # Пытаемся распарсить из Set-Cookie вручную
+        set_cookie = resp.headers.get("set-cookie") or ""
+        for part in set_cookie.split(";"):
+            if part.strip().startswith("session_id="):
+                shm_cookie = part.strip().split("=", 1)[1]
+                break
+
+    token = secrets.token_urlsafe(24)
+    _CAPTCHA_SESSIONS[token] = (shm_cookie, time.time())
+    return CaptchaResponse(token=token, image=data_uri, content_type=content_type)
+
+
+def _consume_captcha_token(token: Optional[str]) -> Optional[str]:
+    """Вытащить и удалить SHM cookie для данного токена капчи."""
+    if not token:
+        return None
+    entry = _CAPTCHA_SESSIONS.pop(token, None)
+    if not entry:
+        return None
+    cookie_value, created_at = entry
+    if time.time() - created_at > _CAPTCHA_TTL:
+        return None
+    return cookie_value
+
+
+async def _verify_captcha(token: Optional[str], code: Optional[str]) -> None:
+    """Валидирует капчу на стороне SHM. Если капча не настроена (пустая кука) —
+    просто пропускаем (в тестовых инсталляциях SHM без капчи)."""
+    cookie_value = _consume_captcha_token(token)
+    if not cookie_value:
+        # Нет cookie — либо токен просрочен, либо SHM не требует капчу.
+        if token and code:
+            # Пользователь пытался пройти капчу, но токен уже не валиден
+            raise HTTPException(status_code=400, detail="Срок действия капчи истёк. Обновите изображение.")
+        return
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Введите текст с картинки (капча)")
+
+    url = f"{settings.SHM_BASE_URL}/shm/v1/user/captcha"
+    cookies = {"session_id": cookie_value}
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            resp = await client.post(
+                url,
+                json={"code": code},
+                cookies=cookies,
+                headers={"Content-Type": "application/json"},
+            )
+    except Exception as exc:
+        logging.error("captcha verify: SHM error: %s", exc)
+        raise HTTPException(status_code=503, detail="Ошибка проверки капчи")
+
+    if resp.status_code not in (200, 201):
+        logging.warning("captcha verify: SHM %s: %s", resp.status_code, resp.text[:200])
+        raise HTTPException(status_code=400, detail="Неверная капча")
+
+
+# ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
 
@@ -749,11 +873,23 @@ async def webapp_auth(initData: str):
 
 @app.post("/api/auth/register", response_model=AuthResponse)
 async def register(req: RegisterRequest):
-    """Регистрация нового пользователя через SHM admin API"""
+    """Регистрация нового пользователя с капчей и опциональной привязкой email.
+
+    Если передан email — после создания аккаунта он автоматически привязывается
+    и высылается письмо с кодом подтверждения (фронт показывает шаг верификации).
+    """
     import logging
+
+    email = (req.email or "").strip()
+    if email and not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Некорректный email")
+
+    # 1. Проверяем капчу (если настроена в SHM)
+    await _verify_captcha(req.captcha_token, req.captcha_code)
+
     admin_session = await get_admin_session()
 
-    # Проверяем логин — SHM может вернуть 400/404 если не найден, это нормально
+    # 2. Проверяем, нет ли уже такого логина
     try:
         existing = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": req.login})
         if existing.get("data"):
@@ -763,13 +899,16 @@ async def register(req: RegisterRequest):
             raise
         # SHM вернул ошибку при поиске — значит пользователь не найден, продолжаем
 
-    # Создаём пользователя
+    # 3. Создаём пользователя
     try:
-        result = await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data={
+        create_payload = {
             "login":    req.login,
             "password": req.password,
             "name":     req.name or req.login,
-        })
+        }
+        if email:
+            create_payload["email"] = email
+        result = await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload)
         logging.info("register: SHM create user result: %s", result)
     except HTTPException as e:
         logging.error("register: SHM create user error %s: %s", e.status_code, e.detail)
@@ -785,12 +924,37 @@ async def register(req: RegisterRequest):
         raise HTTPException(status_code=500, detail="Аккаунт создан, но не удалось войти. Попробуйте войти вручную.")
 
     shm_session = resp.json().get("session_id")
+
+    # 4. Привязываем email (если не был сохранён при создании) и инициируем отправку письма
+    email_verification_sent = False
+    if email:
+        try:
+            await shm_request(
+                "PUT", "/shm/v1/user/email", shm_session,
+                json_data={"email": email},
+            )
+        except HTTPException as exc:
+            logging.warning("register: bind email failed: %s", exc.detail)
+
+        try:
+            await shm_request(
+                "POST", "/shm/v1/user/email", shm_session,
+                json_data={"email": email},
+            )
+            email_verification_sent = True
+        except HTTPException as exc:
+            logging.warning("register: email verification send failed: %s", exc.detail)
+
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = user_data.get("data", [{}])[0] if user_data.get("data") else {}
     user_id = user.get("user_id", 0)
 
     token = create_token(shm_session, user_id)
-    return {"token": token, "user": user}
+    return {
+        "token": token,
+        "user": user,
+        "email_verification_sent": email_verification_sent,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -808,7 +972,9 @@ _EMAIL_RE = __import__("re").compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 @app.put("/api/user/email")
 async def update_email(req: UpdateEmailRequest, session: dict = Depends(get_current_session)):
-    """Привязать/изменить email пользователя: PUT /shm/v1/user/email"""
+    """Привязать/изменить email пользователя: PUT /shm/v1/user/email.
+    После сохранения автоматически инициирует отправку письма с кодом подтверждения.
+    """
     email = (req.email or "").strip()
     if not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="Некорректный email")
@@ -820,7 +986,67 @@ async def update_email(req: UpdateEmailRequest, session: dict = Depends(get_curr
     if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
         msg = result.get("msg") or "Не удалось сохранить email"
         raise HTTPException(status_code=400, detail=msg)
-    return {"ok": True, "email": email}
+
+    # Запрашиваем отправку письма с кодом подтверждения — best effort,
+    # чтобы не ломать основной ответ в случае ошибок SHM.
+    verification_sent = False
+    try:
+        await shm_request(
+            "POST", "/shm/v1/user/email", session["shm_session"],
+            json_data={"email": email},
+        )
+        verification_sent = True
+    except HTTPException as exc:
+        logging.warning("update_email: email send failed: %s", exc.detail)
+
+    return {"ok": True, "email": email, "verification_sent": verification_sent}
+
+
+@app.post("/api/user/email/request-verify")
+async def request_email_verify(session: dict = Depends(get_current_session)):
+    """Отправить повторно письмо с кодом подтверждения email."""
+    # Получаем текущий email из профиля
+    profile = await shm_request("GET", "/shm/v1/user", session["shm_session"])
+    user = (profile.get("data") or [{}])[0]
+    email = (user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email не привязан")
+
+    try:
+        result = await shm_request(
+            "POST", "/shm/v1/user/email", session["shm_session"],
+            json_data={"email": email},
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        raise HTTPException(status_code=400, detail=detail or "Не удалось отправить письмо")
+
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        raise HTTPException(status_code=400, detail=result.get("msg") or "Не удалось отправить письмо")
+
+    return {"ok": True, "email": email, "message": "Письмо с кодом подтверждения отправлено"}
+
+
+@app.post("/api/user/email/verify", response_model=EmailVerifyResponse)
+async def verify_email(req: EmailVerifyRequest, session: dict = Depends(get_current_session)):
+    """Подтвердить email кодом из письма: POST /shm/v1/user/email/verify"""
+    token = (req.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Введите код из письма")
+
+    try:
+        result = await shm_request(
+            "POST", "/shm/v1/user/email/verify", session["shm_session"],
+            json_data={"token": token},
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        raise HTTPException(status_code=400, detail=detail or "Неверный код подтверждения")
+
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        raise HTTPException(status_code=400, detail=result.get("msg") or "Неверный код подтверждения")
+
+    return EmailVerifyResponse(ok=True, verified=True, message="Email подтверждён")
 
 
 @app.get("/api/user/services", response_model=list[UserServiceOut])
