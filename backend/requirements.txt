@@ -5,3 +5,5 @@ python-jose[cryptography]>=3.3.0
 pydantic-settings>=2.2.0
 python-multipart>=0.0.9
 segno>=1.6.0
+structlog>=24.1.0
+sentry-sdk[fastapi]>=2.0.0

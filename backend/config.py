@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    # Observability
+    LOG_LEVEL: str = "INFO"
+    LOG_JSON: bool = True       # False — человекочитаемый вывод для dev
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "production"
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0   # 0 = выключено; 0.05 — 5% запросов
+
     class Config:
         # В Docker env vars передаются через docker-compose env_file
         # При локальной разработке — через backend/.env

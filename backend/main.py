@@ -1,20 +1,8 @@
 """SHM Cabinet — FastAPI backend (proxy).
 
-Тонкий entrypoint: создаёт FastAPI-приложение, подключает CORS, роутеры
-и (в проде) отдаёт статику SPA. Вся бизнес-логика распределена по модулям:
-
-- config.py              — настройки (pydantic-settings)
-- security.py            — JWT + HTTPBearer dependency
-- models.py              — Pydantic-модели запросов/ответов + EMAIL_RE
-- shm_client.py          — HTTP-клиент SHM + auth helpers
-- remnawave_client.py    — HTTP-клиент Remnawave + resolve_remna_uuid
-- telegram_auth.py       — верификация Telegram Login Widget
-- captcha.py             — stateless-токен капчи + in-process кеш байтов
-- storage.py             — SHM Marzban storage (vpn_mrzb_<id>)
-- vpn_setup.py           — QR, deeplink, platform detection
-- kuma_status.py         — Uptime Kuma прокси с мелким in-memory кешом
-- normalizers.py         — конверсия SHM-полей в формат фронта
-- routers/               — FastAPI-роутеры по доменам
+Тонкий entrypoint: создаёт FastAPI-приложение, подключает наблюдаемость
+(structlog/Sentry), middleware (request_id, security headers), CORS,
+роутеры и (в проде) отдаёт статику SPA.
 """
 
 import os
@@ -25,11 +13,41 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
+from logging_config import configure_logging, get_logger
+from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from routers import auth, devices, payments, public, services, status, user, vpn
+
+
+# Настраиваем logging до всех прочих импортов бизнес-логики, чтобы
+# библиотечные logging.X вызовы тоже попали в structlog-pipeline.
+configure_logging(level=settings.LOG_LEVEL, json_output=settings.LOG_JSON)
+log = get_logger("app")
+
+
+# Sentry: инициализация только если задан DSN, чтобы не создавать лишних
+# зависимостей в локальной разработке/CI.
+if settings.SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            environment=settings.SENTRY_ENVIRONMENT,
+            traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+            integrations=[StarletteIntegration(), FastApiIntegration()],
+            send_default_pii=False,
+        )
+        log.info("sentry.enabled", environment=settings.SENTRY_ENVIRONMENT)
+    except Exception as exc:
+        log.warning("sentry.init_failed", error=str(exc))
 
 
 app = FastAPI(title="SHM Cabinet API", version="1.0.0")
 
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
