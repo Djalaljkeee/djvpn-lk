@@ -124,13 +124,20 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (mode === 'register' && password !== confirmPw) {
-      setError('Пароли не совпадают')
-      return
-    }
-    if (mode === 'register' && captchaAvailable && !captchaCode.trim()) {
-      setError('Введите текст с картинки')
-      return
+    const trimmedEmail = email.trim().toLowerCase()
+    if (mode === 'register') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        setError('Введите корректный email')
+        return
+      }
+      if (password !== confirmPw) {
+        setError('Пароли не совпадают')
+        return
+      }
+      if (captchaAvailable && !captchaCode.trim()) {
+        setError('Введите текст с картинки')
+        return
+      }
     }
     setLoading(true)
     setError('')
@@ -140,18 +147,16 @@ export default function LoginPage() {
         setAuth(token, user)
         navigate('/')
       } else {
-        const trimmedEmail = email.trim()
         const result = await registerWithPassword({
-          login,
+          login: trimmedEmail,
           password,
           name: name || undefined,
-          email: trimmedEmail || undefined,
+          email: trimmedEmail,
           captcha_token: captcha?.token,
           captcha_code: captchaAvailable ? captchaCode : undefined,
         })
         setAuth(result.token, result.user)
-        if (trimmedEmail && result.email_verification_sent) {
-          // Переходим на шаг подтверждения email
+        if (result.email_verification_sent) {
           setVerifyEmail(trimmedEmail)
           setVerifyCode('')
           setMode('verify-email')
@@ -310,19 +315,20 @@ export default function LoginPage() {
                       </Field>
                     )}
 
-                    <Field label="Логин">
-                      <input
-                        type="text"
-                        value={login}
-                        onChange={e => setLogin(e.target.value)}
-                        placeholder="Введите логин"
-                        required
-                        className={fieldClass}
-                      />
-                    </Field>
-
-                    {mode === 'register' && (
-                      <Field label="Email" optional>
+                    {mode === 'login' ? (
+                      <Field label="Логин или email">
+                        <input
+                          type="text"
+                          value={login}
+                          onChange={e => setLogin(e.target.value)}
+                          placeholder="Введите логин или email"
+                          required
+                          autoComplete="username"
+                          className={fieldClass}
+                        />
+                      </Field>
+                    ) : (
+                      <Field label="Email">
                         <input
                           type="email"
                           inputMode="email"
@@ -330,10 +336,11 @@ export default function LoginPage() {
                           value={email}
                           onChange={e => setEmail(e.target.value)}
                           placeholder="you@example.com"
+                          required
                           className={fieldClass}
                         />
-                        <span className="text-xs text-slate-400">
-                          Нужен для чеков и восстановления доступа. Подтвердим кодом из письма.
+                        <span className="block text-xs text-slate-400">
+                          Email будет вашим логином. Подтвердим кодом из письма.
                         </span>
                       </Field>
                     )}
