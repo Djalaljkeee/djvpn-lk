@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    # Database (пусто = БД выключена, бэкенд работает как stateless-прокси)
+    DATABASE_URL: str = ""
+
     # Observability
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True       # False — человекочитаемый вывод для dev

@@ -6,6 +6,7 @@
 """
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
+from db import db_enabled, init_engine, run_migrations, shutdown_engine
 from logging_config import configure_logging, get_logger
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from routers import auth, devices, payments, public, services, status, user, vpn
@@ -44,7 +46,18 @@ if settings.SENTRY_DSN:
         log.warning("sentry.init_failed", error=str(exc))
 
 
-app = FastAPI(title="SHM Cabinet API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: применяем миграции и открываем engine, если БД включена
+    if db_enabled():
+        await run_migrations()
+        init_engine()
+    yield
+    # Shutdown: закрываем engine
+    await shutdown_engine()
+
+
+app = FastAPI(title="SHM Cabinet API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestContextMiddleware)
