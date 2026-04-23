@@ -40,6 +40,7 @@ export interface CaptchaData {
   token: string
   image: string
   content_type: string
+  image_url?: string | null
 }
 
 export const fetchCaptcha = async (): Promise<CaptchaData> => {

@@ -72,6 +72,7 @@ class CaptchaResponse(BaseModel):
     token: str
     image: str  # data:image/png;base64,...
     content_type: str = "image/png"
+    image_url: Optional[str] = None  # прямая ссылка на raw-байты (fallback)
 
 class TelegramAuthRequest(BaseModel):
     id: int
@@ -518,30 +519,110 @@ async def get_public_config():
 # Captcha (no auth required, backed by SHM /user/captcha)
 # ---------------------------------------------------------------------------
 
-# token → (shm_session_id_cookie_value, created_at). Позволяет прокидывать
-# куку SHM-капчи между фронтом и SHM без раскрытия session_id наружу.
-_CAPTCHA_SESSIONS: dict[str, tuple[str, float]] = {}
+# Токен капчи делаем stateless — подписываем JWT, чтобы работало независимо
+# от числа воркеров uvicorn (in-memory хранилище там не шарится).
 _CAPTCHA_TTL = 600  # 10 минут
 
 
-def _gc_captcha_sessions() -> None:
+def _pack_captcha_token(shm_cookie: str) -> str:
+    payload = {
+        "c": shm_cookie or "",
+        "exp": int(time.time()) + _CAPTCHA_TTL,
+        "iat": int(time.time()),
+        "typ": "captcha",
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+
+
+def _unpack_captcha_token(token: Optional[str]) -> Optional[dict]:
+    """Возвращает {cookie: str} если токен валиден, иначе None."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
+    except JWTError:
+        return None
+    if payload.get("typ") != "captcha":
+        return None
+    return {"cookie": payload.get("c", "")}
+
+
+# Дополнительное in-process хранилище для raw bytes капчи,
+# чтобы отдавать картинку по прямой ссылке (fallback, если JSON-парсинг
+# не нашёл base64). Ключ — короткий токен, значение — (bytes, mime, ts).
+_CAPTCHA_IMAGES: dict[str, tuple[bytes, str, float]] = {}
+_CAPTCHA_IMG_TTL = 600
+
+
+def _gc_captcha_images() -> None:
     now = time.time()
-    expired = [k for k, (_, ts) in _CAPTCHA_SESSIONS.items() if now - ts > _CAPTCHA_TTL]
+    expired = [k for k, (_, _, ts) in _CAPTCHA_IMAGES.items() if now - ts > _CAPTCHA_IMG_TTL]
     for k in expired:
-        _CAPTCHA_SESSIONS.pop(k, None)
+        _CAPTCHA_IMAGES.pop(k, None)
+
+
+def _extract_image_from_json(payload) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Достаёт (base64_image, mime, session_from_body) из произвольного JSON-ответа SHM.
+
+    Идёт вглубь по наиболее вероятным путям: top-level, .data[0], .data (dict),
+    .result, .captcha. Ищет поля image / captcha / data / base64 / png / img / src.
+    """
+    mime = None
+    session = None
+
+    def _pick_session(obj: dict) -> Optional[str]:
+        for k in ("session_id", "captcha_id", "captcha_session", "id"):
+            v = obj.get(k)
+            if isinstance(v, str) and v:
+                return v
+        return None
+
+    def _looks_like_base64(s: str) -> bool:
+        if not s or len(s) < 40:
+            return False
+        sample = s[:200]
+        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-_\n\r ")
+        return all(ch in allowed for ch in sample)
+
+    def _pick_image(obj: dict) -> Optional[str]:
+        nonlocal mime
+        for k in ("image", "captcha", "base64", "png", "img", "src", "url", "data"):
+            v = obj.get(k)
+            if isinstance(v, str) and v and (v.startswith("data:") or _looks_like_base64(v) or v.startswith("http")):
+                m = obj.get("content_type") or obj.get("mime") or obj.get("type")
+                if isinstance(m, str):
+                    mime = m
+                return v
+        return None
+
+    candidates = []
+    if isinstance(payload, dict):
+        candidates.append(payload)
+        for key in ("data", "result", "captcha", "response"):
+            v = payload.get(key)
+            if isinstance(v, dict):
+                candidates.append(v)
+            elif isinstance(v, list) and v and isinstance(v[0], dict):
+                candidates.append(v[0])
+    elif isinstance(payload, list) and payload and isinstance(payload[0], dict):
+        candidates.append(payload[0])
+
+    for node in candidates:
+        if session is None:
+            session = _pick_session(node)
+        img = _pick_image(node)
+        if img:
+            return img, mime, session
+
+    return None, mime, session
 
 
 @app.get("/api/captcha", response_model=CaptchaResponse)
 async def get_captcha():
-    """Получить капчу от SHM. Возвращает изображение (data-URI) и token,
+    """Получить капчу от SHM. Возвращает data-URI и stateless-token,
     который фронт должен передать вместе с ответом пользователя.
-
-    SHM может отдать капчу в двух форматах:
-      * бинарный PNG/GIF — тогда используем его напрямую;
-      * JSON с base64-картинкой (поля image / data / captcha …) —
-        парсим JSON и собираем data-URI вручную.
     """
-    _gc_captcha_sessions()
+    _gc_captcha_images()
     url = f"{settings.SHM_BASE_URL}/shm/v1/user/captcha"
     try:
         async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
@@ -558,47 +639,65 @@ async def get_captcha():
     content_type = "image/png"
     data_uri: Optional[str] = None
     shm_session_from_body: Optional[str] = None
+    raw_bytes: Optional[bytes] = None
 
-    if "application/json" in raw_content_type or resp.content.startswith(b"{"):
+    is_json = "application/json" in raw_content_type or resp.content.strip().startswith(b"{") or resp.content.strip().startswith(b"[")
+
+    if is_json:
         try:
             payload = resp.json()
         except Exception as exc:
-            logging.warning("captcha: JSON parse error: %s; body=%r", exc, resp.text[:200])
+            logging.warning("captcha: JSON parse error: %s; body=%r", exc, resp.text[:400])
             payload = None
 
-        node = payload
-        if isinstance(node, dict) and isinstance(node.get("data"), list) and node["data"]:
-            node = node["data"][0]
+        if payload is not None:
+            top_keys = list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
+            logging.info("captcha: SHM JSON keys=%s size=%d", top_keys, len(resp.content))
 
-        if isinstance(node, dict):
-            image_val = (
-                node.get("image")
-                or node.get("captcha")
-                or node.get("data")
-                or node.get("base64")
-                or node.get("png")
-                or node.get("img")
-            )
-            shm_session_from_body = (
-                node.get("session_id")
-                or node.get("captcha_id")
-                or node.get("id")
-            )
-            if isinstance(image_val, str) and image_val:
+            image_val, mime_val, shm_session_from_body = _extract_image_from_json(payload)
+            if image_val:
                 if image_val.startswith("data:"):
                     data_uri = image_val
+                    try:
+                        content_type = image_val.split(";", 1)[0].split(":", 1)[1] or "image/png"
+                    except Exception:
+                        content_type = "image/png"
+                elif image_val.startswith("http"):
+                    # Загружаем изображение по URL
+                    try:
+                        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                            img_resp = await client.get(image_val)
+                        if img_resp.status_code == 200:
+                            raw_bytes = img_resp.content
+                            content_type = img_resp.headers.get("content-type", "image/png").split(";")[0].strip()
+                            data_uri = f"data:{content_type};base64,{base64.b64encode(raw_bytes).decode()}"
+                    except Exception as exc:
+                        logging.warning("captcha: image URL fetch failed: %s", exc)
                 else:
-                    mime = node.get("content_type") or node.get("mime") or "image/png"
+                    mime = (mime_val or "image/png").strip()
+                    if not mime.startswith("image/"):
+                        mime = "image/png"
                     clean = image_val.split(",", 1)[-1].strip()
                     data_uri = f"data:{mime};base64,{clean}"
                     content_type = mime
-
-    if not data_uri:
+                    try:
+                        raw_bytes = base64.b64decode(clean + "=" * ((4 - len(clean) % 4) % 4))
+                    except Exception:
+                        raw_bytes = None
+            else:
+                logging.warning("captcha: no image field found in SHM JSON; keys=%s", top_keys)
+    else:
+        raw_bytes = resp.content
         content_type = raw_content_type.split(";")[0].strip() or "image/png"
         if not content_type.startswith("image/"):
             content_type = "image/png"
-        image_b64 = base64.b64encode(resp.content).decode()
-        data_uri = f"data:{content_type};base64,{image_b64}"
+        data_uri = f"data:{content_type};base64,{base64.b64encode(raw_bytes).decode()}"
+
+    if not data_uri:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось распарсить капчу SHM. См. логи сервера.",
+        )
 
     # SHM может выдавать session-id капчи как cookie или как header/поле в теле.
     shm_cookie = (
@@ -614,22 +713,33 @@ async def get_captcha():
                 shm_cookie = part.strip().split("=", 1)[1]
                 break
 
-    token = secrets.token_urlsafe(24)
-    _CAPTCHA_SESSIONS[token] = (shm_cookie, time.time())
-    return CaptchaResponse(token=token, image=data_uri, content_type=content_type)
+    token = _pack_captcha_token(shm_cookie)
+
+    # Сохраняем raw-байты, чтобы можно было отдать картинку через отдельный URL
+    if raw_bytes:
+        img_id = secrets.token_urlsafe(12)
+        _CAPTCHA_IMAGES[img_id] = (raw_bytes, content_type, time.time())
+    else:
+        img_id = None
+
+    return CaptchaResponse(
+        token=token,
+        image=data_uri,
+        content_type=content_type,
+        image_url=f"/api/captcha/image/{img_id}" if img_id else None,
+    )
 
 
-def _consume_captcha_token(token: Optional[str]) -> Optional[str]:
-    """Вытащить и удалить SHM cookie для данного токена капчи."""
-    if not token:
-        return None
-    entry = _CAPTCHA_SESSIONS.pop(token, None)
+@app.get("/api/captcha/image/{img_id}")
+async def get_captcha_image_raw(img_id: str):
+    """Отдаёт сохранённые raw-байты капчи (на случай, если base64 в data-URI
+    по какой-то причине не сработал у клиента)."""
+    _gc_captcha_images()
+    entry = _CAPTCHA_IMAGES.get(img_id)
     if not entry:
-        return None
-    cookie_value, created_at = entry
-    if time.time() - created_at > _CAPTCHA_TTL:
-        return None
-    return cookie_value
+        raise HTTPException(status_code=404, detail="Captcha image not found or expired")
+    data, mime, _ts = entry
+    return Response(content=data, media_type=mime)
 
 
 # ---------------------------------------------------------------------------
@@ -956,12 +1066,14 @@ async def register(req: RegisterRequest):
     login = (req.login or "").strip().lower() or email
     display_name = req.name or email
 
-    # Капча: получаем cookie для передачи в SHM. Если cookie нет и капча
-    # настроена — значит токен просрочен.
-    captcha_cookie = _consume_captcha_token(req.captcha_token) or ""
+    # Капча: декодируем stateless-токен, чтобы достать SHM cookie.
+    captcha_cookie = ""
+    if req.captcha_token:
+        decoded = _unpack_captcha_token(req.captcha_token)
+        if decoded is None:
+            raise HTTPException(status_code=400, detail="Срок действия капчи истёк. Обновите изображение.")
+        captcha_cookie = decoded.get("cookie", "")
     captcha_code = (req.captcha_code or "").strip() or None
-    if req.captcha_token and not captcha_cookie:
-        raise HTTPException(status_code=400, detail="Срок действия капчи истёк. Обновите изображение.")
 
     # 1. Пробуем публичный endpoint (SHM валидирует капчу сам)
     shm_session: Optional[str] = None

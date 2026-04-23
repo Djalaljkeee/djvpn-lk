@@ -383,7 +383,18 @@ export default function LoginPage() {
                         <div className="flex items-center gap-3">
                           <div className="flex h-[52px] w-36 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white">
                             {captcha ? (
-                              <img src={captcha.image} alt="captcha" className="h-full w-full object-contain" />
+                              <img
+                                src={captcha.image_url || captcha.image}
+                                alt="captcha"
+                                className="h-full w-full object-contain"
+                                onError={(ev) => {
+                                  // Если прямой URL не сработал — пробуем data-URI
+                                  const img = ev.currentTarget
+                                  if (captcha.image_url && img.src !== captcha.image) {
+                                    img.src = captcha.image
+                                  }
+                                }}
+                              />
                             ) : (
                               <div className={`h-full w-full animate-pulse bg-white/40 ${captchaLoading ? '' : 'opacity-40'}`} />
                             )}
