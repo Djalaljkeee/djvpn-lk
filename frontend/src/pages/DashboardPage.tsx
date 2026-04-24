@@ -8,6 +8,8 @@ import SubscriptionHero from '../components/dashboard/SubscriptionHero'
 import ServerStatus from '../components/dashboard/ServerStatus'
 import CompactSubscriptionCard from '../components/dashboard/CompactSubscriptionCard'
 import TrialOfferCard from '../components/dashboard/TrialOfferCard'
+import CartBanner from '../components/CartBanner'
+import { useCart } from '../hooks/useCart'
 
 const TRIAL_SERVICE_ID = 4
 
@@ -20,6 +22,7 @@ export default function DashboardPage() {
   const [trialAvailable, setTrialAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activating, setActivating] = useState(false)
+  const { state: cart, clear: clearCartState } = useCart()
 
   const loadAll = useCallback(async () => {
     try {
@@ -74,6 +77,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {!cart.empty && cart.payload && (
+        <CartBanner payload={cart.payload} onDismiss={() => void clearCartState()} />
+      )}
       {activeServices.length > 0 ? (
         <>
           {activeServices.map(svc => (
