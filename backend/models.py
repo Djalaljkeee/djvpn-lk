@@ -1,9 +1,9 @@
 """Pydantic request/response models used across routers."""
 
 import re
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -288,3 +288,33 @@ class VpnSetupResponse(BaseModel):
     step1: dict    # скачать
     step2: dict    # подключиться
     fallback: dict  # ручная настройка
+
+
+# ---------------------------------------------------------------------------
+# Aggregated dashboard (GET /api/dashboard)
+# ---------------------------------------------------------------------------
+
+class DashboardBalance(BaseModel):
+    amount: float = 0
+    currency: str = "RUB"
+
+
+class DashboardResponse(BaseModel):
+    """Агрегированный ответ для личного кабинета.
+
+    Каждый блок может быть `None`, если соответствующий апстрим упал — см.
+    `errors: {block: error_message}`. Частичные ответы не кешируются.
+    """
+    profile: Optional[UserProfile] = None
+    balance: Optional[DashboardBalance] = None
+    services: Optional[List[UserServiceOut]] = None
+    devices: Optional[List[ServiceDevicesOut]] = None
+    remna_info: Optional[List[RemnaUserInfo]] = None
+    orders: Optional[List[PaymentOut]] = None
+    payments: Optional[List[PaymentOut]] = None
+    paysystems: Optional[List[PaySystemV2Out]] = None
+    forecast: Optional[ForecastResponse] = None
+    notifications: Optional[Dict[str, Any]] = None
+    status: Optional[Dict[str, Any]] = None
+    maintenance: Dict[str, Any] = Field(default_factory=dict)
+    errors: Dict[str, str] = Field(default_factory=dict)

@@ -134,3 +134,18 @@ def _safe_url(url: str) -> str:
 
 
 cache = Cache()
+
+
+async def invalidate_dashboard(user_id: Any) -> None:
+    """Сбросить агрегированный кеш `/api/dashboard` для пользователя.
+
+    Вызывается из мутирующих хендлеров (оплаты, покупка/смена/удаление услуг,
+    удаление устройств, применение промокода). No-op при пустом user_id —
+    неавторизованные мутации не ожидаются, но вести себя безопасно дешевле.
+    """
+    if not user_id:
+        return
+    try:
+        await cache.delete(f"dashboard:{user_id}")
+    except Exception as exc:  # pragma: no cover — кеш не должен рушить мутацию
+        log.warning("cache.invalidate_dashboard_failed", user_id=user_id, error=str(exc))

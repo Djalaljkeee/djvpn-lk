@@ -5,6 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from cache import invalidate_dashboard
 from models import (
     DeleteAllDevicesRequest,
     DeleteDeviceRequest,
@@ -73,10 +74,12 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
     user_uuid = await resolve_remna_uuid(req.user_service_id, target_svc, session.get("user_id", 0))
     if not user_uuid:
         raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
-    return await remnawave_request(
+    result = await remnawave_request(
         "POST", "/api/hwid/devices/delete",
         json_data={"userUuid": user_uuid, "hwid": req.hwid},
     )
+    await invalidate_dashboard(session.get("user_id"))
+    return result
 
 
 @router.get("/api/user/remna-info", response_model=list[RemnaUserInfo])
@@ -149,4 +152,5 @@ async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = 
             deleted += 1
         except Exception:
             failed += 1
+    await invalidate_dashboard(session.get("user_id"))
     return {"deleted": deleted, "failed": failed}
