@@ -7,6 +7,7 @@ no-op (`db_enabled()` возвращает False), либо бросают 503, 
 
 from __future__ import annotations
 
+import asyncio
 from typing import AsyncIterator, Optional
 
 from fastapi import HTTPException
@@ -72,8 +73,14 @@ async def shutdown_engine() -> None:
 async def run_migrations() -> None:
     """Применяет alembic upgrade head.
 
-    Выполняется offline через программный API alembic, чтобы не тащить
-    shell-entrypoint и не зависеть от раскладки CWD в контейнере.
+    Alembic env.py вызывает `asyncio.run()` — это нельзя делать из уже
+    запущенного event loop (FastAPI lifespan). Поэтому синхронный
+    `command.upgrade(...)` выполняем в отдельном потоке через
+    `asyncio.to_thread`: там loop не запущен, и alembic спокойно
+    стартует свой собственный.
+
+    Дополнительно делаем 5 попыток с экспоненциальным бэкоффом — postgres
+    может ответить healthy раньше, чем реально готов принимать asyncpg.
     """
     if not db_enabled():
         return
@@ -92,13 +99,39 @@ async def run_migrations() -> None:
     cfg.set_main_option("script_location", os.path.join(here, "alembic"))
     cfg.set_main_option("sqlalchemy.url", _normalize_url(settings.DATABASE_URL))
 
-    log.info("db.migrations_start")
-    try:
-        command.upgrade(cfg, "head")
-        log.info("db.migrations_done")
-    except Exception as exc:
-        log.error("db.migrations_failed", error=str(exc))
-        raise
+    max_attempts = 5
+    backoff = 1.0
+    last_exc: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        log.info("db.migrations_start", attempt=attempt, max_attempts=max_attempts)
+        try:
+            await asyncio.to_thread(command.upgrade, cfg, "head")
+            log.info("db.migrations_done")
+            return
+        except Exception as exc:
+            last_exc = exc
+            if attempt == max_attempts:
+                log.error(
+                    "db.migrations_failed",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    attempt=attempt,
+                )
+                raise
+            log.warning(
+                "db.migrations_attempt_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                attempt=attempt,
+                retry_in_s=backoff,
+            )
+            await asyncio.sleep(backoff)
+            backoff *= 2
+
+    # unreachable, but keeps static analysers happy
+    if last_exc is not None:
+        raise last_exc
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
