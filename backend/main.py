@@ -24,6 +24,8 @@ from metrics import PrometheusMiddleware
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
 from routers import auth, devices, payments, public, services, status, system, user, vpn
+from routers import cart as cart_router
+from routers import notifications as notifications_router
 from scheduler import shutdown_scheduler, start_scheduler
 
 
@@ -93,6 +95,8 @@ app.include_router(payments.router)
 app.include_router(vpn.router)
 app.include_router(status.router)
 app.include_router(system.router)
+app.include_router(cart_router.router)
+app.include_router(notifications_router.router)
 
 
 # ---------------------------------------------------------------------------

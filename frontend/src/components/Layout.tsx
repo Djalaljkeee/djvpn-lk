@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { useProfile } from '../hooks/useProfile'
 import { BrandLogo } from './BrandLogo'
 import LanguageSwitcher from './LanguageSwitcher'
+import MaintenanceBanner from './MaintenanceBanner'
+import NotificationBell from './NotificationBell'
 import ParticleCanvas from './ParticleCanvas'
 
 const navItems = [
@@ -84,6 +86,8 @@ export default function Layout() {
               <span className="text-sm font-mono text-fuchsia-100">{balance.toFixed(2)} ₽</span>
             </div>
 
+            <NotificationBell />
+
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen(v => !v)}
@@ -126,6 +130,8 @@ export default function Layout() {
           </div>
         </div>
       </header>
+
+      <MaintenanceBanner />
 
       <main className="relative z-10 mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-28 md:pb-8">
         <Outlet />

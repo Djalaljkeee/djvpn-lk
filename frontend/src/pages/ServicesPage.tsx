@@ -4,6 +4,7 @@ import { parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { fetchServices, buyService } from '../api/services'
 import { fetchUserServices, changeService, fetchServiceOrders, fetchUserDevices, fetchRemnaInfo, deleteAllDevices } from '../api/user'
+import { saveCart, clearCart } from '../api/cart'
 import { useToast } from '../components/Toast'
 import SetupGuide from '../components/SetupGuide'
 import type { Service, UserService, RemnaUserInfo, ServiceDevices, Device } from '../types'
@@ -219,9 +220,19 @@ export default function ServicesPage() {
       setMyServices(updated)
       if (res?.needs_topup) {
         setTopupPrompt({ amount: res.amount_needed, balance: res.balance })
+        // Сохраняем корзину, чтобы при возврате на дашборд был баннер «завершить покупку».
+        const catalogItem = catalog.find(s => s.service_id === serviceId)
+        saveCart({
+          service_id: serviceId,
+          service_name: catalogItem?.name,
+          cost: catalogItem?.cost,
+          amount_needed: res.amount_needed,
+          balance: res.balance,
+        }).catch(() => { /* backend без БД — игнорируем */ })
       } else {
         setJustBought(prev => new Set([...prev, serviceId]))
         show('Услуга успешно подключена', 'success')
+        clearCart().catch(() => { /* ignore */ })
         setTimeout(() => {
           setJustBought(prev => {
             const next = new Set(prev)
