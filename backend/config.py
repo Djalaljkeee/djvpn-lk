@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_DEFAULT: str = ""   # напр. "200/minute" — общий лимит на любые эндпоинты
 
+    # Maintenance mode (принудительный баннер + ограничение части действий)
+    MAINTENANCE_MODE: bool = False
+    MAINTENANCE_MESSAGE: str = ""
+
     # Scheduler (фоновые задачи)
     SCHEDULER_ENABLED: bool = True
     # Дни хранения in-app уведомлений (0 — не чистить)

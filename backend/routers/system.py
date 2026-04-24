@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 from fastapi import APIRouter, Response
+from pydantic import BaseModel
 
 from config import settings
 from db import db_enabled
@@ -11,6 +12,20 @@ from metrics import render_metrics
 
 
 router = APIRouter()
+
+
+class MaintenanceOut(BaseModel):
+    enabled: bool = False
+    message: str = ""
+
+
+@router.get("/api/system/maintenance", response_model=MaintenanceOut)
+async def maintenance_status():
+    """Флаг обслуживания. Фронт полят раз в минуту, показывает глобальный баннер."""
+    return MaintenanceOut(
+        enabled=bool(settings.MAINTENANCE_MODE),
+        message=settings.MAINTENANCE_MESSAGE or "",
+    )
 
 
 @router.get("/healthz", include_in_schema=False)
