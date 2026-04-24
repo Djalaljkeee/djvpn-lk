@@ -13,10 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from cache import cache
 from config import settings
 from db import db_enabled, init_engine, run_migrations, shutdown_engine
 from logging_config import configure_logging, get_logger
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from rate_limit import limiter
 from routers import auth, devices, payments, public, services, status, user, vpn
 
 
@@ -48,16 +53,21 @@ if settings.SENTRY_DSN:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: применяем миграции и открываем engine, если БД включена
+    # Startup
+    cache.configure()
     if db_enabled():
         await run_migrations()
         init_engine()
     yield
-    # Shutdown: закрываем engine
+    # Shutdown
     await shutdown_engine()
 
 
 app = FastAPI(title="SHM Cabinet API", version="1.0.0", lifespan=lifespan)
+
+# slowapi
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestContextMiddleware)

@@ -9,7 +9,7 @@ from typing import Optional
 from urllib.parse import parse_qsl
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from captcha import unpack_captcha_token
 from config import settings
@@ -20,6 +20,7 @@ from models import (
     RegisterRequest,
     TelegramAuthRequest,
 )
+from rate_limit import limiter
 from security import create_token
 from shm_client import (
     find_exact_shm_login,
@@ -37,7 +38,8 @@ router = APIRouter()
 
 
 @router.post("/api/auth/login", response_model=AuthResponse)
-async def login(req: LoginRequest):
+@limiter.limit("10/minute")
+async def login(request: Request, req: LoginRequest):
     """Авторизация по логину и паролю через SHM."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
@@ -62,7 +64,8 @@ async def login(req: LoginRequest):
 
 
 @router.post("/api/auth/telegram", response_model=AuthResponse)
-async def telegram_auth(req: TelegramAuthRequest):
+@limiter.limit("20/minute")
+async def telegram_auth(request: Request, req: TelegramAuthRequest):
     """Авторизация через Telegram Login Widget."""
     # 1. Локальная проверка hash (безопасность)
     if not verify_telegram_auth(req):
@@ -130,7 +133,8 @@ async def telegram_auth(req: TelegramAuthRequest):
 
 
 @router.get("/api/auth/webapp", response_model=AuthResponse)
-async def webapp_auth(initData: str):
+@limiter.limit("20/minute")
+async def webapp_auth(request: Request, initData: str):
     """Авторизация через Telegram Mini App (WebApp).
     Верифицирует initData по HMAC-SHA256 с ключом 'WebAppData'.
     Сначала пробует SHM /shm/v1/telegram/webapp/auth, затем fallback.
@@ -256,7 +260,8 @@ async def webapp_auth(initData: str):
 
 
 @router.post("/api/auth/register", response_model=AuthResponse)
-async def register(req: RegisterRequest):
+@limiter.limit("5/minute")
+async def register(request: Request, req: RegisterRequest):
     """Регистрация: email — единственный идентификатор и логин пользователя.
 
     Предпочитаем публичную SHM-регистрацию (PUT /shm/v1/user) с проксированием

@@ -1,6 +1,6 @@
 """Payments: history, pay systems, create payment, forecast."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config import settings
 from models import (
@@ -12,6 +12,7 @@ from models import (
     WebappUrlResponse,
 )
 from normalizers import normalize_payment
+from rate_limit import limiter
 from security import get_current_session
 from shm_client import shm_request
 
@@ -55,7 +56,8 @@ async def get_payment_webapp_url(session: dict = Depends(get_current_session)):
 
 
 @router.post("/api/pay/create")
-async def create_payment(req: PaymentRequest, session: dict = Depends(get_current_session)):
+@limiter.limit("20/minute")
+async def create_payment(request: Request, req: PaymentRequest, session: dict = Depends(get_current_session)):
     return await shm_request(
         "PUT", "/shm/v1/user/payment", session["shm_session"],
         json_data={"pay_system_id": req.pay_system_id, "amount": req.amount},

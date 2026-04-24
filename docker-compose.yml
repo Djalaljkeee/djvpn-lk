@@ -17,6 +17,18 @@ services:
     networks:
       - default
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - default
+
   backend:
     image: ghcr.io/djalaljkeee/djvpn-lk-backend:latest
     restart: unless-stopped
@@ -27,6 +39,8 @@ services:
       - PYTHONUNBUFFERED=1
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - default

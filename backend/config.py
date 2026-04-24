@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # Database (пусто = БД выключена, бэкенд работает как stateless-прокси)
     DATABASE_URL: str = ""
 
+    # Redis (пусто = in-memory cache + in-memory rate-limit)
+    REDIS_URL: str = ""
+
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT: str = ""   # напр. "200/minute" — общий лимит на любые эндпоинты
+
     # Observability
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True       # False — человекочитаемый вывод для dev

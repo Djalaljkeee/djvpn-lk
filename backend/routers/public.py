@@ -7,7 +7,7 @@ import time
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from captcha import (
     CAPTCHA_IMAGES,
@@ -17,6 +17,7 @@ from captcha import (
 )
 from config import settings
 from models import CaptchaResponse, PublicConfig
+from rate_limit import limiter
 
 
 router = APIRouter()
@@ -29,7 +30,8 @@ async def get_public_config():
 
 
 @router.get("/api/captcha", response_model=CaptchaResponse)
-async def get_captcha():
+@limiter.limit("10/minute")
+async def get_captcha(request: Request):
     """Получить капчу от SHM. Возвращает data-URI и stateless-token,
     который фронт должен передать вместе с ответом пользователя.
     """

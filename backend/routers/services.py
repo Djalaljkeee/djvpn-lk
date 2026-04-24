@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from models import (
     BuyServiceRequest,
@@ -18,6 +18,7 @@ from models import (
     UserServiceOut,
 )
 from normalizers import is_insufficient_funds_msg, normalize_catalog_service, normalize_user_service
+from rate_limit import limiter
 from security import get_current_session
 from shm_client import get_admin_session, shm_request
 from storage import fetch_sub_url_from_storage
@@ -151,7 +152,8 @@ async def get_service_orders(session: dict = Depends(get_current_session)):
 
 
 @router.post("/api/user/promo", response_model=PromoApplyResponse)
-async def apply_promo(req: PromoCodeRequest, session: dict = Depends(get_current_session)):
+@limiter.limit("5/minute")
+async def apply_promo(request: Request, req: PromoCodeRequest, session: dict = Depends(get_current_session)):
     """Применить промокод."""
     result = await shm_request(
         "POST", "/shm/v1/user/promo", session["shm_session"],
