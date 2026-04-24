@@ -1,4 +1,34 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shmcabinet}
+      POSTGRES_USER: ${POSTGRES_USER:-shmcabinet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shmcabinet}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shmcabinet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Порт наружу не публикуем — БД доступна только внутри сети compose
+    networks:
+      - default
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - default
+
   backend:
     image: ghcr.io/djalaljkeee/djvpn-lk-backend:latest
     restart: unless-stopped
@@ -7,6 +37,11 @@ services:
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - default
       - shm-net
@@ -25,3 +60,6 @@ networks:
   shm-net:
     external: true
     name: ${SHM_NETWORK}
+
+volumes:
+  postgres_data:

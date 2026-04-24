@@ -1,0 +1,49 @@
+{
+  "nav": {
+    "home": "Home",
+    "services": "Plans",
+    "payments": "Payments",
+    "profile": "Profile"
+  },
+  "layout": {
+    "balance": "Balance",
+    "logout": "Sign out",
+    "profile": "Profile"
+  },
+  "common": {
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "retry": "Retry",
+    "yes": "Yes",
+    "no": "No",
+    "copy": "Copy",
+    "copied": "Copied",
+    "language": "Language"
+  },
+  "login": {
+    "title": "Your account",
+    "subtitle": "Manage your subscription and devices",
+    "tabLogin": "Sign in",
+    "tabRegister": "Sign up",
+    "fieldEmail": "Email",
+    "fieldPassword": "Password",
+    "fieldName": "Name",
+    "fieldCaptcha": "Enter the code from the image",
+    "captchaRefresh": "Refresh",
+    "submitLogin": "Sign in",
+    "submitRegister": "Create account",
+    "telegramHint": "Or sign in with Telegram",
+    "verifyEmailTitle": "Verify your email",
+    "verifyEmailHint": "We sent a code to {{email}}. Enter it below.",
+    "verifyCode": "Code from the email",
+    "verifySubmit": "Confirm",
+    "resendCode": "Resend",
+    "errorGeneric": "Request failed",
+    "errorCaptchaExpired": "Captcha expired. Please refresh the image."
+  },
+  "maintenance": {
+    "banner": "Maintenance in progress. Some features may be temporarily unavailable."
+  }
+}

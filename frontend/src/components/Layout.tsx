@@ -1,21 +1,24 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useProfile } from '../hooks/useProfile'
 import { BrandLogo } from './BrandLogo'
+import LanguageSwitcher from './LanguageSwitcher'
 import ParticleCanvas from './ParticleCanvas'
 
 const navItems = [
-  { to: '/',         label: 'Главная',   icon: HomeIcon,    end: true  },
-  { to: '/services', label: 'Подписки',  icon: ServicesIcon, end: false },
-  { to: '/payments', label: 'Платежи',   icon: PayIcon,     end: false },
-  { to: '/profile',  label: 'Профиль',   icon: ProfileIcon, end: false },
+  { to: '/',         labelKey: 'nav.home',     icon: HomeIcon,    end: true  },
+  { to: '/services', labelKey: 'nav.services', icon: ServicesIcon, end: false },
+  { to: '/payments', labelKey: 'nav.payments', icon: PayIcon,     end: false },
+  { to: '/profile',  labelKey: 'nav.profile',  icon: ProfileIcon, end: false },
 ]
 
 export default function Layout() {
   const user = useProfile()
   const { logout } = useAuthStore()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -56,7 +59,7 @@ export default function Layout() {
           </div>
 
           <nav className="hidden md:flex items-center gap-1 rounded-2xl bg-white/5 p-1">
-            {navItems.map(({ to, label, icon: Icon, end }) => (
+            {navItems.map(({ to, labelKey, icon: Icon, end }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -70,7 +73,7 @@ export default function Layout() {
                 }
               >
                 <Icon className="h-4 w-4" />
-                {label}
+                {t(labelKey)}
               </NavLink>
             ))}
           </nav>
@@ -91,7 +94,7 @@ export default function Layout() {
                 </div>
                 <div className="hidden sm:block text-left">
                   <div className="max-w-[120px] truncate text-sm text-white">{displayName}</div>
-                  <div className="text-xs text-slate-300">{user?.login || 'Профиль'}</div>
+                  <div className="text-xs text-slate-300">{user?.login || t('layout.profile')}</div>
                 </div>
                 <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -101,8 +104,12 @@ export default function Layout() {
               {menuOpen && (
                 <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-white/10 bg-[rgba(31,12,45,0.96)] p-2 shadow-2xl backdrop-blur-2xl animate-fade-in">
                   <div className="rounded-xl bg-white/5 px-3 py-3">
-                    <div className="text-xs text-slate-300">Баланс</div>
+                    <div className="text-xs text-slate-300">{t('layout.balance')}</div>
                     <div className="mt-1 text-lg font-mono text-white">{balance.toFixed(2)} ₽</div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
+                    <span className="text-xs text-slate-300">{t('common.language')}</span>
+                    <LanguageSwitcher />
                   </div>
                   <button
                     onClick={handleLogout}
@@ -111,7 +118,7 @@ export default function Layout() {
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
-                    Выйти
+                    {t('layout.logout')}
                   </button>
                 </div>
               )}
@@ -126,7 +133,7 @@ export default function Layout() {
 
       <nav className="safe-bottom md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(24,9,34,0.82)] backdrop-blur-2xl">
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {navItems.map(({ to, labelKey, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -138,7 +145,7 @@ export default function Layout() {
               }
             >
               <Icon className="h-5 w-5" />
-              {label}
+              {t(labelKey)}
             </NavLink>
           ))}
         </div>
