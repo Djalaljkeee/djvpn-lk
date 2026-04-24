@@ -20,9 +20,10 @@ from cache import cache
 from config import settings
 from db import db_enabled, init_engine, run_migrations, shutdown_engine
 from logging_config import configure_logging, get_logger
+from metrics import PrometheusMiddleware
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
-from routers import auth, devices, payments, public, services, status, user, vpn
+from routers import auth, devices, payments, public, services, status, system, user, vpn
 
 
 # Настраиваем logging до всех прочих импортов бизнес-логики, чтобы
@@ -70,6 +71,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(PrometheusMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +89,7 @@ app.include_router(devices.router)
 app.include_router(payments.router)
 app.include_router(vpn.router)
 app.include_router(status.router)
+app.include_router(system.router)
 
 
 # ---------------------------------------------------------------------------
