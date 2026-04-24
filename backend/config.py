@@ -30,6 +30,10 @@ class Settings(BaseSettings):
 
     # Database (пусто = БД выключена, бэкенд работает как stateless-прокси)
     DATABASE_URL: str = ""
+    # True — падение миграций/коннекта считается фатальным (crashloop),
+    # False — бэкенд стартует даже если БД недоступна: cart/notifications
+    # вернут 503, остальные маршруты работают как обычно.
+    DB_REQUIRED: bool = True
 
     # Redis (пусто = in-memory cache + in-memory rate-limit)
     REDIS_URL: str = ""

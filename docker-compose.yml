@@ -36,7 +36,12 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      - PYTHONUNBUFFERED=1
+      PYTHONUNBUFFERED: "1"
+      # DATABASE_URL собирается из POSTGRES_* — один источник правды для
+      # креденшалов. `environment:` в compose имеет приоритет над `env_file:`,
+      # поэтому DATABASE_URL из .env будет проигнорирован. Хотите внешний
+      # postgres — правьте эту строку / убирайте переменную.
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-shmcabinet}:${POSTGRES_PASSWORD:-shmcabinet}@postgres:5432/${POSTGRES_DB:-shmcabinet}"
     depends_on:
       postgres:
         condition: service_healthy
