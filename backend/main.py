@@ -60,8 +60,19 @@ async def lifespan(app: FastAPI):
     # Startup
     cache.configure()
     if db_enabled():
-        await run_migrations()
-        init_engine()
+        try:
+            await run_migrations()
+            init_engine()
+        except Exception as exc:
+            if settings.DB_REQUIRED:
+                log.error("lifespan.db_init_failed", error=str(exc))
+                raise
+            log.warning(
+                "lifespan.db_init_failed_fail_open",
+                error=str(exc),
+                hint="DB_REQUIRED=False: backend starts anyway; "
+                     "DB-backed endpoints (cart/notifications) will return 503.",
+            )
     start_scheduler()
     yield
     # Shutdown
