@@ -24,6 +24,7 @@ from metrics import PrometheusMiddleware
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
 from routers import auth, devices, payments, public, services, status, system, user, vpn
+from scheduler import shutdown_scheduler, start_scheduler
 
 
 # Настраиваем logging до всех прочих импортов бизнес-логики, чтобы
@@ -59,8 +60,10 @@ async def lifespan(app: FastAPI):
     if db_enabled():
         await run_migrations()
         init_engine()
+    start_scheduler()
     yield
     # Shutdown
+    shutdown_scheduler()
     await shutdown_engine()
 
 

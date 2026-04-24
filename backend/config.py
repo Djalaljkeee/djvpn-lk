@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_DEFAULT: str = ""   # напр. "200/minute" — общий лимит на любые эндпоинты
 
+    # Scheduler (фоновые задачи)
+    SCHEDULER_ENABLED: bool = True
+    # Дни хранения in-app уведомлений (0 — не чистить)
+    NOTIFICATION_RETENTION_DAYS: int = 90
+    # Дни, после которых корзина протухает
+    CART_RETENTION_DAYS: int = 7
+
     # Observability
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True       # False — человекочитаемый вывод для dev
