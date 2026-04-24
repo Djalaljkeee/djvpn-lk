@@ -25,13 +25,17 @@ def normalize_user_service(svc: dict) -> dict:
 
     logging.debug("normalize_user_service svc keys=%s data=%s", list(svc.keys()), data)
 
-    # Subscription URL: SHM Marzban module stores it in multiple places
+    # Subscription URL: SHM Marzban module stores it in multiple places.
+    # Historically одна из ветвей скобочно захватывала весь or-chain тернарным
+    # `if isinstance(info.get("data"), dict) else None`, из-за чего при info.data=None
+    # возвращался None даже при валидном svc.data.subscriptionUrl. Разнесли явно.
+    info_data = info.get("data") if isinstance(info.get("data"), dict) else {}
     sub_url = (
         svc.get("subscription_url")
         or svc.get("subscriptionUrl")
         or data.get("subscription_url")
         or data.get("subscriptionUrl")
-        or (info.get("data") or {}).get("subscriptionUrl") if isinstance(info.get("data"), dict) else None
+        or info_data.get("subscriptionUrl")
     )
     return {
         "id":               svc.get("user_service_id"),
