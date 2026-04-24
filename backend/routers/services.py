@@ -5,6 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from cache import invalidate_dashboard
 from models import (
     BuyServiceRequest,
     BuyServiceResponse,
@@ -101,6 +102,7 @@ async def change_service(req: ChangeServiceRequest, session: dict = Depends(get_
 
         amount_needed = round(max(0.0, cost - balance), 2)
         if amount_needed > 0 or insufficient_funds:
+            await invalidate_dashboard(session.get("user_id"))
             return ChangeServiceResponse(
                 success=True,
                 needs_topup=True,
@@ -113,16 +115,19 @@ async def change_service(req: ChangeServiceRequest, session: dict = Depends(get_
     except Exception:
         logging.warning("change_service: balance/catalog check failed", exc_info=True)
 
+    await invalidate_dashboard(session.get("user_id"))
     return ChangeServiceResponse(success=True, message="Тариф успешно изменён")
 
 
 @router.post("/api/user/service/stop")
 async def stop_service(req: StopServiceRequest, session: dict = Depends(get_current_session)):
     """Остановить услугу: POST /shm/v1/user/service/stop."""
-    return await shm_request(
+    result = await shm_request(
         "POST", "/shm/v1/user/service/stop", session["shm_session"],
         json_data={"user_service_id": req.user_service_id},
     )
+    await invalidate_dashboard(session.get("user_id"))
+    return result
 
 
 @router.delete("/api/user/service")
@@ -135,10 +140,12 @@ async def delete_service(req: DeleteServiceRequest, session: dict = Depends(get_
         )
     except HTTPException:
         pass  # уже остановлена или заблокирована — продолжаем
-    return await shm_request(
+    result = await shm_request(
         "DELETE", "/shm/v1/user/service", session["shm_session"],
         json_data={"user_service_id": req.user_service_id},
     )
+    await invalidate_dashboard(session.get("user_id"))
+    return result
 
 
 @router.get("/api/user/service/orders")
@@ -164,6 +171,7 @@ async def apply_promo(request: Request, req: PromoCodeRequest, session: dict = D
     message = "Промокод применен"
     if isinstance(result, dict):
         message = result.get("msg") or result.get("message") or message
+    await invalidate_dashboard(session.get("user_id"))
     return {"ok": True, "status": 200, "message": message, "code": req.code}
 
 
@@ -211,6 +219,7 @@ async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_curren
 
             amount_needed = round(max(0.0, cost - balance), 2)
             if amount_needed > 0:
+                await invalidate_dashboard(session.get("user_id"))
                 return BuyServiceResponse(
                     success=True,
                     needs_topup=True,
@@ -221,4 +230,5 @@ async def buy_service(req: BuyServiceRequest, session: dict = Depends(get_curren
         except Exception:
             pass  # balance check is best-effort; don't fail the whole request
 
+    await invalidate_dashboard(session.get("user_id"))
     return BuyServiceResponse(success=True, message="Услуга успешно подключена")

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Redis (пусто = in-memory cache + in-memory rate-limit)
     REDIS_URL: str = ""
 
+    # TTL агрегированного ответа /api/dashboard, секунды (10..60 рекомендуется)
+    DASHBOARD_CACHE_TTL: int = 30
+
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_DEFAULT: str = ""   # напр. "200/minute" — общий лимит на любые эндпоинты

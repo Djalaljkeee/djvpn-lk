@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from cache import invalidate_dashboard
 from config import settings
 from models import (
     ForecastResponse,
@@ -58,10 +59,12 @@ async def get_payment_webapp_url(session: dict = Depends(get_current_session)):
 @router.post("/api/pay/create")
 @limiter.limit("20/minute")
 async def create_payment(request: Request, req: PaymentRequest, session: dict = Depends(get_current_session)):
-    return await shm_request(
+    result = await shm_request(
         "PUT", "/shm/v1/user/payment", session["shm_session"],
         json_data={"pay_system_id": req.pay_system_id, "amount": req.amount},
     )
+    await invalidate_dashboard(session.get("user_id"))
+    return result
 
 
 @router.get("/api/user/pay/forecast", response_model=ForecastResponse)

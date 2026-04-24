@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -25,6 +26,7 @@ from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
 from routers import auth, devices, payments, public, services, status, system, user, vpn
 from routers import cart as cart_router
+from routers import dashboard as dashboard_router
 from routers import notifications as notifications_router
 from scheduler import shutdown_scheduler, start_scheduler
 
@@ -86,9 +88,13 @@ app = FastAPI(title="SHM Cabinet API", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Порядок middleware: последним добавленный — самый внешний. GZip должен быть
+# наружнее остальных, чтобы сжимать финальный body после прохождения
+# security/metrics/request-context.
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(PrometheusMiddleware)
 app.add_middleware(RequestContextMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -108,6 +114,7 @@ app.include_router(status.router)
 app.include_router(system.router)
 app.include_router(cart_router.router)
 app.include_router(notifications_router.router)
+app.include_router(dashboard_router.router)
 
 
 # ---------------------------------------------------------------------------
