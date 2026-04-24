@@ -1,0 +1,49 @@
+{
+  "nav": {
+    "home": "Главная",
+    "services": "Подписки",
+    "payments": "Платежи",
+    "profile": "Профиль"
+  },
+  "layout": {
+    "balance": "Баланс",
+    "logout": "Выйти",
+    "profile": "Профиль"
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "cancel": "Отменить",
+    "save": "Сохранить",
+    "close": "Закрыть",
+    "retry": "Повторить",
+    "yes": "Да",
+    "no": "Нет",
+    "copy": "Скопировать",
+    "copied": "Скопировано",
+    "language": "Язык"
+  },
+  "login": {
+    "title": "Личный кабинет",
+    "subtitle": "Управляйте подпиской и устройствами",
+    "tabLogin": "Вход",
+    "tabRegister": "Регистрация",
+    "fieldEmail": "Email",
+    "fieldPassword": "Пароль",
+    "fieldName": "Имя",
+    "fieldCaptcha": "Введите код с картинки",
+    "captchaRefresh": "Обновить",
+    "submitLogin": "Войти",
+    "submitRegister": "Создать аккаунт",
+    "telegramHint": "Или войдите через Telegram",
+    "verifyEmailTitle": "Подтвердите email",
+    "verifyEmailHint": "Мы отправили код на {{email}}. Введите его ниже.",
+    "verifyCode": "Код из письма",
+    "verifySubmit": "Подтвердить",
+    "resendCode": "Отправить снова",
+    "errorGeneric": "Не удалось выполнить запрос",
+    "errorCaptchaExpired": "Срок действия капчи истёк. Обновите изображение."
+  },
+  "maintenance": {
+    "banner": "Идут технические работы. Часть функций может быть временно недоступна."
+  }
+}
