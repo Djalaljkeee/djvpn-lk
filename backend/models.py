@@ -310,7 +310,9 @@ class DashboardResponse(BaseModel):
     services: Optional[List[UserServiceOut]] = None
     devices: Optional[List[ServiceDevicesOut]] = None
     remna_info: Optional[List[RemnaUserInfo]] = None
-    orders: Optional[List[PaymentOut]] = None
+    # `orders` — список услуг, доступных пользователю к заказу
+    # (фронт использует поле `service_id` для проверки доступности trial).
+    orders: Optional[List[Dict[str, Any]]] = None
     payments: Optional[List[PaymentOut]] = None
     paysystems: Optional[List[PaySystemV2Out]] = None
     forecast: Optional[ForecastResponse] = None

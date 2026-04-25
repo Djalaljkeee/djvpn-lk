@@ -1,25 +1,26 @@
-import { useEffect, useState } from 'react'
-import { fetchPaySystemsV2, type PaySystemV2 } from '../api/services'
-import { fetchPayments, fetchProfile, applyPromoCode, fetchForecast } from '../api/user'
-import { useAuthStore } from '../store/authStore'
+import { useState } from 'react'
+import { applyPromoCode } from '../api/user'
 import { useToast } from '../components/Toast'
-import type { Payment, PromoApplyResult, ForecastEntry } from '../types'
+import { useDashboard, useDashboardSlice, useInvalidateDashboard } from '../hooks/useDashboard'
+import type { PromoApplyResult } from '../types'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 export default function PaymentsPage() {
-  const { user, setUser } = useAuthStore()
   const { show } = useToast()
-  const [paySystems, setPaySystems] = useState<PaySystemV2[]>([])
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, loading: dashLoading } = useDashboard()
+  const invalidate = useInvalidateDashboard()
+  const paySystems = useDashboardSlice(d => d?.paysystems ?? [])
+  const payments = useDashboardSlice(d => d?.payments ?? [])
+  const forecast = useDashboardSlice(d => d?.forecast?.data ?? [])
+  const balance = useDashboardSlice(d => d?.profile?.balance ?? 0)
   const [promoCode, setPromoCode] = useState('')
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoState, setPromoState] = useState<PromoApplyResult | null>(null)
-  const [forecast, setForecast] = useState<ForecastEntry[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
   const [amount, setAmount] = useState('')
   const suggestedAmounts = [199, 499, 899, 1599]
+  const loading = dashLoading && !data
 
   const buildPayUrl = (shm_url: string) => {
     const n = Number(amount)
@@ -29,19 +30,6 @@ export default function PaymentsPage() {
     params.set('amount', String(n))
     return `${base}?${params.toString()}`
   }
-
-  useEffect(() => {
-    Promise.all([
-      fetchPaySystemsV2().then(setPaySystems),
-      fetchPayments().then(setPayments),
-      fetchProfile().then(setUser),
-      fetchForecast().then(setForecast).catch(() => {}),
-    ])
-      .catch(() => show('Ошибка загрузки данных', 'error'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const balance = user?.balance ?? 0
 
   const forecastEntry = forecast[0] ?? null
   const bonuses = forecastEntry?.bonuses ?? 0
@@ -68,8 +56,7 @@ export default function PaymentsPage() {
       const result = await applyPromoCode(code)
       setPromoState(result)
       setPromoCode('')
-      const profile = await fetchProfile()
-      setUser(profile)
+      await invalidate()
       show(result.message || 'Промокод применен', 'success')
     } catch (e: any) {
       const detail = e?.response?.data?.detail || 'Промокод не найден или уже использован'

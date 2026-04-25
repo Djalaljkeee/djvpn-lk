@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useAuthStore } from '../store/authStore'
+import { useMemo, useState } from 'react'
 import { useToast } from '../components/Toast'
-import { fetchUserServices, fetchProfile, fetchRemnaInfo, fetchUserDevices, fetchServiceOrders } from '../api/user'
 import { buyService } from '../api/services'
-import type { UserService, RemnaUserInfo, ServiceDevices } from '../types'
+import { useDashboard, useDashboardSlice, useInvalidateDashboard } from '../hooks/useDashboard'
 import SubscriptionHero from '../components/dashboard/SubscriptionHero'
 import ServerStatus from '../components/dashboard/ServerStatus'
 import CompactSubscriptionCard from '../components/dashboard/CompactSubscriptionCard'
@@ -14,42 +12,25 @@ import { useCart } from '../hooks/useCart'
 const TRIAL_SERVICE_ID = 4
 
 export default function DashboardPage() {
-  const { setUser } = useAuthStore()
   const { show } = useToast()
-  const [services, setServices] = useState<UserService[]>([])
-  const [remnaMap, setRemnaMap] = useState<Record<number, RemnaUserInfo>>({})
-  const [devicesMap, setDevicesMap] = useState<Record<number, number>>({})
-  const [trialAvailable, setTrialAvailable] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const { data, loading, error } = useDashboard()
+  const services = useDashboardSlice(d => d?.services ?? [])
+  const remnaList = useDashboardSlice(d => d?.remna_info ?? [])
+  const devicesList = useDashboardSlice(d => d?.devices ?? [])
+  const orders = useDashboardSlice(d => d?.orders ?? [])
+  const invalidate = useInvalidateDashboard()
   const [activating, setActivating] = useState(false)
   const { state: cart, clear: clearCartState } = useCart()
 
-  const loadAll = useCallback(async () => {
-    try {
-      const [, svcs, remnaList, devList, orders] = await Promise.all([
-        fetchProfile().then(setUser),
-        fetchUserServices(),
-        fetchRemnaInfo().catch((): RemnaUserInfo[] => []),
-        fetchUserDevices().catch((): ServiceDevices[] => []),
-        fetchServiceOrders().catch((): { service_id: number }[] => []),
-      ])
-      setServices(svcs)
-      const rMap: Record<number, RemnaUserInfo> = {}
-      for (const r of remnaList) rMap[r.user_service_id] = r
-      setRemnaMap(rMap)
-      const dMap: Record<number, number> = {}
-      for (const item of devList) dMap[item.user_service_id] = item.devices.length
-      setDevicesMap(dMap)
-      setTrialAvailable(orders.some(o => o.service_id === TRIAL_SERVICE_ID))
-    } catch {
-      show('Не удалось загрузить данные', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { loadAll() }, [loadAll])
-
+  const remnaMap = useMemo(
+    () => Object.fromEntries(remnaList.map(r => [r.user_service_id, r])),
+    [remnaList],
+  )
+  const devicesMap = useMemo(
+    () => Object.fromEntries(devicesList.map(d => [d.user_service_id, d.devices.length])),
+    [devicesList],
+  )
+  const trialAvailable = orders.some(o => o.service_id === TRIAL_SERVICE_ID)
   const activeServices = services.filter(s => s.status === 1)
 
   const handleActivateTrial = async () => {
@@ -57,7 +38,7 @@ export default function DashboardPage() {
     try {
       await buyService(TRIAL_SERVICE_ID)
       show('Пробный период активирован', 'success')
-      await loadAll()
+      await invalidate()
     } catch (e: any) {
       show(e?.response?.data?.detail || 'Не удалось активировать пробный период', 'error')
     } finally {
@@ -65,12 +46,20 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-8 w-48 rounded-2xl bg-white/5" />
         <div className="h-44 rounded-[1.75rem] bg-white/5" />
         <div className="h-32 rounded-[1.75rem] bg-white/5" />
+      </div>
+    )
+  }
+
+  if (error && !data) {
+    return (
+      <div className="rounded-[1.75rem] border border-rose-300/30 bg-rose-500/10 p-6 text-rose-100">
+        Не удалось загрузить данные. Обновите страницу.
       </div>
     )
   }
