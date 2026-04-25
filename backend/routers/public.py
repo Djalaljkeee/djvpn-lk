@@ -11,9 +11,11 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from captcha import (
     CAPTCHA_IMAGES,
+    decode_base64_image,
     extract_image_from_json,
     gc_captcha_images,
     pack_captcha_token,
+    sniff_image_mime,
 )
 from config import settings
 from models import CaptchaResponse, PublicConfig
@@ -73,39 +75,47 @@ async def get_captcha(request: Request):
 
             image_val, mime_val, shm_session_from_body = extract_image_from_json(payload)
             if image_val:
-                if image_val.startswith("data:"):
-                    data_uri = image_val
-                    try:
-                        content_type = image_val.split(";", 1)[0].split(":", 1)[1] or "image/png"
-                    except Exception:
-                        content_type = "image/png"
-                elif image_val.startswith("http"):
+                if image_val.startswith("http"):
                     try:
                         async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
                             img_resp = await client.get(image_val)
                         if img_resp.status_code == 200:
                             raw_bytes = img_resp.content
                             content_type = img_resp.headers.get("content-type", "image/png").split(";")[0].strip()
-                            data_uri = f"data:{content_type};base64,{base64.b64encode(raw_bytes).decode()}"
                     except Exception as exc:
                         logging.warning("captcha: image URL fetch failed: %s", exc)
                 else:
-                    mime = (mime_val or "image/png").strip()
-                    if not mime.startswith("image/"):
-                        mime = "image/png"
-                    clean = image_val.split(",", 1)[-1].strip()
-                    data_uri = f"data:{mime};base64,{clean}"
-                    content_type = mime
-                    try:
-                        raw_bytes = base64.b64decode(clean + "=" * ((4 - len(clean) % 4) % 4))
-                    except Exception:
-                        raw_bytes = None
+                    if image_val.startswith("data:"):
+                        try:
+                            mime_val = image_val.split(";", 1)[0].split(":", 1)[1] or mime_val
+                        except Exception:
+                            pass
+                    raw_bytes = decode_base64_image(image_val)
+                    if raw_bytes is None:
+                        logging.warning("captcha: base64 decode failed; head=%r", image_val[:80])
+                    content_type = (mime_val or "").strip().lower() or "image/png"
+
+                if raw_bytes:
+                    sniffed = sniff_image_mime(raw_bytes)
+                    if sniffed:
+                        if sniffed != content_type:
+                            logging.info(
+                                "captcha: mime corrected from %r to %r via byte sniff",
+                                content_type, sniffed,
+                            )
+                        content_type = sniffed
+                    elif not content_type.startswith("image/"):
+                        content_type = "image/png"
+                    data_uri = f"data:{content_type};base64,{base64.b64encode(raw_bytes).decode()}"
             else:
                 logging.warning("captcha: no image field found in SHM JSON; keys=%s", top_keys)
     else:
         raw_bytes = resp.content
         content_type = raw_content_type.split(";")[0].strip() or "image/png"
-        if not content_type.startswith("image/"):
+        sniffed = sniff_image_mime(raw_bytes)
+        if sniffed:
+            content_type = sniffed
+        elif not content_type.startswith("image/"):
             content_type = "image/png"
         data_uri = f"data:{content_type};base64,{base64.b64encode(raw_bytes).decode()}"
 

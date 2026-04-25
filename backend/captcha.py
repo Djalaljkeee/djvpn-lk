@@ -1,5 +1,7 @@
 """SHM captcha helpers: stateless token + in-process image cache."""
 
+import base64
+import binascii
 import time
 from typing import Optional
 
@@ -46,6 +48,47 @@ def gc_captcha_images() -> None:
     expired = [k for k, (_, _, ts) in CAPTCHA_IMAGES.items() if now - ts > CAPTCHA_IMG_TTL]
     for k in expired:
         CAPTCHA_IMAGES.pop(k, None)
+
+
+def sniff_image_mime(data: bytes) -> Optional[str]:
+    """Detect image MIME type from raw bytes via magic numbers / SVG signature.
+
+    SHM в ряде случаев отдаёт base64 SVG без явного content-type, а наш код
+    раньше по умолчанию подставлял image/png — браузер такую data-URI не рендерил.
+    """
+    if not data:
+        return None
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return "image/gif"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    head = data.lstrip()[:1024].lower()
+    if head.startswith(b"<svg") or head.startswith(b"<?xml") or head.startswith(b"<!doctype svg"):
+        if b"<svg" in head or b"<svg" in data[:4096].lower():
+            return "image/svg+xml"
+    return None
+
+
+def decode_base64_image(b64: str) -> Optional[bytes]:
+    """Decode a base64 string tolerating URL-safe alphabet, missing padding,
+    embedded whitespace and an optional `data:...;base64,` prefix.
+    """
+    if not b64:
+        return None
+    if "," in b64 and b64.lstrip().startswith("data:"):
+        b64 = b64.split(",", 1)[1]
+    cleaned = "".join(b64.split())
+    cleaned = cleaned.replace("-", "+").replace("_", "/")
+    pad = (-len(cleaned)) % 4
+    cleaned += "=" * pad
+    try:
+        return base64.b64decode(cleaned, validate=False)
+    except (binascii.Error, ValueError):
+        return None
 
 
 def extract_image_from_json(payload) -> tuple[Optional[str], Optional[str], Optional[str]]:
