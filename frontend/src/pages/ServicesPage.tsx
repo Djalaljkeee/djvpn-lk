@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
-import { fetchServices, buyService } from '../api/services'
-import { fetchUserServices, changeService, fetchServiceOrders, fetchUserDevices, fetchRemnaInfo, deleteAllDevices } from '../api/user'
+import { buyService } from '../api/services'
+import { fetchUserServices, changeService, deleteAllDevices } from '../api/user'
 import { saveCart, clearCart } from '../api/cart'
 import { useToast } from '../components/Toast'
+import { useDashboard, useDashboardSlice, useInvalidateDashboard, useCatalog } from '../hooks/useDashboard'
 import SetupGuide from '../components/SetupGuide'
-import type { Service, UserService, RemnaUserInfo, ServiceDevices, Device } from '../types'
+import type { Service, UserService } from '../types'
 import PlanCard from '../components/dashboard/PlanCard'
 import TrafficSection from '../components/dashboard/TrafficSection'
 import DeviceConnectionCard from '../components/dashboard/DeviceConnectionCard'
@@ -40,16 +41,15 @@ function ChangeTariffModal({
   svc,
   catalog,
   onClose,
-  onChanged,
   onNeedsTopup,
 }: {
   svc: UserService
   catalog: Service[]
   onClose: () => void
-  onChanged: (services: UserService[], confirmed: boolean) => void
   onNeedsTopup: (prompt: { amount: number; balance: number }) => void
 }) {
   const { show } = useToast()
+  const invalidate = useInvalidateDashboard()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const available = catalog
@@ -62,14 +62,13 @@ function ChangeTariffModal({
     try {
       const res = await changeService(svc.id, selectedId)
       if (res?.needs_topup) {
-        const services = await fetchUserServices()
-        onChanged(services, false)
+        await invalidate()
         onNeedsTopup({ amount: res.amount_needed, balance: res.balance })
         onClose()
         return
       }
       const result = await waitForServiceChange(svc.id, svc.service_id)
-      onChanged(result.services, result.confirmed)
+      await invalidate()
       show(
         result.confirmed
           ? 'Тариф обновлён и уже отражён в списке услуг'
@@ -149,48 +148,37 @@ function ChangeTariffModal({
 export default function ServicesPage() {
   const { show } = useToast()
   const navigate = useNavigate()
-  const [catalog, setCatalog] = useState<Service[]>([])
-  const [myServices, setMyServices] = useState<UserService[]>([])
-  const [availableIds, setAvailableIds] = useState<Set<number>>(new Set())
-  const [loading, setLoading] = useState(true)
+  const { data, loading: dashLoading, refreshing } = useDashboard()
+  const { catalog, loading: catalogLoading } = useCatalog()
+  const invalidate = useInvalidateDashboard()
+  const myServices = useDashboardSlice(d => d?.services ?? [])
+  const orders = useDashboardSlice(d => d?.orders ?? [])
+  const remnaList = useDashboardSlice(d => d?.remna_info ?? [])
+  const devicesList = useDashboardSlice(d => d?.devices ?? [])
   const [buying, setBuying] = useState<number | null>(null)
   const [justBought, setJustBought] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState<'all' | 'available' | 'mine'>('all')
   const [changingId, setChangingId] = useState<number | null>(null)
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
   const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
-  const [remnaMap, setRemnaMap] = useState<Record<number, RemnaUserInfo>>({})
-  const [devicesMap, setDevicesMap] = useState<Record<number, Device[]>>({})
-  const [refreshing, setRefreshing] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
 
-  const reload = useCallback(async () => {
-    const [cat, svcs, orders, remnaList, devList] = await Promise.all([
-      fetchServices(),
-      fetchUserServices(),
-      fetchServiceOrders(),
-      fetchRemnaInfo().catch((): RemnaUserInfo[] => []),
-      fetchUserDevices().catch((): ServiceDevices[] => []),
-    ])
-    setCatalog(cat)
-    setMyServices(svcs)
-    setAvailableIds(new Set(orders.map(o => o.service_id)))
-    const rMap: Record<number, RemnaUserInfo> = {}
-    for (const r of remnaList) rMap[r.user_service_id] = r
-    setRemnaMap(rMap)
-    const dMap: Record<number, Device[]> = {}
-    for (const item of devList) dMap[item.user_service_id] = item.devices
-    setDevicesMap(dMap)
-  }, [])
+  const availableIds = useMemo(() => new Set(orders.map(o => o.service_id)), [orders])
+  const remnaMap = useMemo(
+    () => Object.fromEntries(remnaList.map(r => [r.user_service_id, r])),
+    [remnaList],
+  )
+  const devicesMap = useMemo(
+    () => Object.fromEntries(devicesList.map(d => [d.user_service_id, d.devices])),
+    [devicesList],
+  )
 
-  useEffect(() => {
-    reload()
-      .catch(() => show('Ошибка загрузки каталога', 'error'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const myActiveIds = new Set(myServices.filter(s => s.status === 1).map(s => s.service_id))
+  const myActiveIds = useMemo(
+    () => new Set(myServices.filter(s => s.status === 1).map(s => s.service_id)),
+    [myServices],
+  )
   const changingSvc = changingId !== null ? myServices.find(s => s.id === changingId) : null
+  const loading = (dashLoading || catalogLoading) && !data
 
   const sortedCatalog = useMemo(() => {
     const activeCatalog = catalog.filter(s => {
@@ -216,8 +204,7 @@ export default function ServicesPage() {
     setBuying(serviceId)
     try {
       const res = await buyService(serviceId)
-      const updated = await fetchUserServices()
-      setMyServices(updated)
+      await invalidate()
       if (res?.needs_topup) {
         setTopupPrompt({ amount: res.amount_needed, balance: res.balance })
         // Сохраняем корзину, чтобы при возврате на дашборд был баннер «завершить покупку».
@@ -249,16 +236,10 @@ export default function ServicesPage() {
   }
 
   const handleRefreshTraffic = async () => {
-    setRefreshing(true)
     try {
-      const remnaList = await fetchRemnaInfo()
-      const rMap: Record<number, RemnaUserInfo> = {}
-      for (const r of remnaList) rMap[r.user_service_id] = r
-      setRemnaMap(rMap)
+      await invalidate()
     } catch {
       show('Не удалось обновить трафик', 'error')
-    } finally {
-      setRefreshing(false)
     }
   }
 
@@ -385,7 +366,6 @@ export default function ServicesPage() {
           svc={changingSvc}
           catalog={catalog}
           onClose={() => setChangingId(null)}
-          onChanged={(services, _confirmed) => setMyServices(services)}
           onNeedsTopup={prompt => setTopupPrompt(prompt)}
         />
       )}
@@ -493,15 +473,10 @@ export default function ServicesPage() {
               devices={activeDevices}
               user_service_id={activeSvc.id}
               totalLimit={activeRemna?.hwid_device_limit ?? activeRemna?.limit_ip ?? undefined}
-              onDeleted={hwid =>
-                setDevicesMap(prev => ({
-                  ...prev,
-                  [activeSvc.id]: (prev[activeSvc.id] ?? []).filter(d => d.hwid !== hwid),
-                }))
-              }
+              onDeleted={() => { void invalidate() }}
               onDeleteAll={async () => {
                 await deleteAllDevices(activeSvc.id)
-                setDevicesMap(prev => ({ ...prev, [activeSvc.id]: [] }))
+                await invalidate()
               }}
             />
           </div>

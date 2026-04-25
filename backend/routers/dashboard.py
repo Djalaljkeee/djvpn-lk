@@ -151,6 +151,19 @@ async def _fetch_payments(session: dict) -> list[dict]:
     return [normalize_payment(p) for p in data.get("data", [])]
 
 
+async def _fetch_service_orders(session: dict) -> list[dict]:
+    """Каталог услуг, доступных пользователю к заказу (/shm/v1/service/order).
+
+    Не путать с историей платежей — это используется фронтом для проверки,
+    доступен ли пробный период (orders.some(o => o.service_id === TRIAL)).
+    """
+    data = await shm_request(
+        "GET", "/shm/v1/service/order", session["shm_session"],
+        params={"limit": 100, "offset": 0},
+    )
+    return data.get("data", []) or []
+
+
 async def _fetch_paysystems(session: dict) -> list[dict]:
     data = await shm_request("GET", "/shm/v1/user/pay/paysystems", session["shm_session"])
     return data.get("data", []) or []
@@ -251,6 +264,7 @@ async def _collect(session: dict) -> tuple[dict, dict, dict]:
         _timed("devices", devices_block),
         _timed("remna_info", remna_info_block),
         _timed("payments", lambda: _fetch_payments(session)),
+        _timed("orders", lambda: _fetch_service_orders(session)),
         _timed("paysystems", lambda: _fetch_paysystems(session)),
         _timed("forecast", lambda: _fetch_forecast(session)),
         _timed("notifications", lambda: _fetch_notifications(session)),
@@ -269,17 +283,16 @@ async def _collect(session: dict) -> tuple[dict, dict, dict]:
         except (TypeError, ValueError):
             balance = None
 
-    payments_list = blocks.get("payments") or []
-
     payload = {
         "profile": profile or None,
         "balance": balance,
         "services": blocks.get("services"),
         "devices": blocks.get("devices"),
         "remna_info": blocks.get("remna_info"),
-        # `orders` — алиас платёжной истории (см. подтверждённое решение в плане).
-        "orders": payments_list,
-        "payments": payments_list,
+        # `orders` — каталог услуг, доступных пользователю к заказу
+        # (соответствует /api/user/service/orders, не payments).
+        "orders": blocks.get("orders"),
+        "payments": blocks.get("payments"),
         "paysystems": blocks.get("paysystems"),
         "forecast": blocks.get("forecast"),
         "notifications": blocks.get("notifications"),
