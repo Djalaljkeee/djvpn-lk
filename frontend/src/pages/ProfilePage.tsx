@@ -210,15 +210,17 @@ export default function ProfilePage() {
         {/* Info rows */}
         <div className="space-y-0 divide-y divide-white/8 rounded-xl border border-white/8 bg-surface-2 overflow-hidden">
           {/* Telegram ID */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-slate-300">
-              <svg className="h-4 w-4 text-brand-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.897 4.225 12.99c-.654-.203-.667-.654.136-.968l11.57-4.461c.545-.196 1.021.131.963.66z" />
-              </svg>
-              Telegram ID
+          {telegramId && (
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                <svg className="h-4 w-4 text-brand-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.897 4.225 12.99c-.654-.203-.667-.654.136-.968l11.57-4.461c.545-.196 1.021.131.963.66z" />
+                </svg>
+                Telegram ID
+              </div>
+              <span className="text-sm text-white font-mono">{telegramId}</span>
             </div>
-            <span className="text-sm text-white font-mono">{telegramId ?? '—'}</span>
-          </div>
+          )}
 
           {/* Email */}
           <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -241,16 +243,15 @@ export default function ProfilePage() {
                     Подтверждён
                   </span>
                 ) : (
-                  <button
-                    onClick={openVerifyModal}
-                    title="Email не подтверждён — подтвердите кодом из письма"
-                    className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 hover:bg-amber-500/20 transition-colors"
+                  <span
+                    title="Email не подтверждён"
+                    className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300"
                   >
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                     </svg>
-                    Подтвердить
-                  </button>
+                    Не подтверждён
+                  </span>
                 )}
                 <button
                   onClick={openEmailModal}
@@ -269,47 +270,35 @@ export default function ProfilePage() {
               </button>
             )}
           </div>
-
-          {/* Дата рождения */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-slate-300">
-              <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-              </svg>
-              Дата рождения
-            </div>
-            <span className="text-sm text-red-400">Не указана</span>
-          </div>
         </div>
 
         {/* Action buttons */}
-        <div className="mt-3 space-y-2">
-          {!email && (
-            <button
-              onClick={openEmailModal}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
-            >
-              <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-              </svg>
-              Указать email
-            </button>
-          )}
-          {email && !emailVerified && (
-            <button
-              onClick={openVerifyModal}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-500/10 py-3 text-sm font-medium text-amber-200 hover:bg-amber-500/20 transition-colors"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-              Подтвердить email
-            </button>
-          )}
-          <button className="flex w-full items-center justify-center rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors">
-            Указать дату рождения и получить бонус
-          </button>
-        </div>
+        {(!email || (email && !emailVerified)) && (
+          <div className="mt-3 space-y-2">
+            {!email && (
+              <button
+                onClick={openEmailModal}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+              >
+                <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                </svg>
+                Указать email
+              </button>
+            )}
+            {email && !emailVerified && (
+              <button
+                onClick={openVerifyModal}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-500/10 py-3 text-sm font-medium text-amber-200 hover:bg-amber-500/20 transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                Подтвердить email
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Баланс и статус */}
@@ -372,11 +361,11 @@ export default function ProfilePage() {
       {/* Email modal */}
       {emailModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
           onClick={() => !emailSaving && setEmailModalOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 shadow-xl sm:rounded-2xl animate-slide-up"
+            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] shadow-xl sm:rounded-2xl sm:pb-5 animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -432,11 +421,11 @@ export default function ProfilePage() {
       {/* Email verification modal */}
       {verifyModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
           onClick={() => !verifyBusy && setVerifyModalOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 shadow-xl sm:rounded-2xl animate-slide-up"
+            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] shadow-xl sm:rounded-2xl sm:pb-5 animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -499,7 +488,7 @@ export default function ProfilePage() {
 
       {/* Terms of Service modal */}
       {tosOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-surface-0 animate-slide-up">
+        <div className="fixed inset-0 z-[80] flex flex-col bg-surface-0 animate-slide-up">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-surface-0/95 px-4 py-4 backdrop-blur-xl">
             <h2 className="text-base font-semibold text-white">Правила и условия сервиса</h2>
             <button
