@@ -121,13 +121,6 @@ export default function ProfilePage() {
     setEmailModalOpen(true)
   }
 
-  const refreshProfile = async () => {
-    try {
-      const fresh = await fetchProfile()
-      setUser(fresh)
-    } catch {}
-  }
-
   const handleSaveEmail = async () => {
     const value = emailInput.trim()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
