@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
+import { useInvalidateDashboard } from '../hooks/useDashboard'
 import { updateEmail, fetchProfile, requestEmailVerification, verifyEmailToken, changePassword } from '../api/user'
 
 const TOS_TEXT = `Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между пользователем (далее — «Пользователь») и сервисом DJ VPN (далее — «Сервис») относительно использования услуг.
@@ -85,6 +86,7 @@ export default function ProfilePage() {
   const { user, setUser, logout } = useAuthStore()
   const navigate = useNavigate()
   const { show } = useToast()
+  const invalidateDashboard = useInvalidateDashboard()
   const [tosOpen, setTosOpen] = useState(false)
   const [emailModalOpen, setEmailModalOpen] = useState(false)
   const [emailInput, setEmailInput] = useState('')
@@ -206,9 +208,12 @@ export default function ProfilePage() {
     setVerifyBusy(true)
     try {
       await verifyEmailToken(code)
-      await refreshProfile()
+      // Оптимистично обновляем стор — SHM подтвердил верификацию.
+      if (user) setUser({ ...user, email_verified: true })
       setVerifyModalOpen(false)
       show('Email подтверждён', 'success')
+      // Инвалидируем дашборд, чтобы кешированные данные не перезаписали статус.
+      invalidateDashboard()
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Неверный код'
       show(typeof msg === 'string' ? msg : 'Неверный код', 'error')
