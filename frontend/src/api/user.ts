@@ -58,3 +58,6 @@ export const verifyEmailToken = (token: string) =>
   api
     .post<{ ok: boolean; verified: boolean; message: string }>('/user/email/verify', { token })
     .then(r => r.data)
+
+export const changePassword = (password: string) =>
+  api.post<{ ok: boolean }>('/user/passwd', { password }).then(r => r.data)

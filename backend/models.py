@@ -80,6 +80,10 @@ class UpdateEmailRequest(BaseModel):
     email: str
 
 
+class ChangePasswordRequest(BaseModel):
+    password: str
+
+
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 """User profile, email, referrals."""
 
+import asyncio
 import logging
 from typing import List
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from models import (
     EMAIL_RE,
+    ChangePasswordRequest,
     EmailVerifyRequest,
     EmailVerifyResponse,
     ReferralSummaryOut,
@@ -43,8 +45,22 @@ _EMAIL_VERIFIED_KEYS = (
 
 @router.get("/api/user/profile", response_model=UserProfile)
 async def get_profile(session: dict = Depends(get_current_session)):
-    data = await shm_request("GET", "/shm/v1/user", session["shm_session"])
+    results = await asyncio.gather(
+        shm_request("GET", "/shm/v1/user", session["shm_session"]),
+        shm_request("GET", "/shm/v1/user/email", session["shm_session"]),
+        return_exceptions=True,
+    )
+    data = results[0] if not isinstance(results[0], Exception) else {}
+    email_data = results[1] if not isinstance(results[1], Exception) else {}
+
     user = dict((data.get("data") or [{}])[0])
+
+    # Merge email + verified status from the dedicated email endpoint.
+    if isinstance(email_data, dict):
+        email_row = (email_data.get("data") or [{}])[0]
+        if email_row.get("email"):
+            user["email"] = email_row["email"]
+            user.setdefault("email_verified", _coerce_bool(email_row.get("email_verified")))
 
     # SHM may return email verification flag under several names — normalize.
     raw = next(
@@ -91,9 +107,9 @@ async def update_email(req: UpdateEmailRequest, session: dict = Depends(get_curr
 @router.post("/api/user/email/request-verify")
 async def request_email_verify(session: dict = Depends(get_current_session)):
     """Отправить повторно письмо с кодом подтверждения email."""
-    profile = await shm_request("GET", "/shm/v1/user", session["shm_session"])
-    user = (profile.get("data") or [{}])[0]
-    email = (user.get("email") or "").strip()
+    email_data = await shm_request("GET", "/shm/v1/user/email", session["shm_session"])
+    email_row = (email_data.get("data") or [{}])[0]
+    email = (email_row.get("email") or "").strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email не привязан")
 
@@ -132,6 +148,21 @@ async def verify_email(req: EmailVerifyRequest, session: dict = Depends(get_curr
         raise HTTPException(status_code=400, detail=result.get("msg") or "Неверный код подтверждения")
 
     return EmailVerifyResponse(ok=True, verified=True, message="Email подтверждён")
+
+
+@router.post("/api/user/passwd")
+async def change_password(req: ChangePasswordRequest, session: dict = Depends(get_current_session)):
+    """Сменить пароль пользователя: POST /shm/v1/user/passwd."""
+    password = (req.password or "").strip()
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Пароль должен быть не менее 6 символов")
+    result = await shm_request(
+        "POST", "/shm/v1/user/passwd", session["shm_session"],
+        json_data={"password": password},
+    )
+    if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
+        raise HTTPException(status_code=400, detail=result.get("msg") or "Не удалось сменить пароль")
+    return {"ok": True}
 
 
 @router.get("/api/user/referrals", response_model=ReferralSummaryOut)
