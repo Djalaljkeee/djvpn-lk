@@ -15,6 +15,7 @@ from models import (
     UpdateEmailRequest,
     UserProfile,
 )
+from cache import invalidate_dashboard
 from security import get_current_session
 from shm_client import shm_request
 
@@ -130,7 +131,12 @@ async def request_email_verify(session: dict = Depends(get_current_session)):
 
 @router.post("/api/user/email/verify", response_model=EmailVerifyResponse)
 async def verify_email(req: EmailVerifyRequest, session: dict = Depends(get_current_session)):
-    """Подтвердить email кодом из письма: POST /shm/v1/user/email/verify."""
+    """Подтвердить email кодом из письма: POST /shm/v1/user/email/verify.
+
+    SHM возвращает HTTP 200 вне зависимости от результата, поэтому после
+    вызова проверяем GET /shm/v1/user/email — если email_verified стал 1,
+    считаем успехом; иначе возвращаем ошибку.
+    """
     token = (req.token or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="Введите код из письма")
@@ -138,7 +144,8 @@ async def verify_email(req: EmailVerifyRequest, session: dict = Depends(get_curr
     try:
         result = await shm_request(
             "POST", "/shm/v1/user/email/verify", session["shm_session"],
-            json_data={"token": token},
+            # SHM может ждать поле «code» вместо «token» — шлём оба.
+            json_data={"token": token, "code": token},
         )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
@@ -147,6 +154,18 @@ async def verify_email(req: EmailVerifyRequest, session: dict = Depends(get_curr
     if isinstance(result, dict) and result.get("status") and int(result.get("status", 0)) >= 400:
         raise HTTPException(status_code=400, detail=result.get("msg") or "Неверный код подтверждения")
 
+    # Проверяем реальный статус в SHM — HTTP 200 не гарантирует верификацию.
+    try:
+        email_data = await shm_request("GET", "/shm/v1/user/email", session["shm_session"])
+        email_row = (email_data.get("data") or [{}])[0]
+        if not _coerce_bool(email_row.get("email_verified")):
+            raise HTTPException(status_code=400, detail="Неверный или истёкший код подтверждения")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logging.warning("verify_email: post-check failed: %s", exc)
+
+    await invalidate_dashboard(session.get("user_id"))
     return EmailVerifyResponse(ok=True, verified=True, message="Email подтверждён")
 
 
