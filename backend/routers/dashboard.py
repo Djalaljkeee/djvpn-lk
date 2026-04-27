@@ -41,8 +41,23 @@ log = get_logger("dashboard")
 
 
 async def _fetch_profile(session: dict) -> dict:
-    data = await shm_request("GET", "/shm/v1/user", session["shm_session"])
-    return (data.get("data") or [{}])[0]
+    results = await asyncio.gather(
+        shm_request("GET", "/shm/v1/user", session["shm_session"]),
+        shm_request("GET", "/shm/v1/user/email", session["shm_session"]),
+        return_exceptions=True,
+    )
+    data = results[0] if not isinstance(results[0], Exception) else {}
+    email_data = results[1] if not isinstance(results[1], Exception) else {}
+
+    profile = dict((data.get("data") or [{}])[0])
+
+    if isinstance(email_data, dict):
+        email_row = (email_data.get("data") or [{}])[0]
+        if email_row.get("email"):
+            profile["email"] = email_row["email"]
+            profile.setdefault("email_verified", bool(email_row.get("email_verified")))
+
+    return profile
 
 
 async def _fetch_user_services_raw(session: dict) -> list[dict]:
