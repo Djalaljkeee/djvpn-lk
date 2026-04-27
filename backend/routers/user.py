@@ -20,10 +20,40 @@ from shm_client import shm_request
 router = APIRouter()
 
 
+def _coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "y", "on", "t")
+    return False
+
+
+_EMAIL_VERIFIED_KEYS = (
+    "email_verified",
+    "email_verify",
+    "email_confirmed",
+    "is_email_verified",
+    "email_is_verified",
+    "verified_email",
+    "email_status",
+)
+
+
 @router.get("/api/user/profile", response_model=UserProfile)
 async def get_profile(session: dict = Depends(get_current_session)):
     data = await shm_request("GET", "/shm/v1/user", session["shm_session"])
-    return (data.get("data") or [{}])[0]
+    user = dict((data.get("data") or [{}])[0])
+
+    # SHM may return email verification flag under several names — normalize.
+    raw = next(
+        (user[k] for k in _EMAIL_VERIFIED_KEYS if k in user and user[k] is not None),
+        None,
+    )
+    user["email_verified"] = _coerce_bool(raw) if raw is not None else False
+
+    return user
 
 
 @router.put("/api/user/email")
