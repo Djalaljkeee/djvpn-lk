@@ -118,10 +118,23 @@ async def shm_public_register(
         except Exception:
             data = {}
         # SHM может вернуть session_id сразу, либо только статус
-        sid = data.get("session_id")
+        sid = data.get("session_id") if isinstance(data, dict) else None
         if not sid and isinstance(data, dict):
-            sid = (data.get("data") or [{}])[0].get("session_id") if isinstance(data.get("data"), list) else None
-        return sid
+            data_list = data.get("data")
+            if isinstance(data_list, list) and data_list and isinstance(data_list[0], dict):
+                sid = data_list[0].get("session_id")
+        if sid:
+            return sid
+        # PUT /shm/v1/user отдаёт user-данные без session_id — логинимся
+        # тем же паролем, чтобы получить сессию.
+        sid = await shm_password_login(login, password)
+        if sid:
+            return sid
+        logging.error("public register: user created but auto-login failed for %s", login)
+        raise HTTPException(
+            status_code=500,
+            detail="Аккаунт создан, но не удалось войти. Попробуйте войти вручную.",
+        )
 
     detail = resp.text[:300]
     logging.warning("public register: SHM %s: %s", resp.status_code, detail)
