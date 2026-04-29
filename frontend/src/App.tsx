@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import { useDashboardStore } from './store/dashboardStore'
 import { ToastProvider } from './components/Toast'
 import { useEffect, useState } from 'react'
 import { loginWithWebApp } from './api/auth'
@@ -33,13 +34,18 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
   const { setAuth, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
-  const [checking, setChecking] = useState(true)
+  // Внутри Telegram WebApp всегда обновляем shm_session, даже если в
+  // localStorage лежит старый токен — иначе /api/dashboard ходит со
+  // stale-сессией и возвращает пустой profile/services.
+  const [checking, setChecking] = useState(
+    () => Boolean(window.Telegram?.WebApp?.initData),
+  )
 
   useEffect(() => {
     const tgWebApp = window.Telegram?.WebApp
     const initData = tgWebApp?.initData
 
-    if (!initData || isAuthenticated()) {
+    if (!initData) {
       setChecking(false)
       return
     }
@@ -48,10 +54,14 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
     tgWebApp?.ready()
     tgWebApp?.expand()
 
+    const wasAuthenticated = isAuthenticated()
     loginWithWebApp(initData)
       .then(({ token, user }) => {
         setAuth(token, user)
-        navigate('/', { replace: true })
+        // Кеш дашборда мог быть привязан к прошлой shm_session —
+        // сбрасываем, чтобы свежий запрос ушёл с обновлёнными credentials.
+        useDashboardStore.getState().reset()
+        if (!wasAuthenticated) navigate('/', { replace: true })
       })
       .catch(() => {
         // Авторизация не прошла — показываем приложение как есть
