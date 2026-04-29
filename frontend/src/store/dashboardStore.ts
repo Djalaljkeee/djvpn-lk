@@ -83,10 +83,12 @@ export const useDashboardStore = create<DashboardState>()(
   ),
 )
 
-// Logout coupling: при сбросе токена в authStore — чистим кеш дашборда.
+// Auth coupling: на любую смену токена в authStore — чистим кеш дашборда.
+// Покрывает logout (token → null) и refresh (например, повторная WebApp-
+// авторизация выдаёт новую shm_session — старые данные могут быть пустыми).
 // Module-level подписка избегает циклических импортов.
 useAuthStore.subscribe((state, prev) => {
-  if (prev.token && !state.token) {
+  if (prev.token !== state.token) {
     useDashboardStore.getState().reset()
   }
 })
