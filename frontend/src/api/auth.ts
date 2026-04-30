@@ -14,6 +14,7 @@ export interface RegisterPayload {
   email?: string
   captcha_token?: string
   captcha_code?: string
+  partner_id?: number
 }
 
 export const loginWithPassword = async (login: string, password: string) => {
@@ -21,8 +22,9 @@ export const loginWithPassword = async (login: string, password: string) => {
   return data
 }
 
-export const loginWithTelegram = async (tgData: object) => {
-  const { data } = await api.post<AuthResult>('/auth/telegram', tgData)
+export const loginWithTelegram = async (tgData: object, partnerId?: number) => {
+  const body = partnerId ? { ...tgData, partner_id: partnerId } : tgData
+  const { data } = await api.post<AuthResult>('/auth/telegram', body)
   return data
 }
 
@@ -31,8 +33,10 @@ export const registerWithPassword = async (payload: RegisterPayload) => {
   return data
 }
 
-export const loginWithWebApp = async (initData: string) => {
-  const { data } = await api.get<AuthResult>('/auth/webapp', { params: { initData } })
+export const loginWithWebApp = async (initData: string, partnerId?: number) => {
+  const params: Record<string, string> = { initData }
+  if (partnerId) params.partner_id = String(partnerId)
+  const { data } = await api.get<AuthResult>('/auth/webapp', { params })
   return data
 }
 

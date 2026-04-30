@@ -11,6 +11,7 @@ import {
 import { verifyEmailToken, requestEmailVerification, fetchProfile } from '../api/user'
 import { fetchConfig } from '../api/services'
 import { BrandLogo } from '../components/BrandLogo'
+import { clearRefId, getRefId } from '../utils/referral'
 
 declare global {
   interface Window { onTelegramAuth?: (user: object) => void }
@@ -83,8 +84,9 @@ export default function LoginPage() {
       setLoading(true)
       setError('')
       try {
-        const { token, user } = await loginWithTelegram(tgUser)
+        const { token, user } = await loginWithTelegram(tgUser, getRefId() ?? undefined)
         setAuth(token, user)
+        clearRefId()
         navigate('/')
       } catch (e: any) {
         setError(e?.response?.data?.detail || 'Ошибка авторизации через Telegram')
@@ -154,8 +156,10 @@ export default function LoginPage() {
           email: trimmedEmail,
           captcha_token: captcha?.token,
           captcha_code: captchaAvailable ? captchaCode : undefined,
+          partner_id: getRefId() ?? undefined,
         })
         setAuth(result.token, result.user)
+        clearRefId()
         if (result.email_verification_sent) {
           setVerifyEmail(trimmedEmail)
           setVerifyCode('')

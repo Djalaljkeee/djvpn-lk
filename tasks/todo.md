@@ -1,1 +1,51 @@
+# Реферальные ссылки в личном кабинете
 
+## Контекст
+
+В Telegram-боте уже работает: `https://t.me/Dj_VPN_bot?start=2` → у нового пользователя сохраняется `partner_id=2` (поле «ID агента» в SHM-карточке клиента).
+
+Нужно сделать аналог для веба: ссылка `https://lk.<домен>/?ref=2` → новый пользователь, зарегистрированный через ЛК (любым способом), получает `partner_id=2`.
+
+В Swagger публичный `partner_id` явно не описан, но SHM кладёт произвольные поля в `PUT /shm/v1/user` и `PUT /shm/v1/admin/user` (так же делает бот). Передаём `partner_id` в теле запроса при создании.
+
+## План
+
+### Backend
+- [x] `models.py`: добавить `partner_id: Optional[int]` в `RegisterRequest` и `TelegramAuthRequest`.
+- [x] `shm_client.py::shm_public_register`: принимать `partner_id` и подмешивать в `body`.
+- [x] `routers/auth.py::register`: пробрасывать `partner_id` в публичный endpoint и в admin-fallback `PUT /shm/v1/admin/user`.
+- [x] `routers/auth.py::telegram_auth`: пробрасывать `partner_id` в SHM widget-payload + в admin-create в fallback.
+- [x] `routers/auth.py::webapp_auth`: принять `partner_id` как query-параметр, пробросить в fallback admin-create + SHM webapp endpoint.
+
+### Frontend
+- [x] `utils/referral.ts`: чтение `?ref=` из URL, сохранение в `localStorage`, утилиты `getRefId()` / `clearRefId()` / `captureRefIdFromUrl()`.
+- [x] `App.tsx`: при монтировании захватываем `?ref=` (до redirect-ов).
+- [x] `api/auth.ts`: добавить `partner_id` в `RegisterPayload`, `loginWithTelegram`, `loginWithWebApp`.
+- [x] `pages/LoginPage.tsx`: при регистрации/Telegram-логине отправляем `partner_id`. После успеха — чистим.
+- [x] `pages/ReferralsPage.tsx`: добавить веб-ссылку вида `${origin}/?ref=${user_id}` рядом с Telegram-деплинком.
+
+### Git
+- [x] Закоммитить и запушить в `claude/add-referral-link-feature-0HDYn`.
+
+## Решения / трейд-офы
+- `partner_id` передаём только при создании пользователя — обновлять у уже существующих не нужно (так же делает Telegram bot: `start <id>` срабатывает только при первом контакте).
+- Захватываем `?ref=` ОДИН раз и кладём в `localStorage` — переживает редирект через Telegram OAuth и переключение вкладок.
+- Чистим `localStorage` после успешного auth (login по паролю/телеграмму/регистрация), чтобы реферал не «прилипал» при последующих регистрациях с того же устройства.
+- Не валидируем `partner_id` на бэке, кроме приведения к int — SHM сам решит, существует ли такой пользователь.
+
+## Ревью
+
+**Что сделано:**
+- Backend: `RegisterRequest`, `TelegramAuthRequest` принимают `partner_id`. Все три auth-эндпоинта (`/api/auth/register`, `/api/auth/telegram`, `/api/auth/webapp`) пробрасывают значение в SHM как при прямом вызове SHM endpoint, так и в admin-fallback. `partner_id` пишется только в момент создания нового юзера; на уже существующих пользователей не влияет — это совпадает с поведением Telegram-бота (`/start <id>` срабатывает один раз).
+- Frontend: новый модуль `utils/referral.ts` (3 функции: `captureRefIdFromUrl`, `getRefId`, `clearRefId`) с хранением в `localStorage`. `App.tsx` захватывает `?ref=ID` сразу при монтировании, до маршрутизации. `LoginPage` подмешивает `partner_id` в регистрацию и Telegram Login Widget. `loginWithWebApp` поддерживает query-параметр `partner_id` для Mini App. Страница рефералов теперь показывает две ссылки: Telegram deeplink и URL ЛК.
+- После любой успешной авторизации `clearRefId()` очищает `localStorage` — реферал не «прилипает» к устройству для следующих регистраций.
+
+**Проверки:**
+- `python -c` импорт моделей с/без `partner_id` — ок.
+- `tsc --noEmit` — без ошибок типов.
+- `npm run build` — сборка успешна (428 KB JS, 39 KB CSS).
+- Бэкендовые pytest не запустились в этом окружении из-за поломанной системной криптографии (PyO3 panic при импорте `cryptography`); проблема не связана с правками.
+
+**Что осталось / риски:**
+- В Swagger SHM поле `partner_id` не описано публично, но Telegram-бот его уже использует — значит SHM его принимает в `PUT /shm/v1/user` и `PUT /shm/v1/admin/user`. Поведение нужно проверить на staging.
+- Mini App (Telegram WebApp) автоматически подхватит `partner_id` только если пользователь зашёл в ЛК через web по `?ref=ID` ДО открытия Mini App. Внутри Telegram WebApp прямого URL-параметра `?ref=` нет — там используется `start_param` (это уже отдельная фича для будущего).

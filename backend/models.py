@@ -25,6 +25,7 @@ class RegisterRequest(BaseModel):
     email: str
     captcha_token: Optional[str] = None
     captcha_code: Optional[str] = None
+    partner_id: Optional[int] = None  # id реферера (?ref=ID), сохраняется в SHM как partner_id
 
 
 class EmailVerifyRequest(BaseModel):
@@ -39,6 +40,7 @@ class TelegramAuthRequest(BaseModel):
     photo_url: Optional[str] = None
     auth_date: int
     hash: str
+    partner_id: Optional[int] = None  # id реферера; применяется только при первом создании юзера
 
 
 class PaymentRequest(BaseModel):

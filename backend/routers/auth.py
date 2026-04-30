@@ -78,6 +78,7 @@ async def telegram_auth(request: Request, req: TelegramAuthRequest):
     if req.last_name:  payload["last_name"]  = req.last_name
     if req.username:   payload["username"]   = req.username
     if req.photo_url:  payload["photo_url"]  = req.photo_url
+    if req.partner_id: payload["partner_id"] = req.partner_id
 
     shm_session: Optional[str] = None
     try:
@@ -106,9 +107,11 @@ async def telegram_auth(request: Request, req: TelegramAuthRequest):
 
         if not exact_user:
             name = f"{req.first_name or ''} {req.last_name or ''}".strip() or req.username or tg_login
-            await shm_request("PUT", "/shm/v1/admin/user", admin_session,
-                              json_data={"login": tg_login, "password": tg_password, "name": name})
-            logging.info("TG auth fallback: создан пользователь %s", tg_login)
+            create_payload: dict = {"login": tg_login, "password": tg_password, "name": name}
+            if req.partner_id:
+                create_payload["partner_id"] = req.partner_id
+            await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload)
+            logging.info("TG auth fallback: создан пользователь %s (partner_id=%s)", tg_login, req.partner_id)
             shm_session = await shm_password_login(tg_login, tg_password)
         else:
             shm_user = exact_user
@@ -134,10 +137,11 @@ async def telegram_auth(request: Request, req: TelegramAuthRequest):
 
 @router.get("/api/auth/webapp", response_model=AuthResponse)
 @limiter.limit("20/minute")
-async def webapp_auth(request: Request, initData: str):
+async def webapp_auth(request: Request, initData: str, partner_id: Optional[int] = None):
     """Авторизация через Telegram Mini App (WebApp).
     Верифицирует initData по HMAC-SHA256 с ключом 'WebAppData'.
     Сначала пробует SHM /shm/v1/telegram/webapp/auth, затем fallback.
+    `partner_id` опционален — пробрасывается в SHM при создании нового пользователя.
     """
     # 1. Парсим initData (parse_qsl URL-декодирует значения — это нужно для правильного HMAC)
     params = dict(parse_qsl(initData, keep_blank_values=True))
@@ -187,18 +191,23 @@ async def webapp_auth(request: Request, initData: str):
     # 2. Пробуем SHM /shm/v1/telegram/webapp/auth (прямой метод)
     admin_url = (settings.SHM_ADMIN_URL or settings.SHM_BASE_URL).rstrip("/")
     shm_session: Optional[str] = None
+    get_params: dict = {"initData": initData}
+    post_body: dict = {"initData": initData}
+    if partner_id:
+        get_params["partner_id"] = partner_id
+        post_body["partner_id"] = partner_id
     try:
         headers = {"Authorization": shm_basic_auth_header()}
         async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
             resp = await client.get(
                 f"{admin_url}/shm/v1/telegram/webapp/auth",
-                params={"initData": initData},
+                params=get_params,
                 headers=headers,
             )
             if resp.status_code not in (200, 201):
                 resp = await client.post(
                     f"{admin_url}/shm/v1/telegram/webapp/auth",
-                    json={"initData": initData},
+                    json=post_body,
                     headers=headers,
                 )
         logging.info("WebApp SHM → %s: %s", resp.status_code, resp.text[:200])
@@ -233,9 +242,11 @@ async def webapp_auth(request: Request, initData: str):
             last_name = tg_user.get("last_name", "")
             username = tg_user.get("username", "")
             name = f"{first_name} {last_name}".strip() or username or tg_login
-            await shm_request("PUT", "/shm/v1/admin/user", admin_session,
-                              json_data={"login": tg_login, "password": tg_password, "name": name})
-            logging.info("WebApp fallback: создан пользователь %s", tg_login)
+            create_payload: dict = {"login": tg_login, "password": tg_password, "name": name}
+            if partner_id:
+                create_payload["partner_id"] = partner_id
+            await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload)
+            logging.info("WebApp fallback: создан пользователь %s (partner_id=%s)", tg_login, partner_id)
             shm_session = await shm_password_login(tg_login, tg_password)
         else:
             shm_user = exact_user
@@ -293,7 +304,8 @@ async def register(request: Request, req: RegisterRequest):
     shm_session: Optional[str] = None
     try:
         shm_session = await shm_public_register(login_val, req.password, display_name, email,
-                                                captcha_cookie, captcha_code)
+                                                captcha_cookie, captcha_code,
+                                                partner_id=req.partner_id)
     except HTTPException:
         raise
 
@@ -310,12 +322,15 @@ async def register(request: Request, req: RegisterRequest):
                 raise
 
         try:
-            await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data={
+            create_payload: dict = {
                 "login":    login_val,
                 "password": req.password,
                 "name":     display_name,
                 "email":    email,
-            })
+            }
+            if req.partner_id:
+                create_payload["partner_id"] = req.partner_id
+            await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload)
         except HTTPException as e:
             logging.error("register: SHM create user error %s: %s", e.status_code, e.detail)
             raise HTTPException(status_code=400, detail=f"Не удалось создать аккаунт: {e.detail}")
