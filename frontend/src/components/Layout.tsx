@@ -133,7 +133,10 @@ export default function Layout() {
 
       <MaintenanceBanner />
 
-      <main className="relative z-10 mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-28 md:pb-8">
+      {/* Без `z-10` намеренно: иначе <main> создаёт stacking-контекст,
+          в который проваливаются модалки (z-[80]) — нижний навбар (z-50,
+          сосед main) визуально перекрывает их кнопки. */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-28 md:pb-8">
         <Outlet />
       </main>
 

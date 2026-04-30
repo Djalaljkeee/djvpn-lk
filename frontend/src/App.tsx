@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { useDashboardStore } from './store/dashboardStore'
 import { ToastProvider } from './components/Toast'
@@ -11,6 +11,7 @@ import ServicesPage from './pages/ServicesPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReferralsPage from './pages/ReferralsPage'
 import ProfilePage from './pages/ProfilePage'
+import ChangePasswordPage from './pages/ChangePasswordPage'
 import Layout from './components/Layout'
 
 declare global {
@@ -20,6 +21,7 @@ declare global {
         initData: string
         ready: () => void
         expand: () => void
+        close?: () => void
         colorScheme?: string
       }
     }
@@ -35,6 +37,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
   const { setAuth, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   // Внутри Telegram WebApp всегда обновляем shm_session, даже если в
   // localStorage лежит старый токен — иначе /api/dashboard ходит со
   // stale-сессией и возвращает пустой profile/services.
@@ -64,7 +67,12 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
         // Кеш дашборда мог быть привязан к прошлой shm_session —
         // сбрасываем, чтобы свежий запрос ушёл с обновлёнными credentials.
         useDashboardStore.getState().reset()
-        if (!wasAuthenticated) navigate('/', { replace: true })
+        // Только если пользователь пришёл на /login — отправляем на главную.
+        // Любой deep-link (например /change-password) сохраняем как есть,
+        // иначе ссылка из телеграм-бота «съедается» редиректом.
+        if (!wasAuthenticated && location.pathname === '/login') {
+          navigate('/', { replace: true })
+        }
       })
       .catch(() => {
         // Авторизация не прошла — показываем приложение как есть
@@ -97,6 +105,10 @@ export default function App() {
       <TelegramWebAppGate>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/change-password"
+            element={<PrivateRoute><ChangePasswordPage /></PrivateRoute>}
+          />
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route index element={<DashboardPage />} />
             <Route path="services" element={<ServicesPage />} />
