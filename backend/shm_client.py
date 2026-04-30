@@ -88,6 +88,7 @@ async def shm_public_register(
     email: str,
     captcha_cookie: str,
     captcha_code: Optional[str],
+    partner_id: Optional[int] = None,
 ) -> Optional[str]:
     """Публичная регистрация через SHM PUT /shm/v1/user с проксированием
     капча-cookie. Возвращает session_id или None, если SHM не принял запрос.
@@ -99,6 +100,8 @@ async def shm_public_register(
         "name":     name,
         "email":    email,
     }
+    if partner_id:
+        body["partner_id"] = partner_id
     if captcha_code:
         body["captcha"] = captcha_code
         body["captcha_code"] = captcha_code

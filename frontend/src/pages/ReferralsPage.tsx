@@ -21,6 +21,9 @@ export default function ReferralsPage() {
   }, [])
 
   const tgRefLink = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
+  const webRefLink = user && typeof window !== 'undefined'
+    ? `${window.location.origin}/?ref=${user.user_id}`
+    : ''
   const totalReferrals = stats?.total_referrals ?? 0
   const totalIncome = stats?.total_income ?? 0
   const items = stats?.items ?? 0
@@ -52,21 +55,35 @@ export default function ReferralsPage() {
       </section>
 
       <section className="glass rounded-[2rem] p-5 sm:p-6">
-        <h2 className="text-xl font-semibold text-white">Ваша реферальная ссылка</h2>
+        <h2 className="text-xl font-semibold text-white">Ваши реферальные ссылки</h2>
         <p className="mt-1 text-sm text-slate-300">
-          Оставляем только deeplink для Telegram. Он проще для пользователя и совпадает с основным сценарием входа.
+          Делитесь любой из ссылок: при регистрации новый пользователь автоматически закрепится за вами.
         </p>
 
-        <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Telegram deeplink</div>
-          <div className="mt-2 break-all text-sm leading-6 text-white">{tgRefLink || 'Ссылка появится после загрузки профиля и конфигурации бота.'}</div>
-          <button
-            onClick={() => tgRefLink && copyLink(tgRefLink, 'Telegram ссылка')}
-            disabled={!tgRefLink}
-            className="mt-4 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand disabled:opacity-40"
-          >
-            Скопировать deeplink
-          </button>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Telegram deeplink</div>
+            <div className="mt-2 break-all text-sm leading-6 text-white">{tgRefLink || 'Ссылка появится после загрузки профиля и конфигурации бота.'}</div>
+            <button
+              onClick={() => tgRefLink && copyLink(tgRefLink, 'Telegram ссылка')}
+              disabled={!tgRefLink}
+              className="mt-4 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand disabled:opacity-40"
+            >
+              Скопировать deeplink
+            </button>
+          </div>
+
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Ссылка на личный кабинет</div>
+            <div className="mt-2 break-all text-sm leading-6 text-white">{webRefLink || 'Ссылка появится после загрузки профиля.'}</div>
+            <button
+              onClick={() => webRefLink && copyLink(webRefLink, 'Ссылка на ЛК')}
+              disabled={!webRefLink}
+              className="mt-4 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40"
+            >
+              Скопировать ссылку
+            </button>
+          </div>
         </div>
       </section>
 

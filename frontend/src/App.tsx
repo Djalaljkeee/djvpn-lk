@@ -4,6 +4,7 @@ import { useDashboardStore } from './store/dashboardStore'
 import { ToastProvider } from './components/Toast'
 import { useEffect, useState } from 'react'
 import { loginWithWebApp } from './api/auth'
+import { captureRefIdFromUrl, clearRefId, getRefId } from './utils/referral'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ServicesPage from './pages/ServicesPage'
@@ -55,9 +56,11 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
     tgWebApp?.expand()
 
     const wasAuthenticated = isAuthenticated()
-    loginWithWebApp(initData)
+    const partnerId = getRefId() ?? undefined
+    loginWithWebApp(initData, partnerId)
       .then(({ token, user }) => {
         setAuth(token, user)
+        clearRefId()
         // Кеш дашборда мог быть привязан к прошлой shm_session —
         // сбрасываем, чтобы свежий запрос ушёл с обновлёнными credentials.
         useDashboardStore.getState().reset()
@@ -86,6 +89,9 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // Захватываем ?ref=ID до маршрутизации/редиректов: значение переживёт
+  // переход на /login и Telegram OAuth-редирект.
+  captureRefIdFromUrl()
   return (
     <ToastProvider>
       <TelegramWebAppGate>
