@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
 import { useInvalidateDashboard } from '../hooks/useDashboard'
-import { updateEmail, fetchProfile, requestEmailVerification, verifyEmailToken, changePassword } from '../api/user'
+import { updateEmail, fetchProfile, requestEmailVerification, verifyEmailToken } from '../api/user'
 
 const TOS_TEXT = `Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между пользователем (далее — «Пользователь») и сервисом DJ VPN (далее — «Сервис») относительно использования услуг.
 
@@ -95,10 +95,6 @@ export default function ProfilePage() {
   const [verifyCode, setVerifyCode] = useState('')
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyResending, setVerifyResending] = useState(false)
-  const [passwdModalOpen, setPasswdModalOpen] = useState(false)
-  const [passwdInput, setPasswdInput] = useState('')
-  const [passwdConfirm, setPasswdConfirm] = useState('')
-  const [passwdBusy, setPasswdBusy] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -167,28 +163,6 @@ export default function ProfilePage() {
       show(typeof msg === 'string' ? msg : 'Не удалось отправить письмо', 'error')
     } finally {
       setVerifyResending(false)
-    }
-  }
-
-  const handleChangePassword = async () => {
-    if (passwdInput.length < 6) {
-      show('Минимум 6 символов', 'error')
-      return
-    }
-    if (passwdInput !== passwdConfirm) {
-      show('Пароли не совпадают', 'error')
-      return
-    }
-    setPasswdBusy(true)
-    try {
-      await changePassword(passwdInput)
-      setPasswdModalOpen(false)
-      show('Пароль изменён', 'success')
-    } catch (e: any) {
-      const msg = e?.response?.data?.detail || 'Не удалось сменить пароль'
-      show(typeof msg === 'string' ? msg : 'Не удалось сменить пароль', 'error')
-    } finally {
-      setPasswdBusy(false)
     }
   }
 
@@ -321,7 +295,7 @@ export default function ProfilePage() {
             </button>
           )}
           <button
-            onClick={() => { setPasswdInput(''); setPasswdConfirm(''); setPasswdModalOpen(true) }}
+            onClick={() => navigate('/change-password')}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors"
           >
             <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -511,71 +485,6 @@ export default function ProfilePage() {
                 className="flex-1 rounded-2xl bg-brand-600 py-3 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-60"
               >
                 {verifyBusy ? 'Проверка...' : 'Подтвердить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Password change modal */}
-      {passwdModalOpen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center animate-fade-in"
-          onClick={() => !passwdBusy && setPasswdModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-t-2xl border border-white/10 bg-surface-1 p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] shadow-xl sm:rounded-2xl sm:pb-5 animate-slide-up"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-white">Сменить пароль</h3>
-              <button
-                onClick={() => !passwdBusy && setPasswdModalOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-slate-300 hover:bg-white/20 transition-colors"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="space-y-3">
-              <input
-                type="password"
-                autoComplete="new-password"
-                autoFocus
-                value={passwdInput}
-                onChange={(e) => setPasswdInput(e.target.value)}
-                placeholder="Новый пароль"
-                disabled={passwdBusy}
-                className="w-full rounded-xl border border-white/10 bg-surface-2 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-brand-500 focus:outline-none disabled:opacity-60"
-              />
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={passwdConfirm}
-                onChange={(e) => setPasswdConfirm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !passwdBusy) handleChangePassword()
-                }}
-                placeholder="Повторите пароль"
-                disabled={passwdBusy}
-                className="w-full rounded-xl border border-white/10 bg-surface-2 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-brand-500 focus:outline-none disabled:opacity-60"
-              />
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => setPasswdModalOpen(false)}
-                disabled={passwdBusy}
-                className="flex-1 rounded-2xl border border-white/10 bg-surface-2 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors disabled:opacity-60"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={handleChangePassword}
-                disabled={passwdBusy}
-                className="flex-1 rounded-2xl bg-brand-600 py-3 text-sm font-medium text-white hover:bg-brand-500 transition-colors disabled:opacity-60"
-              >
-                {passwdBusy ? 'Сохранение...' : 'Сохранить'}
               </button>
             </div>
           </div>
