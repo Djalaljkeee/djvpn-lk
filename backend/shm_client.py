@@ -85,6 +85,38 @@ def find_exact_shm_login(users: list[dict], expected_login: str) -> Optional[dic
     return None
 
 
+async def _admin_reset_tg_password(tg_login: str, new_password: str) -> bool:
+    """Через admin API найти TG-юзера и выставить ему детерминированный пароль.
+
+    Нужно когда пользователь уже существует в SHM, но с другим паролем
+    (создан вручную, через email-регистрацию и т.п.). Возвращает True если
+    пароль успешно обновлён и login теперь должен пройти.
+    """
+    try:
+        admin_session = await get_admin_session()
+        result = await shm_request(
+            "GET", "/shm/v1/admin/user", admin_session,
+            params={"login": tg_login},
+        )
+        users = result.get("data") or []
+        user = find_exact_shm_login(users, tg_login)
+        if not user:
+            logging.warning("admin_reset_tg_password: user %s not found", tg_login)
+            return False
+        user_id = user.get("user_id")
+        if not user_id:
+            return False
+        await shm_request(
+            "PUT", "/shm/v1/admin/user", admin_session,
+            json_data={"user_id": user_id, "password": new_password},
+        )
+        logging.info("admin_reset_tg_password: password reset for %s (id=%s)", tg_login, user_id)
+        return True
+    except Exception as exc:
+        logging.warning("admin_reset_tg_password failed for %s: %s", tg_login, exc)
+        return False
+
+
 async def ensure_telegram_user_session(
     *,
     tg_id: int,
@@ -99,7 +131,8 @@ async def ensure_telegram_user_session(
     2. Иначе — PUT /shm/v1/user (публичная регистрация без captcha/email).
        Создаст нового юзера ИЛИ упрётся в "already exists" если юзер
        менял пароль через UI/email-флоу.
-    3. Любая ошибка превращается в человеческое сообщение клиенту.
+    3. Если 409 — пробуем сбросить пароль через admin API и повторяем login.
+    4. Любая ошибка превращается в человеческое сообщение клиенту.
 
     Раньше использовался admin API для поиска (`/shm/v1/admin/user?login=...`),
     но фильтр оказался ненадёжным — возвращает выборку без запрошенного
@@ -125,6 +158,12 @@ async def ensure_telegram_user_session(
     except HTTPException as exc:
         detail = str(exc.detail or "")
         if exc.status_code in (400, 409) and ("уже" in detail or "exist" in detail.lower()):
+            # Пользователь существует с другим паролем — пробуем сбросить через admin
+            reset_ok = await _admin_reset_tg_password(tg_login, tg_password)
+            if reset_ok:
+                session = await shm_password_login(tg_login, tg_password)
+                if session:
+                    return session
             raise HTTPException(
                 status_code=401,
                 detail=(
