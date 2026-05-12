@@ -23,6 +23,7 @@ from models import (
 from rate_limit import limiter
 from security import create_token
 from shm_client import (
+    _proxy_headers,
     ensure_telegram_user_session,
     get_admin_session,
     shm_basic_auth_header,
@@ -43,7 +44,7 @@ async def login(request: Request, req: LoginRequest):
         resp = await client.post(
             f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
             json={"login": req.login, "password": req.password},
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **_proxy_headers()},
         )
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
@@ -84,7 +85,7 @@ async def telegram_auth(request: Request, req: TelegramAuthRequest):
             resp = await client.post(
                 f"{admin_url}/shm/v1/telegram/web/auth",
                 json=payload,
-                headers={"Authorization": shm_basic_auth_header()},
+                headers={"Authorization": shm_basic_auth_header(), **_proxy_headers()},
             )
         logging.info("TG widget SHM → %s: %s", resp.status_code, resp.text[:200])
         if resp.status_code in (200, 201):
@@ -175,7 +176,7 @@ async def webapp_auth(request: Request, initData: str, partner_id: Optional[int]
         get_params["partner_id"] = partner_id
         post_body["partner_id"] = partner_id
     try:
-        headers = {"Authorization": shm_basic_auth_header()}
+        headers = {"Authorization": shm_basic_auth_header(), **_proxy_headers()}
         async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
             resp = await client.get(
                 f"{admin_url}/shm/v1/telegram/webapp/auth",
@@ -296,6 +297,7 @@ async def register(request: Request, req: RegisterRequest):
             resp = await client.post(
                 f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
                 json={"login": login_val, "password": req.password},
+                headers=_proxy_headers(),
             )
         if resp.status_code != 200:
             logging.error("register: SHM login after create failed: %s %s", resp.status_code, resp.text)
