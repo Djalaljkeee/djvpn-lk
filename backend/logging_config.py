@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import sys
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, Optional
 
 import structlog
 
@@ -18,6 +18,7 @@ import structlog
 # ContextVar для request_id — заполняется middleware на входе запроса.
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 user_id_ctx: ContextVar[int] = ContextVar("user_id", default=0)
+client_ip_ctx: ContextVar[Optional[str]] = ContextVar("client_ip", default=None)
 
 
 def _add_request_context(

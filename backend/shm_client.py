@@ -9,6 +9,14 @@ import httpx
 from fastapi import HTTPException
 
 from config import settings
+from logging_config import client_ip_ctx
+
+
+def _proxy_headers() -> dict:
+    ip = client_ip_ctx.get()
+    if not ip:
+        return {}
+    return {"X-Forwarded-For": ip, "X-Real-IP": ip}
 
 
 async def get_admin_session() -> str:
@@ -34,6 +42,7 @@ async def shm_request(
     headers = {
         "session-id": session_id,
         "Content-Type": "application/json",
+        **_proxy_headers(),
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.request(
@@ -55,6 +64,7 @@ async def shm_password_login(login: str, password: str) -> Optional[str]:
         resp = await client.post(
             f"{settings.SHM_BASE_URL}/shm/user/auth.cgi",
             json={"login": login, "password": password},
+            headers=_proxy_headers(),
         )
     if resp.status_code != 200:
         return None
@@ -175,7 +185,7 @@ async def shm_public_register(
 
     try:
         async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-            resp = await client.put(url, json=body, cookies=cookies)
+            resp = await client.put(url, json=body, cookies=cookies, headers=_proxy_headers())
     except Exception as exc:
         logging.warning("public register: SHM error: %s", exc)
         return None
