@@ -16,6 +16,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from cache import cache
 from config import settings
@@ -102,6 +103,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Самый внешний: разворачивает X-Forwarded-For/Proto и подменяет scope["client"]
+# реальным IP клиента ДО того, как до него доберутся access-логгер,
+# slowapi-лимитер и роутеры. Без этого в docker все запросы выглядят как один
+# IP (frontend-контейнер nginx), и RPS-лимиты бьют всех чохом.
+# trusted_hosts="*": бэкенд биндится только на loopback в docker-compose,
+# единственный источник запросов — nginx по docker-сети, чьи IP динамические.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 app.include_router(public.router)
 app.include_router(auth.router)
