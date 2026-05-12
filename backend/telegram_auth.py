@@ -13,7 +13,7 @@ def verify_telegram_auth(data: TelegramAuthRequest) -> bool:
     """Верификация данных от Telegram Login Widget.
     Все поля кроме hash включаются в строку проверки (Telegram docs).
     """
-    bot_token = settings.TELEGRAM_BOT_TOKEN
+    bot_token = settings.TELEGRAM_BOT_TOKEN.strip()
     if not bot_token:
         logging.error("TG auth: TELEGRAM_BOT_TOKEN не задан в .env!")
         return False
