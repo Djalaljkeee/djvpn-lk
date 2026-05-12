@@ -23,13 +23,11 @@ from models import (
 from rate_limit import limiter
 from security import create_token
 from shm_client import (
-    find_exact_shm_login,
+    ensure_telegram_user_session,
     get_admin_session,
     shm_basic_auth_header,
-    shm_password_login,
     shm_public_register,
     shm_request,
-    tg_user_password,
 )
 from telegram_auth import verify_telegram_auth
 
@@ -94,39 +92,19 @@ async def telegram_auth(request: Request, req: TelegramAuthRequest):
     except Exception as exc:
         logging.warning("TG widget SHM error: %s", exc)
 
-    # 3. Fallback: стабильный пароль на основе bot-token
+    # 3. Fallback: find-or-create через admin API.
     if not shm_session:
-        logging.info("TG widget: SHM endpoint недоступен, используем fallback")
-        tg_login = f"@{req.id}"
-        tg_password = tg_user_password(req.id)
-        admin_session = await get_admin_session()
-
-        users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
-        users = users_data.get("data", [])
-        exact_user = find_exact_shm_login(users, tg_login)
-
-        if not exact_user:
-            name = f"{req.first_name or ''} {req.last_name or ''}".strip() or req.username or tg_login
-            create_payload: dict = {"login": tg_login, "password": tg_password, "name": name}
-            if req.partner_id:
-                create_payload["partner_id"] = req.partner_id
-            await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload)
-            logging.info("TG auth fallback: создан пользователь %s (partner_id=%s)", tg_login, req.partner_id)
-            shm_session = await shm_password_login(tg_login, tg_password)
-        else:
-            shm_user = exact_user
-            shm_uid = shm_user.get("user_id")
-            shm_login = shm_user.get("login") or tg_login
-            shm_session = await shm_password_login(shm_login, tg_password)
-            if not shm_session:
-                logging.warning("TG auth fallback: синхронизируем пароль для %s (uid=%s, shm_login=%s)", tg_login, shm_uid, shm_login)
-                await shm_request("POST", "/shm/v1/admin/user", admin_session,
-                                  json_data={"user_id": shm_uid, "login": shm_login, "password": tg_password})
-                shm_session = await shm_password_login(shm_login, tg_password)
-
-        if not shm_session:
-            logging.error("TG auth fallback: login failed для %s", tg_login)
-            raise HTTPException(status_code=401, detail="Ошибка авторизации через Telegram")
+        logging.info("TG widget: SHM endpoint не вернул session, fallback")
+        display_name = (
+            f"{req.first_name or ''} {req.last_name or ''}".strip()
+            or req.username
+            or f"@{req.id}"
+        )
+        shm_session = await ensure_telegram_user_session(
+            tg_id=req.id,
+            display_name=display_name,
+            partner_id=req.partner_id,
+        )
 
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]
@@ -216,9 +194,9 @@ async def webapp_auth(request: Request, initData: str, partner_id: Optional[int]
     except Exception as exc:
         logging.warning("WebApp SHM error: %s", exc)
 
-    # 3. Fallback: извлекаем user из initData, стабильный пароль
+    # 3. Fallback: find-or-create через admin API.
     if not shm_session:
-        logging.info("WebApp: SHM endpoint недоступен, используем fallback")
+        logging.info("WebApp: SHM endpoint не вернул session, fallback")
         user_json_str = params.get("user", "{}")
         try:
             tg_user = json.loads(user_json_str)
@@ -229,39 +207,16 @@ async def webapp_auth(request: Request, initData: str, partner_id: Optional[int]
         if not tg_id:
             raise HTTPException(status_code=401, detail="Нет user.id в initData")
 
-        tg_login = f"@{tg_id}"
-        tg_password = tg_user_password(tg_id)
-        admin_session = await get_admin_session()
-
-        users_data = await shm_request("GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login})
-        users = users_data.get("data", [])
-        exact_user = find_exact_shm_login(users, tg_login)
-
-        if not exact_user:
-            first_name = tg_user.get("first_name", "")
-            last_name = tg_user.get("last_name", "")
-            username = tg_user.get("username", "")
-            name = f"{first_name} {last_name}".strip() or username or tg_login
-            create_payload: dict = {"login": tg_login, "password": tg_password, "name": name}
-            if partner_id:
-                create_payload["partner_id"] = partner_id
-            await shm_request("PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload)
-            logging.info("WebApp fallback: создан пользователь %s (partner_id=%s)", tg_login, partner_id)
-            shm_session = await shm_password_login(tg_login, tg_password)
-        else:
-            shm_user = exact_user
-            shm_uid = shm_user.get("user_id")
-            shm_login = shm_user.get("login") or tg_login
-            shm_session = await shm_password_login(shm_login, tg_password)
-            if not shm_session:
-                logging.warning("WebApp fallback: синхронизируем пароль для %s (uid=%s, shm_login=%s)", tg_login, shm_uid, shm_login)
-                await shm_request("POST", "/shm/v1/admin/user", admin_session,
-                                  json_data={"user_id": shm_uid, "login": shm_login, "password": tg_password})
-                shm_session = await shm_password_login(shm_login, tg_password)
-
-        if not shm_session:
-            logging.error("WebApp fallback: login failed для %s", tg_login)
-            raise HTTPException(status_code=401, detail="Ошибка WebApp авторизации")
+        display_name = (
+            f"{tg_user.get('first_name', '')} {tg_user.get('last_name', '')}".strip()
+            or tg_user.get("username")
+            or f"@{tg_id}"
+        )
+        shm_session = await ensure_telegram_user_session(
+            tg_id=tg_id,
+            display_name=display_name,
+            partner_id=partner_id,
+        )
 
     user_data = await shm_request("GET", "/shm/v1/user", shm_session)
     user = (user_data.get("data") or [{}])[0]

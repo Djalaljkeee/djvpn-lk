@@ -75,6 +75,113 @@ def find_exact_shm_login(users: list[dict], expected_login: str) -> Optional[dic
     return None
 
 
+async def find_telegram_user(admin_session: str, tg_id: int) -> Optional[dict]:
+    """Точный поиск SHM-юзера с login=@{tg_id}. None если не найден."""
+    tg_login = f"@{tg_id}"
+    users_data = await shm_request(
+        "GET", "/shm/v1/admin/user", admin_session, params={"login": tg_login}
+    )
+    return find_exact_shm_login(users_data.get("data", []) or [], tg_login)
+
+
+async def login_telegram_user(
+    admin_session: str, shm_user: dict, tg_password: str
+) -> Optional[str]:
+    """Логин существующего TG-юзера с авто-синхронизацией пароля.
+
+    Если пароль в SHM руками поменяли (или он рассинхронился по другой
+    причине) — перезаписываем его на стабильный tg_user_password и логинимся
+    повторно. None если синхронизация тоже не помогла.
+    """
+    shm_uid = shm_user.get("user_id")
+    shm_login = shm_user.get("login")
+    if not shm_login:
+        return None
+    session = await shm_password_login(shm_login, tg_password)
+    if session:
+        return session
+    logging.warning(
+        "TG login: синхронизируем пароль для uid=%s login=%s", shm_uid, shm_login
+    )
+    await shm_request(
+        "POST", "/shm/v1/admin/user", admin_session,
+        json_data={"user_id": shm_uid, "login": shm_login, "password": tg_password},
+    )
+    return await shm_password_login(shm_login, tg_password)
+
+
+def _is_already_exists_error(exc: HTTPException) -> bool:
+    """SHM иногда отдаёт «уже существует» как 400 или 409 с произвольным текстом."""
+    detail = str(exc.detail or "").lower()
+    return (
+        exc.status_code in (400, 409)
+        and ("exist" in detail or "уже" in detail or "duplicate" in detail)
+    )
+
+
+async def ensure_telegram_user_session(
+    *,
+    tg_id: int,
+    display_name: str,
+    partner_id: Optional[int] = None,
+) -> str:
+    """Find-or-create SHM-юзера по `@{tg_id}` и вернуть его session_id.
+
+    Раньше код пытался PUT-ить пользователя без предварительной проверки —
+    SHM падал на дубле и raw-ошибка летела клиенту. Здесь сначала ищем,
+    потом создаём, и страхуемся повторным поиском если SHM всё же ответил
+    "already exists" (race / sticky cache).
+    """
+    tg_login = f"@{tg_id}"
+    tg_password = tg_user_password(tg_id)
+    admin_session = await get_admin_session()
+
+    existing = await find_telegram_user(admin_session, tg_id)
+    if existing:
+        session = await login_telegram_user(admin_session, existing, tg_password)
+        if session:
+            return session
+        raise HTTPException(
+            status_code=401,
+            detail="Не удалось войти после синхронизации пароля",
+        )
+
+    create_payload: dict = {
+        "login": tg_login,
+        "password": tg_password,
+        "name": display_name,
+    }
+    if partner_id:
+        create_payload["partner_id"] = partner_id
+
+    try:
+        await shm_request(
+            "PUT", "/shm/v1/admin/user", admin_session, json_data=create_payload
+        )
+    except HTTPException as exc:
+        if not _is_already_exists_error(exc):
+            raise
+        existing = await find_telegram_user(admin_session, tg_id)
+        if not existing:
+            raise
+        session = await login_telegram_user(admin_session, existing, tg_password)
+        if session:
+            return session
+        raise HTTPException(
+            status_code=401,
+            detail="Не удалось войти после синхронизации пароля",
+        )
+
+    logging.info("TG auth: создан пользователь %s (partner_id=%s)", tg_login, partner_id)
+    session = await shm_password_login(tg_login, tg_password)
+    if not session:
+        raise HTTPException(
+            status_code=401,
+            detail="Аккаунт создан, но не удалось войти",
+        )
+    return session
+
+
 def shm_basic_auth_header() -> str:
     """HTTP Basic-заголовок для admin endpoints SHM."""
     raw = f"{settings.SHM_ADMIN_LOGIN}:{settings.SHM_ADMIN_PASSWORD}".encode()
