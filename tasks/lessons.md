@@ -49,3 +49,24 @@
   (закроет Mini App), иначе fallback `navigate('/profile')`. Тип `close`
   нужно добавить в `declare global` для `Window.Telegram.WebApp`, иначе TS
   ругается.
+
+## Rate-limit за обратным прокси в Docker
+
+- Когда FastAPI/uvicorn стоит за nginx (или любым прокси) в docker, ASGI
+  `request.client.host` — это IP контейнера прокси, **один на всех клиентов**.
+  Любой rate-limit по IP (slowapi `get_remote_address`, кастомный key_func)
+  без разворачивания `X-Forwarded-For` превратится в общий лимит на всех
+  пользователей сразу.
+- Лечение — `app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")`
+  из `uvicorn.middleware.proxy_headers`. Подменяет `scope["client"]` ещё на
+  ASGI-уровне → автоматически чинит и slowapi, и access-логи.
+- Преимущество middleware перед CMD-флагом uvicorn `--proxy-headers`: работает
+  и в юнит-тестах через `TestClient` (там uvicorn не запускается, флаги CMD
+  не применяются), и в проде.
+- `trusted_hosts="*"` безопасно только если backend-порт **не светится
+  наружу**: в docker-compose биндить публикацию на loopback —
+  `"127.0.0.1:8000:8000"`. Иначе клиент извне сможет подделать
+  `X-Forwarded-For` и обойти rate-limit.
+- На стороне nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
+  (стандартная переменная, корректно склеивает цепочку прокси) плюс
+  `X-Forwarded-Proto $scheme;`.

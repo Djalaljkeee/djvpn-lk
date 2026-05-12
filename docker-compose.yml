@@ -32,8 +32,13 @@ services:
   backend:
     image: ghcr.io/djalaljkeee/djvpn-lk-backend:latest
     restart: unless-stopped
+    # Биндим только на loopback: внешний мир ходит через frontend nginx, а
+    # backend доверяет X-Forwarded-For от любого источника (см. ProxyHeaders-
+    # Middleware в backend/main.py). Если порт открыть наружу — любой клиент
+    # сможет подделать X-Forwarded-For и обойти rate-limit. С хоста для отладки
+    # доступно через 127.0.0.1:8000.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
       PYTHONUNBUFFERED: "1"
