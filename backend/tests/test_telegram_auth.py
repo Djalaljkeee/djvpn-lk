@@ -1,10 +1,10 @@
-"""Тесты для ensure_telegram_user_session: find-or-create логика SHM.
+"""Тесты для ensure_telegram_user_session — login-first через публичный SHM API.
 
-Покрываем 4 критичных ветки:
-1. Существующий пользователь — НЕ должен пытаться создаваться повторно.
-2. Новый пользователь — создаётся через PUT, далее логинимся.
-3. PUT отдал 409 "already exists" — повторный поиск находит юзера, логинимся.
-4. Пароль рассинхронизирован — POST синхронизирует, повторный логин работает.
+Алгоритм:
+1. shm_password_login → если 200, готово (горячий путь).
+2. Иначе shm_public_register (PUT /shm/v1/user без email/captcha).
+3. Если SHM ответил "already exists" — это значит юзер сам менял пароль,
+   возвращаем понятную 401 клиенту, без auto-resync.
 """
 
 from __future__ import annotations
@@ -18,118 +18,105 @@ from fastapi import HTTPException
 pytestmark = pytest.mark.asyncio
 
 
-EXISTING_USER = {"user_id": 42, "login": "@123"}
+async def _call(*, login_side_effect, register_side_effect=None):
+    """Вызвать ensure_telegram_user_session с патченными зависимостями.
 
-
-async def _call(**overrides):
-    """Утилита: вызвать ensure_telegram_user_session с патченными зависимостями.
-
-    overrides — словарь side_effect/return_value для:
-      shm_request, shm_password_login, get_admin_session
+    Возвращает (result_or_exc, mock_login, mock_register).
     """
     from shm_client import ensure_telegram_user_session
 
     with (
-        patch("shm_client.get_admin_session", new=AsyncMock(return_value="ADMIN_SESS")),
-        patch("shm_client.shm_request", new=AsyncMock()) as mock_req,
         patch("shm_client.shm_password_login", new=AsyncMock()) as mock_login,
+        patch("shm_client.shm_public_register", new=AsyncMock()) as mock_register,
     ):
-        if "shm_request" in overrides:
-            mock_req.side_effect = overrides["shm_request"]
-        if "shm_password_login" in overrides:
-            mock_login.side_effect = overrides["shm_password_login"]
+        mock_login.side_effect = login_side_effect
+        if register_side_effect is not None:
+            mock_register.side_effect = register_side_effect
 
         try:
             session = await ensure_telegram_user_session(
                 tg_id=123, display_name="Test User", partner_id=None,
             )
         except Exception as exc:
-            return exc, mock_req, mock_login
-        return session, mock_req, mock_login
+            return exc, mock_login, mock_register
+        return session, mock_login, mock_register
 
 
-async def test_existing_user_does_not_recreate():
-    """Юзер уже есть → используем его, PUT не вызывается."""
-    result, mock_req, mock_login = await _call(
-        shm_request=[{"data": [EXISTING_USER]}],   # GET admin/user
-        shm_password_login=["EXISTING_SESSION"],   # login OK
+async def test_existing_user_logs_in_hot_path():
+    """Юзер есть и пароль детерминированный → один shm_password_login, без register."""
+    result, mock_login, mock_register = await _call(
+        login_side_effect=["EXISTING_SESSION"],
     )
     assert result == "EXISTING_SESSION"
-
-    methods_paths = [
-        (call.args[0], call.args[1]) for call in mock_req.await_args_list
-    ]
-    assert ("GET", "/shm/v1/admin/user") in methods_paths
-    # Не должно быть никаких PUT/POST — создание не выполнялось.
-    for method, path in methods_paths:
-        assert method != "PUT", f"Не должен был дёргать PUT, а дёрнул: {methods_paths}"
+    mock_login.assert_awaited_once()
+    mock_register.assert_not_awaited()
 
 
-async def test_new_user_is_created():
-    """Юзера нет → PUT создаёт → логин успешен."""
-    result, mock_req, mock_login = await _call(
-        shm_request=[
-            {"data": []},   # GET — пусто
-            {},             # PUT — успешно создан
-        ],
-        shm_password_login=["NEW_SESSION"],
+async def test_new_user_registers_and_returns_session():
+    """Юзера нет → shm_public_register создаёт и возвращает session."""
+    result, mock_login, mock_register = await _call(
+        login_side_effect=[None],
+        register_side_effect=["NEW_SESSION"],
     )
     assert result == "NEW_SESSION"
+    mock_login.assert_awaited_once()
+    mock_register.assert_awaited_once()
 
-    methods = [call.args[0] for call in mock_req.await_args_list]
-    assert "GET" in methods
-    assert "PUT" in methods
+    # Проверяем что email/captcha не пробрасываются для TG-регистрации
+    kwargs = mock_register.await_args.kwargs
+    assert kwargs["login"] == "@123"
+    assert kwargs.get("email") is None
+    assert kwargs.get("captcha_code") is None
 
 
-async def test_put_conflict_then_relogin():
-    """PUT падает с 409 'already exists' → повторный GET находит → логин."""
-    result, mock_req, mock_login = await _call(
-        shm_request=[
-            {"data": []},                                              # GET — пусто
-            HTTPException(status_code=409, detail="User already exists"),  # PUT — 409
-            {"data": [EXISTING_USER]},                                  # повторный GET
+async def test_password_changed_returns_clean_401():
+    """shm_public_register бросает «уже зарегистрирован» → 401 с понятным текстом."""
+    result, mock_login, mock_register = await _call(
+        login_side_effect=[None],
+        register_side_effect=[
+            HTTPException(status_code=400, detail="Пользователь с таким email уже зарегистрирован"),
         ],
-        shm_password_login=["RECOVERED_SESSION"],
     )
-    assert result == "RECOVERED_SESSION"
+    assert isinstance(result, HTTPException)
+    assert result.status_code == 401
+    assert "пароль" in str(result.detail).lower()
+    # Не raw-текст SHM
+    assert "email" not in str(result.detail).lower()
 
-    methods = [call.args[0] for call in mock_req.await_args_list]
-    # Ожидаем: GET → PUT → GET (повторный)
-    assert methods == ["GET", "PUT", "GET"]
 
-
-async def test_password_desync_triggers_resync():
-    """Юзер найден, но логин не прошёл → POST синхронизирует → второй логин ок."""
-    result, mock_req, mock_login = await _call(
-        shm_request=[
-            {"data": [EXISTING_USER]},   # GET — найден
-            {},                          # POST — синхронизация пароля
-        ],
-        shm_password_login=[None, "RESYNCED_SESSION"],  # 1-й fail, 2-й ok
+async def test_register_returns_none_raises_502():
+    """shm_public_register вернул None (SHM не принял запрос без HTTPException) → 502."""
+    result, mock_login, mock_register = await _call(
+        login_side_effect=[None],
+        register_side_effect=[None],
     )
-    assert result == "RESYNCED_SESSION"
-
-    methods_paths = [
-        (call.args[0], call.args[1]) for call in mock_req.await_args_list
-    ]
-    assert methods_paths == [
-        ("GET", "/shm/v1/admin/user"),
-        ("POST", "/shm/v1/admin/user"),
-    ]
-    assert mock_login.await_count == 2
+    assert isinstance(result, HTTPException)
+    assert result.status_code == 502
 
 
-async def test_put_non_conflict_error_propagates():
-    """PUT падает с 500 (не дубль) → исключение наверх, повторного поиска нет."""
-    result, mock_req, mock_login = await _call(
-        shm_request=[
-            {"data": []},   # GET — пусто
+async def test_register_unknown_error_propagates():
+    """SHM 500/прочие ошибки прокидываем без замены на 401."""
+    result, mock_login, mock_register = await _call(
+        login_side_effect=[None],
+        register_side_effect=[
             HTTPException(status_code=500, detail="SHM internal error"),
         ],
     )
     assert isinstance(result, HTTPException)
     assert result.status_code == 500
+    assert "internal" in str(result.detail).lower()
 
-    methods = [call.args[0] for call in mock_req.await_args_list]
-    # Только GET + PUT, без повторного GET (это не conflict).
-    assert methods == ["GET", "PUT"]
+
+async def test_partner_id_propagates_to_register():
+    """partner_id должен пробрасываться в shm_public_register при создании."""
+    from shm_client import ensure_telegram_user_session
+
+    with (
+        patch("shm_client.shm_password_login", new=AsyncMock(return_value=None)),
+        patch("shm_client.shm_public_register", new=AsyncMock(return_value="S")) as mock_register,
+    ):
+        await ensure_telegram_user_session(
+            tg_id=123, display_name="Test", partner_id=42,
+        )
+
+    assert mock_register.await_args.kwargs.get("partner_id") == 42
