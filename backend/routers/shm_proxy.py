@@ -95,23 +95,58 @@ async def shm_proxy(path: str, request: Request) -> Response:
         headers=resp_headers,
     )
 
-    # Set-Cookie: переставляем cookie на домен текущего запроса (lk.djvpn.ru
-    # в проде, localhost в dev) — для этого передаём domain=None.
-    # secure форсим только под https, иначе локалка по http не сохранит cookie.
+    # Set-Cookie: парсим raw-заголовки от SHM напрямую (минуя cookielib —
+    # его policy может молча отказать в приёме cookie из-за SameSite/Domain).
+    # Path форсим в "/" — SHM может выставлять Path=/shm/..., но на ЛК
+    # наш прокси живёт на /api/shm/..., и cookie с Path=/shm не будет
+    # отправляться обратно.
+    # domain не задаём → cookie привяжется к домену запроса (lk.djvpn.ru).
+    # secure только под https, иначе локалка по http не сохранит cookie.
     is_secure = request.url.scheme == "https"
-    now = time.time()
-    for cookie in upstream.cookies.jar:
-        max_age = None
-        if cookie.expires:
-            max_age = max(0, int(cookie.expires - now))
+    set_cookie_headers = upstream.headers.get_list("set-cookie")
+    log.info(
+        "shm_proxy.cookies",
+        path=path,
+        upstream_set_cookie_count=len(set_cookie_headers),
+    )
+    for raw in set_cookie_headers:
+        name, value, max_age = _parse_cookie(raw)
+        if not name:
+            continue
         response.set_cookie(
-            key=cookie.name,
-            value=cookie.value,
+            key=name,
+            value=value,
             max_age=max_age,
-            path=cookie.path or "/",
+            path="/",
             secure=is_secure,
             httponly=True,
             samesite="lax",
         )
 
     return response
+
+
+def _parse_cookie(raw: str) -> tuple[str | None, str, int | None]:
+    """Достаём name/value/max-age из одного Set-Cookie-заголовка.
+
+    Остальные атрибуты (Domain, Path, SameSite, Secure, HttpOnly) выкидываем —
+    мы их выставляем сами.
+    """
+    parts = [p.strip() for p in raw.split(";") if p.strip()]
+    if not parts or "=" not in parts[0]:
+        return None, "", None
+    name, value = parts[0].split("=", 1)
+    name = name.strip()
+    value = value.strip()
+
+    max_age: int | None = None
+    for attr in parts[1:]:
+        if "=" not in attr:
+            continue
+        k, v = attr.split("=", 1)
+        if k.strip().lower() == "max-age":
+            try:
+                max_age = int(v.strip())
+            except ValueError:
+                pass
+    return name, value, max_age
