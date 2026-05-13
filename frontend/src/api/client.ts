@@ -1,11 +1,12 @@
 import axios, { AxiosResponse } from 'axios'
 import { useAuthStore } from '../store/authStore'
 
-const SHM_BASE = import.meta.env.VITE_SHM_BASE_URL || 'https://admin.djvpn.ru/shm/v1'
+const SHM_BASE = import.meta.env.VITE_SHM_BASE_URL || '/api/shm/v1'
 
-// SHM API клиент — фронт ходит в SHM напрямую через cookie session_id.
-// withCredentials обязателен: cookie ставится самим SHM при логине
-// (Caddy уже сконфигурирован: SameSite=None; Secure; Domain=.djvpn.ru).
+// SHM API клиент — фронт ходит в backend-прокси /api/shm/* same-origin.
+// Backend форвардит запрос в admin.djvpn.ru/shm/v1/* и переписывает Set-Cookie
+// так, чтобы session_id жила на домене ЛК. Это снимает CORS полностью:
+// cookie ставится и шлётся как для собственного сайта.
 export const shm = axios.create({
   baseURL: SHM_BASE,
   withCredentials: true,
