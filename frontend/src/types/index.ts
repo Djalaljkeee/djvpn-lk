@@ -1,7 +1,11 @@
 export interface User {
   user_id: number
   login: string
+  // login2 в SHM — дополнительный логин; используется как поле email после
+  // подтверждения почты (см. swagger User.login2).
+  login2?: string
   name?: string
+  full_name?: string
   balance: number
   credit: number
   status: number

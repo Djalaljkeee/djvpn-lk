@@ -25,9 +25,8 @@ from logging_config import configure_logging, get_logger
 from metrics import PrometheusMiddleware
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
-from routers import auth, devices, payments, public, services, status, system, user, vpn
+from routers import devices, public, status, system, vpn
 from routers import cart as cart_router
-from routers import dashboard as dashboard_router
 from routers import notifications as notifications_router
 from scheduler import shutdown_scheduler, start_scheduler
 
@@ -112,17 +111,12 @@ app.add_middleware(
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 app.include_router(public.router)
-app.include_router(auth.router)
-app.include_router(user.router)
-app.include_router(services.router)
 app.include_router(devices.router)
-app.include_router(payments.router)
 app.include_router(vpn.router)
 app.include_router(status.router)
 app.include_router(system.router)
 app.include_router(cart_router.router)
 app.include_router(notifications_router.router)
-app.include_router(dashboard_router.router)
 
 
 # ---------------------------------------------------------------------------

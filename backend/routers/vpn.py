@@ -32,9 +32,11 @@ async def vpn_setup_by_service(
             sub_url = ns.get("subscription_url")
             break
 
-    # 2. Запрашиваем Marzban-хранилище (admin session + user_id)
+    # 2. Запрашиваем Marzban-хранилище под пользовательской SHM-сессией
     if not sub_url:
-        sub_url = await fetch_sub_url_from_storage(service_id, session.get("user_id", 0))
+        sub_url = await fetch_sub_url_from_storage(
+            service_id, session["shm_session"], session.get("user_id", 0)
+        )
 
     if not sub_url:
         raise HTTPException(

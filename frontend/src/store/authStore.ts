@@ -3,24 +3,27 @@ import { persist } from 'zustand/middleware'
 import type { User } from '../types'
 
 interface AuthState {
-  token: string | null
   user: User | null
-  setAuth: (token: string, user: User) => void
+  setAuth: (user: User) => void
   setUser: (user: User) => void
   logout: () => void
   isAuthenticated: () => boolean
 }
 
+// Авторизация теперь через SHM cookie session_id (см. api/client.ts).
+// В сторе храним только сам объект User для UI — токен/session_id браузер
+// держит сам в HttpOnly-cookie на admin.djvpn.ru.
+// Ключ shm-auth-v2 — старая запись (с JWT-токеном) автоматически
+// игнорируется, пользователю покажется логин-экран один раз.
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      token: null,
       user: null,
-      setAuth: (token, user) => set({ token, user }),
+      setAuth: (user) => set({ user }),
       setUser: (user) => set({ user }),
-      logout: () => set({ token: null, user: null }),
-      isAuthenticated: () => !!get().token,
+      logout: () => set({ user: null }),
+      isAuthenticated: () => !!get().user,
     }),
-    { name: 'shm-auth' }
+    { name: 'shm-auth-v2' }
   )
 )

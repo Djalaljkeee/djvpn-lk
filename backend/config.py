@@ -3,18 +3,13 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    # SHM
-    SHM_BASE_URL: str = "http://your-shm-host:3001"
-    SHM_PUBLIC_URL: str = ""   # публичный URL SHM для ссылок оплаты (напр. https://bill.djvpn.ru)
-    SHM_ADMIN_URL: str = ""    # URL admin-панели SHM (напр. https://admin.djvpn.ru) — для Telegram auth
-    SHM_ADMIN_LOGIN: str = "admin"
-    SHM_ADMIN_PASSWORD: str = "admin"
+    # SHM — внешний API. Фронт ходит напрямую (см. frontend/src/api/client.ts),
+    # backend использует базу для двух вещей: верификация cookie и Marzban storage.
+    SHM_BASE_URL: str = "https://admin.djvpn.ru"
+    # Публичный URL платёжного шлюза SHM (для построения ссылок на оплату).
+    SHM_BILL_URL: str = "https://bill.djvpn.ru"
 
-    # JWT
-    JWT_SECRET: str = "change-me-in-production-32-chars-min"
-    JWT_EXPIRE_SECONDS: int = 86400 * 30  # 30 дней
-
-    # Telegram
+    # Telegram (имя бота показывается на /login)
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BOT_USERNAME: str = ""  # без @
 
@@ -25,25 +20,21 @@ class Settings(BaseSettings):
     # Uptime Kuma status page (e.g. https://kuma.djvpn.ru/status/djvpn)
     KUMA_STATUS_URL: str = ""
 
-    # CORS
+    # CORS — фронт ходит напрямую в SHM, backend остаётся для cart/notifications/
+    # devices/vpn/status. allow_credentials=True обязателен — браузер
+    # шлёт cookie session_id и в backend, и в SHM.
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Database (пусто = БД выключена, бэкенд работает как stateless-прокси)
     DATABASE_URL: str = ""
-    # True — падение миграций/коннекта считается фатальным (crashloop),
-    # False — бэкенд стартует даже если БД недоступна: cart/notifications
-    # вернут 503, остальные маршруты работают как обычно.
     DB_REQUIRED: bool = True
 
     # Redis (пусто = in-memory cache + in-memory rate-limit)
     REDIS_URL: str = ""
 
-    # TTL агрегированного ответа /api/dashboard, секунды (10..60 рекомендуется)
-    DASHBOARD_CACHE_TTL: int = 30
-
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_DEFAULT: str = ""   # напр. "200/minute" — общий лимит на любые эндпоинты
+    RATE_LIMIT_DEFAULT: str = ""
 
     # Maintenance mode (принудительный баннер + ограничение части действий)
     MAINTENANCE_MODE: bool = False
@@ -51,24 +42,20 @@ class Settings(BaseSettings):
 
     # Scheduler (фоновые задачи)
     SCHEDULER_ENABLED: bool = True
-    # Дни хранения in-app уведомлений (0 — не чистить)
     NOTIFICATION_RETENTION_DAYS: int = 90
-    # Дни, после которых корзина протухает
     CART_RETENTION_DAYS: int = 7
 
     # Observability
     LOG_LEVEL: str = "INFO"
-    LOG_JSON: bool = True       # False — человекочитаемый вывод для dev
+    LOG_JSON: bool = True
     SENTRY_DSN: str = ""
     SENTRY_ENVIRONMENT: str = "production"
-    SENTRY_TRACES_SAMPLE_RATE: float = 0.0   # 0 = выключено; 0.05 — 5% запросов
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
     class Config:
-        # В Docker env vars передаются через docker-compose env_file
-        # При локальной разработке — через backend/.env
         env_file = ".env"
         env_file_encoding = "utf-8"
-        extra = "ignore"  # игнорировать SHM_NETWORK и другие docker-only переменные
+        extra = "ignore"
 
 
 settings = Settings()

@@ -84,8 +84,8 @@ export default function LoginPage() {
       setLoading(true)
       setError('')
       try {
-        const { token, user } = await loginWithTelegram(tgUser, getRefId() ?? undefined)
-        setAuth(token, user)
+        const { user } = await loginWithTelegram(tgUser, getRefId() ?? undefined)
+        setAuth(user)
         clearRefId()
         navigate('/')
       } catch (e: any) {
@@ -145,8 +145,8 @@ export default function LoginPage() {
     setError('')
     try {
       if (mode === 'login') {
-        const { token, user } = await loginWithPassword(login, password)
-        setAuth(token, user)
+        const { user } = await loginWithPassword(login, password)
+        setAuth(user)
         navigate('/')
       } else {
         const result = await registerWithPassword({
@@ -154,11 +154,10 @@ export default function LoginPage() {
           password,
           name: name || undefined,
           email: trimmedEmail,
-          captcha_token: captcha?.token,
           captcha_code: captchaAvailable ? captchaCode : undefined,
           partner_id: getRefId() ?? undefined,
         })
-        setAuth(result.token, result.user)
+        setAuth(result.user)
         clearRefId()
         if (result.email_verification_sent) {
           setVerifyEmail(trimmedEmail)
@@ -388,16 +387,10 @@ export default function LoginPage() {
                           <div className="flex h-[52px] w-36 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white">
                             {captcha ? (
                               <img
-                                src={captcha.image_url || captcha.image}
+                                src={captcha.image_url}
                                 alt="captcha"
+                                crossOrigin="use-credentials"
                                 className="h-full w-full object-contain"
-                                onError={(ev) => {
-                                  // Если прямой URL не сработал — пробуем data-URI
-                                  const img = ev.currentTarget
-                                  if (captcha.image_url && img.src !== captcha.image) {
-                                    img.src = captcha.image
-                                  }
-                                }}
                               />
                             ) : (
                               <div className={`h-full w-full animate-pulse bg-white/40 ${captchaLoading ? '' : 'opacity-40'}`} />
