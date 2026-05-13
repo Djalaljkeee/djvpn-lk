@@ -25,7 +25,7 @@ from logging_config import configure_logging, get_logger
 from metrics import PrometheusMiddleware
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
-from routers import devices, public, status, system, vpn
+from routers import devices, public, shm_proxy, status, system, vpn
 from routers import cart as cart_router
 from routers import notifications as notifications_router
 from scheduler import shutdown_scheduler, start_scheduler
@@ -117,6 +117,7 @@ app.include_router(status.router)
 app.include_router(system.router)
 app.include_router(cart_router.router)
 app.include_router(notifications_router.router)
+app.include_router(shm_proxy.router)
 
 
 # ---------------------------------------------------------------------------
