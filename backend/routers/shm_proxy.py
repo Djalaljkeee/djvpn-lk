@@ -35,9 +35,11 @@ _DROP_REQ_HEADERS = {
 # Заголовки ответа SHM, которые НЕ пробрасываем клиенту.
 # Set-Cookie обрабатываем отдельно (переписываем домен).
 # Transfer-Encoding / Content-Length / Content-Encoding — Starlette выставит сам.
+# Date / Server — выставляет uvicorn, дубли вызывают warn в nginx
+# ("upstream sent duplicate header line").
 _DROP_RESP_HEADERS = {
     "set-cookie", "transfer-encoding", "content-encoding", "content-length",
-    "connection", "keep-alive",
+    "connection", "keep-alive", "date", "server",
 }
 
 
