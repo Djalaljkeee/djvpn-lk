@@ -1,34 +1,54 @@
-"""JWT helpers and FastAPI auth dependency."""
+"""Auth dependency для FastAPI: верификация SHM session_id из cookie.
+
+Фронт ходит в SHM напрямую и получает cookie `session_id` от admin.djvpn.ru.
+Тот же cookie прилетает к нам (Caddy шлёт оба домена через один корневой
+домен, SameSite=None; Secure). Бэкенду остаётся вытащить cookie из запроса,
+один раз сходить в SHM `/user`, узнать user_id — и закешировать на 60 секунд.
+"""
+
+from __future__ import annotations
 
 import time
+from typing import Optional
 
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from fastapi import Cookie, Depends, HTTPException
 
-from config import settings
-
-
-security = HTTPBearer()
+from shm_client import shm_request
 
 
-def create_token(shm_session_id: str, user_id: int) -> str:
-    payload = {
-        "shm_session": shm_session_id,
-        "user_id": user_id,
-        "exp": time.time() + settings.JWT_EXPIRE_SECONDS,
-    }
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+# In-process кэш верификаций: session_id -> (user_id, expires_at).
+# 60 секунд достаточно: дольше — раздуваем окно после logout/блокировки.
+_SESSION_CACHE: dict[str, tuple[int, float]] = {}
+_SESSION_TTL = 60.0
 
 
-def decode_token(token: str) -> dict:
-    try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+async def _resolve_user_id(session_id: str) -> int:
+    cached = _SESSION_CACHE.get(session_id)
+    if cached and cached[1] > time.time():
+        return cached[0]
+
+    data = await shm_request("GET", "/shm/v1/user", session_id)
+    arr = data.get("data") or []
+    if not arr:
+        raise HTTPException(status_code=401, detail="SHM session invalid")
+    user_id = int(arr[0].get("user_id") or 0)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="SHM session не содержит user_id")
+
+    _SESSION_CACHE[session_id] = (user_id, time.time() + _SESSION_TTL)
+    return user_id
 
 
-def get_current_session(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+async def get_current_session(
+    session_id: Optional[str] = Cookie(default=None),
 ) -> dict:
-    return decode_token(credentials.credentials)
+    """Проверяет SHM cookie и возвращает {shm_session, user_id}.
+
+    Сохраняем форму прежнего JWT-payload, чтобы существующие роутеры
+    (cart/notifications/devices/vpn) не пришлось переписывать.
+    """
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Нет cookie session_id")
+
+    user_id = await _resolve_user_id(session_id)
+    return {"shm_session": session_id, "user_id": user_id}

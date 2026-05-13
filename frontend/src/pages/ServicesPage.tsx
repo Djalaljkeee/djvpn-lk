@@ -206,7 +206,7 @@ export default function ServicesPage() {
       const res = await buyService(serviceId)
       await invalidate()
       if (res?.needs_topup) {
-        setTopupPrompt({ amount: res.amount_needed, balance: res.balance })
+        setTopupPrompt({ amount: res.amount_needed ?? 0, balance: res.balance ?? 0 })
         // Сохраняем корзину, чтобы при возврате на дашборд был баннер «завершить покупку».
         const catalogItem = catalog.find(s => s.service_id === serviceId)
         saveCart({

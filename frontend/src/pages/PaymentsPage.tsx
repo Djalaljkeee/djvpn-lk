@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { applyPromoCode } from '../api/user'
+import { buildPaymentUrl } from '../api/services'
 import { useToast } from '../components/Toast'
 import { useDashboard, useDashboardSlice, useInvalidateDashboard } from '../hooks/useDashboard'
 import type { PromoApplyResult } from '../types'
@@ -22,13 +23,22 @@ export default function PaymentsPage() {
   const suggestedAmounts = [199, 499, 899, 1599]
   const loading = dashLoading && !data
 
-  const buildPayUrl = (shm_url: string) => {
+  const buildPayUrl = (ps: { shm_url?: string; paysystem?: string; name: string }) => {
     const n = Number(amount)
-    if (!Number.isFinite(n) || n <= 0) return shm_url
-    const [base, query = ''] = shm_url.split('?')
-    const params = new URLSearchParams(query)
-    params.set('amount', String(n))
-    return `${base}?${params.toString()}`
+    // Если SHM /user/pay/paysystems вернул готовый shm_url — подставляем сумму
+    // в существующий query. Иначе строим URL сами через buildPaymentUrl
+    // (формат: https://bill.djvpn.ru/shm/pay_systems/{ps}.cgi?action=create&...).
+    if (ps.shm_url) {
+      if (!Number.isFinite(n) || n <= 0) return ps.shm_url
+      const [base, query = ''] = ps.shm_url.split('?')
+      const params = new URLSearchParams(query)
+      params.set('amount', String(n))
+      return `${base}?${params.toString()}`
+    }
+    return buildPaymentUrl({
+      ps: ps.paysystem || ps.name,
+      amount: Number.isFinite(n) && n > 0 ? n : 0,
+    })
   }
 
   const forecastEntry = forecast[0] ?? null
@@ -208,7 +218,7 @@ export default function PaymentsPage() {
             {paySystems.map(ps => (
               <button
                 key={ps.name}
-                onClick={() => window.open(buildPayUrl(ps.shm_url), '_blank')}
+                onClick={() => window.open(buildPayUrl(ps), '_blank')}
                 className="w-full rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors"
               >
                 <div className="font-medium text-white">{ps.name}</div>

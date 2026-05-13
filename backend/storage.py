@@ -7,24 +7,24 @@ from typing import Optional
 import httpx
 
 from config import settings
-from shm_client import get_admin_session
 
 
-async def fetch_storage_data(user_service_id: int, user_id: int = 0) -> dict:
+async def fetch_storage_data(user_service_id: int, session_id: str, user_id: int = 0) -> dict:
     """Fetch full JSON from SHM Marzban storage: vpn_mrzb_{id}.
-    Returns dict with keys like subscriptionUrl, uuid, etc.
+
+    Использует session_id текущего пользователя (cookie SHM) вместо admin-сессии.
+    Возвращает dict с полями subscriptionUrl, uuid и пр.
     """
+    if not session_id:
+        return {}
     url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
-        admin_session = await get_admin_session()
         params = {"user_id": user_id} if user_id else {}
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 url,
-                headers={
-                    "session-id": admin_session,
-                    "Accept": "text/plain, application/json",
-                },
+                cookies={"session_id": session_id},
+                headers={"Accept": "text/plain, application/json"},
                 params=params,
             )
         if resp.status_code != 200:
@@ -46,6 +46,6 @@ async def fetch_storage_data(user_service_id: int, user_id: int = 0) -> dict:
     return {}
 
 
-async def fetch_sub_url_from_storage(user_service_id: int, user_id: int = 0) -> Optional[str]:
-    data = await fetch_storage_data(user_service_id, user_id)
+async def fetch_sub_url_from_storage(user_service_id: int, session_id: str, user_id: int = 0) -> Optional[str]:
+    data = await fetch_storage_data(user_service_id, session_id, user_id)
     return data.get("subscriptionUrl") or data.get("subscription_url")

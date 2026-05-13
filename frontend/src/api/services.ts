@@ -1,32 +1,80 @@
-import api from './client'
-import type { Service, PaySystem } from '../types'
+import api, { shm, unwrap } from './client'
+import type { Service } from '../types'
+import { useAuthStore } from '../store/authStore'
 
-export const fetchConfig = (): Promise<{ telegram_bot_username: string }> =>
-  api.get('/config').then(r => r.data)
+// ---------------------------------------------------------------------------
+// SHM (фронт ходит напрямую)
+// ---------------------------------------------------------------------------
 
-export const fetchServices = () =>
-  api.get<Service[]>('/services').then(r => r.data)
+export const fetchServices = async (): Promise<Service[]> => {
+  const resp = await shm.get('/service/order')
+  return unwrap<Service>(resp)
+}
 
-export const buyService = (service_id: number) =>
-  api.post('/services/buy', { service_id }).then(r => r.data)
+export interface BuyServiceResult {
+  // SHM возвращает обёртку с созданной USObject. Поля needs_topup/amount_needed/
+  // balance — наследие от backend-логики (с admin-расчётом цены). Сейчас SHM
+  // либо успешно создаёт заказ, либо отвечает ошибкой при нехватке баланса,
+  // которую фронт ловит в catch.
+  needs_topup?: boolean
+  amount_needed?: number
+  balance?: number
+  data?: unknown
+}
 
-export const fetchPaySystems = () =>
-  api.get<PaySystem[]>('/pay-systems').then(r => r.data)
-
-export const createPayment = (pay_system_id: number, amount: number) =>
-  api.post('/pay/create', { pay_system_id, amount }).then(r => r.data)
-
-export const fetchPaymentWebappUrl = (): Promise<string> =>
-  api.get<{ url: string }>('/pay/webapp-url').then(r => r.data.url)
+export const buyService = async (service_id: number): Promise<BuyServiceResult> => {
+  const resp = await shm.put('/service/order', { service_id })
+  return (resp.data || {}) as BuyServiceResult
+}
 
 export interface PaySystemV2 {
   name: string
-  shm_url: string
+  // Готовый URL платёжной формы. SHM может вернуть его уже c подставленным
+  // user_id/ts/email, либо вообще не вернуть — тогда фронт строит URL сам
+  // через buildPaymentUrl.
+  shm_url?: string
   paysystem?: string
   recurring?: number
   min_sum?: number
   max_sum?: number
 }
 
-export const fetchPaySystemsV2 = (): Promise<PaySystemV2[]> =>
-  api.get<PaySystemV2[]>('/pay/paysystems').then(r => r.data)
+export const fetchPaySystemsV2 = async (): Promise<PaySystemV2[]> => {
+  const resp = await shm.get('/user/pay/paysystems')
+  return unwrap<PaySystemV2>(resp)
+}
+
+// Платёж создаётся через redirect на bill.djvpn.ru — SHM не предоставляет
+// REST-эндпоинта для создания платежа. Параметры: текущий user_id, email
+// из login2 (см. swagger User.login2), сумма и код платёжной системы.
+export const BILL_BASE_URL = import.meta.env.VITE_SHM_BILL_URL || 'https://bill.djvpn.ru'
+
+export interface BuildPaymentUrlArgs {
+  ps: string
+  amount: number
+  user_id?: number
+  email?: string
+}
+
+export const buildPaymentUrl = ({ ps, amount, user_id, email }: BuildPaymentUrlArgs): string => {
+  const user = useAuthStore.getState().user
+  const uid = user_id ?? user?.user_id
+  const mail = email ?? (user as { login2?: string } | null)?.login2 ?? user?.email ?? ''
+  const ts = Math.floor(Date.now() / 1000)
+  const params = new URLSearchParams({
+    action: 'create',
+    user_id: String(uid ?? ''),
+    ts: String(ts),
+    ps,
+    amount: String(amount),
+    email: mail,
+  })
+  return `${BILL_BASE_URL}/shm/pay_systems/${encodeURIComponent(ps)}.cgi?${params.toString()}`
+}
+
+// ---------------------------------------------------------------------------
+// Backend (config — не SHM)
+// ---------------------------------------------------------------------------
+
+export const fetchConfig = (): Promise<{ telegram_bot_username: string }> =>
+  api.get('/config').then(r => r.data)

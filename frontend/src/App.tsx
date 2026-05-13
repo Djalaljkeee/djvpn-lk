@@ -61,8 +61,8 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
     const wasAuthenticated = isAuthenticated()
     const partnerId = getRefId() ?? undefined
     loginWithWebApp(initData, partnerId)
-      .then(({ token, user }) => {
-        setAuth(token, user)
+      .then(({ user }) => {
+        setAuth(user)
         clearRefId()
         // Кеш дашборда мог быть привязан к прошлой shm_session —
         // сбрасываем, чтобы свежий запрос ушёл с обновлёнными credentials.
