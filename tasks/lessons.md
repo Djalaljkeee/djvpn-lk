@@ -98,6 +98,25 @@
 - Юзер, привязавший email, хранится в SHM с `login = "@{tg_id}"` и
   `login2 = "email@..."` — основной login не меняется на email.
 
+## SHM auth: session-token в body, не в Set-Cookie
+
+- `POST /shm/v1/user/auth` (и `/telegram/web/auth`, `/telegram/webapp/auth`)
+  отвечают `200 {"id":"<session>"}`. **Set-Cookie SHM не выставляет** —
+  это видно по пустым cookies на lk.djvpn.ru после успешного 200 и по
+  упавшему следующему `GET /user → 401`.
+- Прокси `/api/shm/*` обязан явно вытащить `id` из тела auth-эндпоинтов и
+  сам выставить `Set-Cookie: session_id=<id>; Path=/; HttpOnly; SameSite=Lax`.
+  Без этого ЛК зависает на login: фронт думает «авторизовался», следующий
+  запрос летит без cookie.
+- Парсим body только на whitelisted-путях. Если просто читать `id` из всех
+  200-ответов, в cookie уедет user_id с какого-нибудь `/v1/user/<x>`.
+- Старый код пытался переписать `Set-Cookie` от upstream — это рудимент
+  старой версии SHM. Оставлен как fallback на случай, если SHM где-то
+  всё ещё ставит cookie сам; вреда не приносит (Path=/, своя secure-логика).
+- Диагностика: `docker compose logs backend | grep shm_proxy.cookies` —
+  должно показывать `upstream_set_cookie_count=0` и
+  `body_session_id_present=true` на auth-вызовах.
+
 ## Find-before-create в проксях — когда применимо, а когда нет
 
 - Find-before-create оправдан, если внешний поиск действительно

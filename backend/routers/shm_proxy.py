@@ -10,6 +10,7 @@ cross-origin auth полностью: без прокси браузер бло�
 
 from __future__ import annotations
 
+import json
 import time
 
 import httpx
@@ -35,9 +36,22 @@ _DROP_REQ_HEADERS = {
 # Заголовки ответа SHM, которые НЕ пробрасываем клиенту.
 # Set-Cookie обрабатываем отдельно (переписываем домен).
 # Transfer-Encoding / Content-Length / Content-Encoding — Starlette выставит сам.
+# Date / Server — uvicorn/Starlette добавит свои; без drop nginx ругается
+# "upstream sent duplicate header line" и шумит в логах.
 _DROP_RESP_HEADERS = {
     "set-cookie", "transfer-encoding", "content-encoding", "content-length",
-    "connection", "keep-alive",
+    "connection", "keep-alive", "date", "server",
+}
+
+# Auth-эндпоинты SHM, на которых сессия выдаётся в теле как {"id": "..."},
+# а не через Set-Cookie. Реальное поведение SHM (см. lessons.md): POST
+# /v1/user/auth отвечает 200 без Set-Cookie, а session-token лежит в body.
+# Без явной обработки cookie session_id никогда не появится на ЛК → следующий
+# запрос ловит 401.
+_AUTH_PATHS_WITH_BODY_SESSION = {
+    "v1/user/auth",
+    "v1/telegram/web/auth",
+    "v1/telegram/webapp/auth",
 }
 
 
@@ -104,10 +118,12 @@ async def shm_proxy(path: str, request: Request) -> Response:
     # secure только под https, иначе локалка по http не сохранит cookie.
     is_secure = request.url.scheme == "https"
     set_cookie_headers = upstream.headers.get_list("set-cookie")
+    body_session_id = _extract_body_session(path, upstream)
     log.info(
         "shm_proxy.cookies",
         path=path,
         upstream_set_cookie_count=len(set_cookie_headers),
+        body_session_id_present=bool(body_session_id),
     )
     for raw in set_cookie_headers:
         name, value, max_age = _parse_cookie(raw)
@@ -123,7 +139,42 @@ async def shm_proxy(path: str, request: Request) -> Response:
             samesite="lax",
         )
 
+    # SHM auth-эндпоинты отдают session в body как {"id": "..."} (не Set-Cookie).
+    # Без этой ветки cookie session_id никогда не появляется на ЛК и каждый
+    # следующий /v1/user возвращает 401.
+    if body_session_id:
+        response.set_cookie(
+            key="session_id",
+            value=body_session_id,
+            path="/",
+            secure=is_secure,
+            httponly=True,
+            samesite="lax",
+        )
+
     return response
+
+
+def _extract_body_session(path: str, upstream: httpx.Response) -> str | None:
+    """Достаём session_id из JSON-тела auth-ответа SHM.
+
+    Только для известных auth-путей и 200 — не парсим тела всех ответов
+    подряд, чтобы случайный `{"id": ...}` в чужом эндпоинте не уехал в cookie.
+    """
+    if path not in _AUTH_PATHS_WITH_BODY_SESSION:
+        return None
+    if upstream.status_code != 200:
+        return None
+    try:
+        data = json.loads(upstream.content)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sid = data.get("id")
+    if isinstance(sid, str) and sid:
+        return sid
+    return None
 
 
 def _parse_cookie(raw: str) -> tuple[str | None, str, int | None]:
