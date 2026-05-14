@@ -4,8 +4,12 @@ import type { User } from '../types'
 
 interface AuthState {
   user: User | null
+  // photo_url из Telegram (widget / WebApp initData). SHM не хранит — поэтому
+  // держим отдельно от user, чтобы fetchProfile() не затирал его.
+  tgPhotoUrl: string | null
   setAuth: (user: User) => void
   setUser: (user: User) => void
+  setTgPhotoUrl: (url: string | null) => void
   logout: () => void
   isAuthenticated: () => boolean
 }
@@ -19,9 +23,11 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      tgPhotoUrl: null,
       setAuth: (user) => set({ user }),
       setUser: (user) => set({ user }),
-      logout: () => set({ user: null }),
+      setTgPhotoUrl: (url) => set({ tgPhotoUrl: url || null }),
+      logout: () => set({ user: null, tgPhotoUrl: null }),
       isAuthenticated: () => !!get().user,
     }),
     { name: 'shm-auth-v2' }

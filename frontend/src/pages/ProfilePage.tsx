@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
@@ -83,7 +83,11 @@ const TOS_TEXT = `Настоящее Пользовательское согла
 11.1. Споры решаются в соответствии с применимым правом.`
 
 export default function ProfilePage() {
-  const { user, setUser, logout } = useAuthStore()
+  const { user, setUser, logout, tgPhotoUrl } = useAuthStore()
+  // photoBroken сбрасываем при смене URL — иначе после re-auth с новой
+  // фоткой остаётся «сломанный» флаг от прежней и аватарка не появится.
+  const [photoBroken, setPhotoBroken] = useState(false)
+  useEffect(() => { setPhotoBroken(false) }, [tgPhotoUrl])
   const navigate = useNavigate()
   const { show } = useToast()
   const invalidateDashboard = useInvalidateDashboard()
@@ -197,8 +201,18 @@ export default function ProfilePage() {
       <div className="rounded-2xl border border-white/10 bg-surface-1 p-4">
         {/* Avatar + name */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-700 text-xl font-bold text-white shadow-lg">
-            {avatar}
+          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-brand-400 to-brand-700 text-xl font-bold text-white shadow-lg">
+            {tgPhotoUrl && !photoBroken ? (
+              <img
+                src={tgPhotoUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={() => setPhotoBroken(true)}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              avatar
+            )}
           </div>
           <div>
             <div className="text-base font-semibold text-white">{displayName}</div>

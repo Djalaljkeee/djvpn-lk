@@ -5,6 +5,7 @@ import { ToastProvider } from './components/Toast'
 import { useEffect, useState } from 'react'
 import { loginWithWebApp } from './api/auth'
 import { captureRefIdFromUrl, clearRefId, getRefId } from './utils/referral'
+import { getPhotoUrlFromInitData } from './utils/telegram'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ServicesPage from './pages/ServicesPage'
@@ -35,7 +36,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 /** Автоматическая авторизация через Telegram Mini App */
 function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
-  const { setAuth, isAuthenticated } = useAuthStore()
+  const { setAuth, setTgPhotoUrl, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   // Внутри Telegram WebApp всегда обновляем shm_session, даже если в
@@ -63,6 +64,10 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
     loginWithWebApp(initData, partnerId)
       .then(({ user }) => {
         setAuth(user)
+        // photo_url в SHM не приходит — достаём из initData один раз при
+        // успешном auth, дальше сохраняется в localStorage вместе со стором.
+        const photoUrl = getPhotoUrlFromInitData(initData)
+        if (photoUrl) setTgPhotoUrl(photoUrl)
         clearRefId()
         // Кеш дашборда мог быть привязан к прошлой shm_session —
         // сбрасываем, чтобы свежий запрос ушёл с обновлёнными credentials.

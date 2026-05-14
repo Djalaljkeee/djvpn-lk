@@ -12,6 +12,7 @@ import { verifyEmailToken, requestEmailVerification, fetchProfile } from '../api
 import { fetchConfig } from '../api/services'
 import { BrandLogo } from '../components/BrandLogo'
 import { clearRefId, getRefId } from '../utils/referral'
+import { getPhotoUrlFromTelegramUser } from '../utils/telegram'
 
 declare global {
   interface Window { onTelegramAuth?: (user: object) => void }
@@ -21,7 +22,7 @@ type Mode = 'login' | 'register' | 'verify-email'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { setAuth, setUser, isAuthenticated } = useAuthStore()
+  const { setAuth, setUser, setTgPhotoUrl, isAuthenticated } = useAuthStore()
   const [mode, setMode] = useState<Mode>('login')
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
@@ -86,6 +87,8 @@ export default function LoginPage() {
       try {
         const { user } = await loginWithTelegram(tgUser, getRefId() ?? undefined)
         setAuth(user)
+        const photoUrl = getPhotoUrlFromTelegramUser(tgUser)
+        if (photoUrl) setTgPhotoUrl(photoUrl)
         clearRefId()
         navigate('/')
       } catch (e: any) {
@@ -147,6 +150,9 @@ export default function LoginPage() {
       if (mode === 'login') {
         const { user } = await loginWithPassword(login, password)
         setAuth(user)
+        // Password-login приходит без Telegram-фотки — сбрасываем кеш
+        // от предыдущего пользователя, иначе он «прилипнет» на новом аккаунте.
+        setTgPhotoUrl(null)
         navigate('/')
       } else {
         const result = await registerWithPassword({
