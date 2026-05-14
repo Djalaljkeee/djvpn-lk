@@ -35,7 +35,7 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
         service_name = service_info.get("name") or svc.get("name", "")
         service_id = svc.get("service_id", 0)
         try:
-            uuid = await resolve_remna_uuid(user_service_id, svc, user_id)
+            uuid = await resolve_remna_uuid(user_service_id, svc, user_id, session["shm_session"])
             if not uuid:
                 raise ValueError("no uuid")
             remna_data = await remnawave_request("GET", f"/api/hwid/devices/{uuid}")
@@ -71,7 +71,9 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
     target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
-    user_uuid = await resolve_remna_uuid(req.user_service_id, target_svc, session.get("user_id", 0))
+    user_uuid = await resolve_remna_uuid(
+        req.user_service_id, target_svc, session.get("user_id", 0), session["shm_session"],
+    )
     if not user_uuid:
         raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
     result = await remnawave_request(
@@ -93,7 +95,7 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     async def fetch_remna_user(svc: dict) -> RemnaUserInfo:
         user_service_id = svc["user_service_id"]
         try:
-            uuid = await resolve_remna_uuid(user_service_id, svc, user_id)
+            uuid = await resolve_remna_uuid(user_service_id, svc, user_id, session["shm_session"])
             if not uuid:
                 logging.warning("get_remna_info usi=%s: no uuid", user_service_id)
                 return RemnaUserInfo(user_service_id=user_service_id)
@@ -135,7 +137,9 @@ async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = 
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
     target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
-    user_uuid = await resolve_remna_uuid(req.user_service_id, target_svc, session.get("user_id", 0))
+    user_uuid = await resolve_remna_uuid(
+        req.user_service_id, target_svc, session.get("user_id", 0), session["shm_session"],
+    )
     if not user_uuid:
         raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
     remna_data = await remnawave_request("GET", f"/api/hwid/devices/{user_uuid}")
