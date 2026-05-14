@@ -125,6 +125,8 @@ export function normalizeUser(user: Record<string, unknown>): User {
     full_name: user.full_name as string | undefined,
     balance: Number(user.balance ?? 0),
     credit: Number(user.credit ?? 0),
+    discount: Number(user.discount ?? 0),
+    bonus: Number(user.bonus ?? 0),
     status: Number(user.status ?? 0),
     created: user.created as string | undefined,
     email: user.email as string | undefined,

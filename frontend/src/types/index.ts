@@ -7,7 +7,12 @@ export interface User {
   name?: string
   full_name?: string
   balance: number
+  // SHM поле `credit` — кредитный лимит (овердрафт), не путать с дисконтом.
   credit: number
+  // Скидка пользователя в процентах. SHM возвращает в поле `discount`.
+  discount: number
+  // Бонусный (баллы/промо) баланс в рублях, поле SHM `bonus`.
+  bonus: number
   status: number
   created?: string
   email?: string
