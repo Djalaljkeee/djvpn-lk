@@ -18,11 +18,14 @@ const navItems = [
 
 export default function Layout() {
   const user = useProfile()
-  const { logout } = useAuthStore()
+  const { logout, tgPhotoUrl } = useAuthStore()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [photoBroken, setPhotoBroken] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setPhotoBroken(false) }, [tgPhotoUrl])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -93,8 +96,18 @@ export default function Layout() {
                 onClick={() => setMenuOpen(v => !v)}
                 className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-2.5 py-2 hover:bg-white/10 transition-colors"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-300 to-brand-700 text-sm font-bold text-white">
-                  {avatar}
+                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-brand-300 to-brand-700 text-sm font-bold text-white">
+                  {tgPhotoUrl && !photoBroken ? (
+                    <img
+                      src={tgPhotoUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      onError={() => setPhotoBroken(true)}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    avatar
+                  )}
                 </div>
                 <div className="hidden sm:block text-left">
                   <div className="max-w-[120px] truncate text-sm text-white">{displayName}</div>
