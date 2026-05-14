@@ -108,7 +108,8 @@ export default function ProfilePage() {
   const telegramId = isТelegramUser ? login.slice(1) : null
   const avatar = (user?.name?.[0] ?? login[0] ?? 'U').toUpperCase()
   const balance = user?.balance ?? 0
-  const discount = user?.credit ?? 0
+  const bonus = user?.bonus ?? 0
+  const discount = user?.discount ?? 0
   const email = user?.email?.trim() || ''
   const emailVerified = user?.email_verified === true
 
@@ -315,6 +316,11 @@ export default function ProfilePage() {
             <div className="text-lg font-semibold text-emerald-400">
               {balance.toFixed(2)} <span className="text-sm">₽</span>
             </div>
+            {bonus > 0 && (
+              <div className="mt-1 text-xs text-fuchsia-300">
+                + бонусов {bonus.toFixed(2)} ₽
+              </div>
+            )}
           </div>
           <div className="rounded-xl border border-white/8 bg-surface-2 px-4 py-3">
             <div className="text-xs text-slate-400 mb-1">Скидка:</div>
