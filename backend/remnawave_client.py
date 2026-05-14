@@ -41,12 +41,14 @@ async def resolve_remna_uuid(
     user_service_id: int,
     svc: dict | None = None,
     user_id: int = 0,
+    session_id: str = "",
 ) -> Optional[str]:
     """Resolve Remnawave UUID for a user service.
 
     Lookup chain:
     1. svc.data.uuid (inline in SHM user/service response)
-    2. SHM storage vpn_mrzb_{user_service_id}.uuid  (requires user_id query)
+    2. SHM storage vpn_mrzb_{user_service_id}.uuid (нужна пользовательская
+       SHM session — без неё storage отвечает 401/403 и UUID не найти)
     3. Remnawave /api/users/by-username/us_{shm_user_id}  (fallback — user-wide)
     """
     # Локальный импорт, чтобы избежать циклического импорта с storage.py
@@ -65,7 +67,7 @@ async def resolve_remna_uuid(
         if uuid_val:
             return uuid_val
 
-    storage = await fetch_storage_data(user_service_id, user_id)
+    storage = await fetch_storage_data(user_service_id, session_id, user_id)
     logging.warning("_resolve_remna_uuid: step2 storage keys=%s uuid=%s", list(storage.keys()) if storage else None, storage.get("uuid") if storage else None)
     uuid_val = storage.get("uuid")
     if uuid_val:
