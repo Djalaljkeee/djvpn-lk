@@ -3,6 +3,9 @@ import type {
   User, UserService, Payment, PromoApplyResult, ReferralStats,
   ServiceDevices, StatusData, ForecastEntry, RemnaUserInfo, ServiceActionResult,
 } from '../types'
+import {
+  normalizePayment, normalizeUser, normalizeUserService,
+} from '../utils/normalizers'
 
 // ---------------------------------------------------------------------------
 // SHM (фронт ходит напрямую в admin.djvpn.ru/shm/v1)
@@ -10,26 +13,29 @@ import type {
 
 export const fetchProfile = async (): Promise<User> => {
   const userResp = await shm.get('/user')
-  const user = unwrapOne<User>(userResp)
-  if (!user) throw new Error('SHM /user не вернул профиль')
+  const rawUser = unwrapOne<Record<string, unknown>>(userResp)
+  if (!rawUser) throw new Error('SHM /user не вернул профиль')
+  // SHM /user/email отдаёт {email, email_verified: 0|1} отдельным запросом —
+  // мерджим в профиль до нормализации, чтобы email_verified прошёл через
+  // приведение к boolean (иначе ProfilePage остаётся в состоянии «Не подтверждён»).
   try {
     const emailResp = await shm.get('/user/email')
-    const emailObj = unwrapOne<Partial<User>>(emailResp)
-    if (emailObj) Object.assign(user, emailObj)
+    const emailObj = unwrapOne<Record<string, unknown>>(emailResp)
+    if (emailObj) Object.assign(rawUser, emailObj)
   } catch {
     // 404 если email ещё не привязан — это нормально.
   }
-  return user
+  return normalizeUser(rawUser)
 }
 
 export const fetchUserServices = async (): Promise<UserService[]> => {
   const resp = await shm.get('/user/service')
-  return unwrap<UserService>(resp)
+  return unwrap<Record<string, unknown>>(resp).map(normalizeUserService)
 }
 
 export const fetchPayments = async (): Promise<Payment[]> => {
   const resp = await shm.get('/user/pay')
-  return unwrap<Payment>(resp)
+  return unwrap<Record<string, unknown>>(resp).map(normalizePayment)
 }
 
 export const fetchReferrals = async (): Promise<ReferralStats> => {
@@ -78,7 +84,11 @@ export const applyPromoCode = async (code: string): Promise<PromoApplyResult> =>
 
 export const fetchServiceOrders = async (): Promise<{ service_id: number }[]> => {
   const resp = await shm.get('/service/order')
-  return unwrap<{ service_id: number }>(resp)
+  // SHM хранит идентификатор тарифа в поле `id`, дашборду нужен `service_id`
+  // (для матча с TRIAL_SERVICE_ID и owned-фильтром).
+  return unwrap<Record<string, unknown>>(resp).map(item => ({
+    service_id: Number(item.id ?? item.service_id ?? 0),
+  }))
 }
 
 export const fetchForecast = async (): Promise<ForecastEntry[]> => {

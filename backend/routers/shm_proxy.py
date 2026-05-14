@@ -160,6 +160,9 @@ def _extract_body_session(path: str, upstream: httpx.Response) -> str | None:
 
     Только для известных auth-путей и 200 — не парсим тела всех ответов
     подряд, чтобы случайный `{"id": ...}` в чужом эндпоинте не уехал в cookie.
+
+    SHM непоследователен в имени поля: `POST /user/auth` отдаёт `{"id": ...}`,
+    `GET /telegram/webapp/auth` — `{"session_id": ...}`. Поэтому пробуем оба.
     """
     if path not in _AUTH_PATHS_WITH_BODY_SESSION:
         return None
@@ -171,9 +174,10 @@ def _extract_body_session(path: str, upstream: httpx.Response) -> str | None:
         return None
     if not isinstance(data, dict):
         return None
-    sid = data.get("id")
-    if isinstance(sid, str) and sid:
-        return sid
+    for key in ("session_id", "id"):
+        sid = data.get(key)
+        if isinstance(sid, str) and sid:
+            return sid
     return None
 
 

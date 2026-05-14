@@ -1,6 +1,7 @@
 import api, { shm, unwrap } from './client'
 import type { Service } from '../types'
 import { useAuthStore } from '../store/authStore'
+import { normalizeCatalogService } from '../utils/normalizers'
 
 // ---------------------------------------------------------------------------
 // SHM (фронт ходит напрямую)
@@ -8,7 +9,7 @@ import { useAuthStore } from '../store/authStore'
 
 export const fetchServices = async (): Promise<Service[]> => {
   const resp = await shm.get('/service/order')
-  return unwrap<Service>(resp)
+  return unwrap<Record<string, unknown>>(resp).map(normalizeCatalogService)
 }
 
 export interface BuyServiceResult {
