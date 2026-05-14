@@ -116,6 +116,30 @@
 - Диагностика: `docker compose logs backend | grep shm_proxy.cookies` —
   должно показывать `upstream_set_cookie_count=0` и
   `body_session_id_present=true` на auth-вызовах.
+- **Имя поля в теле непостоянно**: `POST /user/auth` отдаёт `{"id": "..."}`,
+  а `GET /telegram/webapp/auth` (и telegram-widget `/telegram/web/auth`) —
+  `{"session_id": "..."}`. Extractor обязан пробовать оба ключа в порядке
+  `session_id, id`, иначе один из путей ломается тихо: 200 OK, кука
+  пустая, следующий `/user` → 401.
+
+## SHM напрямую с фронта: не забывай нормализаторы
+
+- При переводе фронта с backend-аггрегатора (`/api/dashboard`) на прямой
+  SHM API весь `backend/normalizers.py` уехал «за борт», но его никто не
+  портировал на TS. Симптомы:
+  - На дашборде пропала подписка: `services.filter(s => s.status === 1)`
+    фильтрует число, а SHM отдаёт строку `"ACTIVE"`.
+  - В профиле «Не подтверждён», хотя SHM присылает `email_verified: 1` —
+    TS сравнивал `=== true` с числом.
+  - В каталоге пропал service_id: SHM /service/order использует `id`,
+    а фронт читает `o.service_id`.
+- Лечение: `frontend/src/utils/normalizers.ts` дублирует логику
+  `normalize_user_service` / `normalize_catalog_service` /
+  `normalize_payment` / `normalize_user`. Применяется в API-функциях
+  один раз — компоненты остаются на «нашей» форме.
+- Правило: если backend нормализовал поля до миграции, при перехо́де на
+  прямой вызов **сразу** портируй нормализатор на TS, а не «потом
+  починим UI». UI потом не починят.
 
 ## Find-before-create в проксях — когда применимо, а когда нет
 
