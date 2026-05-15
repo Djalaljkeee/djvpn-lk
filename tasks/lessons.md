@@ -1,5 +1,30 @@
 # Уроки
 
+## Публичные лендинги — `frontend/public/*.html`, не React-страницы
+
+- Если страница должна быть доступна **без авторизации** (например,
+  ссылка из Telegram-бота для рекламы инструкций), не делай её
+  React-роутом под `PrivateRoute`/`Layout` — выноси в
+  `frontend/public/<name>.html`. Vite копирует `public/` в `dist/` как
+  есть, URL получится `https://<домен>/<name>.html`.
+- Без React-обвязки → меньше bundle, нет лишнего auth-flow.
+- Чтобы дизайн совпадал с SPA, **извлекай токены из реальных файлов**,
+  а не выдумывай: `frontend/tailwind.config.js` (`brand-*`, `surface-*`),
+  `frontend/src/index.css` (`.glass`, `.gradient-text`, `.brand-panel`,
+  скроллбар), `frontend/src/components/Layout.tsx` (sticky header,
+  ambient blobs). Один раз вытащил палитру — пиши обычным CSS с
+  `var(--brand-500)` и т.п.
+- Шрифт грузи отдельным `<link>` на Google Fonts (Golos Text) — точно
+  как в `frontend/index.html`. Без него страница «съезжает» в Arial.
+- Категорный таб-навигатор + sub-chips удобно собрать ваниль-JS
+  (~50 строк): `data-tab`/`data-sub` атрибуты, `is-active` класс,
+  `history.replaceState('#tab-name')` для deeplink-якорей.
+- Имена / ID приложений в сторах синхронизируй с
+  `backend/vpn_setup.py::HAPP_DOWNLOADS` — иначе лендинг и реальный
+  deeplink в боте/ЛК разойдутся. У DJ VPN под Windows используется
+  Hiddify (`github.com/hiddify/hiddify-app`), не Happ — частая
+  ошибка при копировании инструкций «из памяти».
+
 ## SHM API: undocumented поля
 
 - В Swagger описаны не все поля, которые принимает SHM. Например, `partner_id`
