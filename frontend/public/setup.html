@@ -236,18 +236,19 @@
     .faq-item:first-child { border-top: 0; padding-top: 0; }
     .faq-item summary {
       cursor: pointer; list-style: none;
-      display: flex; align-items: center; justify-content: space-between; gap: 14px;
       font-weight: 600; color: var(--text); font-size: 16px;
-      padding: 4px 0;
+      padding: 4px 44px 4px 0;
+      position: relative;
     }
     .faq-item summary::-webkit-details-marker { display: none; }
     .faq-item summary::after {
-      content: '+'; width: 28px; height: 28px; flex-shrink: 0;
+      content: '+'; width: 28px; height: 28px;
       display: inline-flex; align-items: center; justify-content: center;
       border-radius: 8px; background: rgba(255,255,255,0.05);
       border: 1px solid var(--border);
       font-weight: 400; font-size: 18px; color: var(--text-muted);
       transition: all .2s ease;
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
     }
     .faq-item[open] summary::after { content: '−'; background: rgba(221, 86, 202, 0.18); color: #fff; }
     .faq-item p { margin: 10px 0 0; font-size: 14.5px; }
