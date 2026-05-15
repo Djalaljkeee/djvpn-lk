@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#14071f" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>DJ VPN — Настройка и установка Happ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    :root {
+      --surface-0: #14071f;
+      --surface-1: #1b0c2a;
+      --surface-2: #251236;
+      --surface-3: #311846;
+      --surface-4: #42215c;
+      --brand-300: #ff86df;
+      --brand-400: #f46ed8;
+      --brand-500: #dd56ca;
+      --brand-600: #b641a9;
+      --brand-700: #8f3184;
+      --text:      #f4eaf6;
+      --text-muted:#c9b6d4;
+      --text-dim:  #8e7c9a;
+      --border:    rgba(255, 210, 248, 0.10);
+      --border-strong: rgba(255, 184, 240, 0.24);
+    }
+
+    body {
+      background: var(--surface-0);
+      color: var(--text);
+      font-family: 'Golos Text', system-ui, -apple-system, Arial, sans-serif;
+      line-height: 1.55;
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient glow blobs — match Layout.tsx */
+    .ambient {
+      position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0;
+    }
+    .ambient::before, .ambient::after, .ambient .b3 {
+      content: ''; position: absolute; border-radius: 999px; filter: blur(120px);
+    }
+    .ambient::before { top: -6rem; left: -8%; width: 22rem; height: 22rem; background: rgba(255, 134, 223, 0.15); }
+    .ambient::after  { top: 15%; right: -5%; width: 20rem; height: 20rem; background: rgba(221, 86, 202, 0.12); }
+    .ambient .b3     { bottom: -8%; left: 20%; width: 18rem; height: 18rem; background: rgba(143, 49, 132, 0.12); }
+
+    /* Layout */
+    .page { position: relative; z-index: 1; }
+
+    header.topbar {
+      position: sticky; top: 0; z-index: 50;
+      border-bottom: 1px solid var(--border);
+      background: rgba(26, 9, 35, 0.72);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+    .topbar-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; padding: 16px 20px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      text-decoration: none; color: var(--text); font-weight: 700;
+    }
+    .brand-mark {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, #ffd1fb, #e56fff 55%, #b641a9);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; color: #2a0832; font-size: 18px;
+      box-shadow: 0 12px 30px rgba(221, 86, 202, 0.32);
+    }
+    .brand-name { font-size: 18px; }
+    .brand-name span { color: var(--brand-300); }
+
+    .back-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+      color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500;
+      transition: all .2s ease;
+    }
+    .back-link:hover { color: var(--text); border-color: var(--border-strong); }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 32px 20px 96px; }
+
+    /* Hero */
+    .hero { text-align: center; padding: 36px 12px 32px; }
+    .hero h1 {
+      font-size: clamp(34px, 5vw, 52px); font-weight: 800; margin: 0 0 18px;
+      background: linear-gradient(135deg, #ffd1fb 0%, #ff95e2 45%, #e56fff 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+      letter-spacing: -0.02em; line-height: 1.05;
+    }
+    .hero p { color: var(--text-muted); max-width: 680px; margin: 0 auto; font-size: 17px; }
+
+    /* Glass card */
+    .card {
+      background:
+        linear-gradient(180deg, rgba(52, 19, 48, 0.82), rgba(27, 12, 42, 0.92)),
+        radial-gradient(circle at top right, rgba(255, 173, 235, 0.08), transparent 30%);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 28px;
+      margin-bottom: 24px;
+      box-shadow: 0 18px 50px rgba(13, 5, 18, 0.28);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    h2 { font-size: clamp(24px, 3vw, 30px); margin: 0 0 14px; font-weight: 700; letter-spacing: -0.01em; }
+    h3 { font-size: 20px; margin: 0 0 10px; font-weight: 600; }
+    h4 { font-size: 16px; margin: 0 0 8px; font-weight: 600; color: var(--text); }
+    p  { color: var(--text-muted); margin: 0 0 12px; font-size: 15px; }
+    .section-lead { color: var(--text-muted); margin-bottom: 22px; font-size: 15px; }
+
+    /* Category picker (tabs) */
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding: 8px; border-radius: 20px;
+      background: rgba(20, 7, 31, 0.72);
+      border: 1px solid var(--border);
+      margin: -8px -8px 26px;
+    }
+    .tab {
+      flex: 1 1 auto; min-width: 140px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 16px; border-radius: 14px;
+      border: 1px solid transparent;
+      background: transparent; color: var(--text-muted);
+      font-family: inherit; font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: all .2s ease; white-space: nowrap;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .tab.is-active {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(221, 86, 202, 0.28), rgba(143, 49, 132, 0.22));
+      border-color: rgba(255, 134, 223, 0.35);
+      box-shadow: 0 12px 30px rgba(221, 86, 202, 0.18);
+    }
+    .tab .ico { font-size: 18px; line-height: 1; }
+
+    /* Platform sub-tabs (chips) inside a category */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+    .chip {
+      padding: 8px 14px; border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text-muted);
+      font-family: inherit; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all .2s ease;
+    }
+    .chip:hover { color: var(--text); border-color: var(--border-strong); }
+    .chip.is-active {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(221, 86, 202, 0.32), rgba(143, 49, 132, 0.24));
+      border-color: rgba(255, 134, 223, 0.45);
+    }
+
+    /* Steps */
+    .steps { display: grid; gap: 18px; }
+    .step {
+      display: grid; grid-template-columns: 56px 1fr; gap: 18px;
+      padding: 20px; border-radius: 18px;
+      background: rgba(20, 7, 31, 0.52);
+      border: 1px solid var(--border);
+      transition: border-color .2s ease;
+    }
+    .step:hover { border-color: var(--border-strong); }
+    .step-num {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #dd56ca, #8f3184);
+      color: #fff; font-weight: 700; font-size: 18px;
+      box-shadow: 0 8px 22px rgba(221, 86, 202, 0.32);
+    }
+    .step-body h4 { margin-bottom: 6px; }
+    .step-body p { margin-bottom: 10px; font-size: 14.5px; }
+    .step-body p:last-child { margin-bottom: 0; }
+
+    /* Buttons / links */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 18px; border-radius: 14px;
+      font-family: inherit; font-size: 14px; font-weight: 600;
+      text-decoration: none; cursor: pointer; border: 1px solid transparent;
+      transition: all .2s ease;
+    }
+    .btn-primary {
+      color: #fff;
+      background: linear-gradient(135deg, #dd56ca, #8f3184);
+      box-shadow: 0 12px 30px rgba(221, 86, 202, 0.32);
+    }
+    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn-ghost {
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.04);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--border-strong); }
+
+    /* Highlight callout */
+    .callout {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 16px 18px; border-radius: 16px;
+      background: linear-gradient(135deg, rgba(221, 86, 202, 0.14), rgba(143, 49, 132, 0.10));
+      border: 1px solid rgba(255, 134, 223, 0.28);
+      margin: 18px 0;
+    }
+    .callout .ico { font-size: 22px; line-height: 1.2; flex-shrink: 0; }
+    .callout p { margin: 0; color: var(--text); font-size: 14.5px; }
+
+    /* Pill list (supported devices etc.) */
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+    .pill {
+      padding: 6px 12px; border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      font-size: 13px; color: var(--text-muted);
+    }
+
+    /* FAQ */
+    .faq-item {
+      border-top: 1px solid var(--border);
+      padding: 16px 0;
+    }
+    .faq-item:first-child { border-top: 0; padding-top: 0; }
+    .faq-item summary {
+      cursor: pointer; list-style: none;
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      font-weight: 600; color: var(--text); font-size: 16px;
+      padding: 4px 0;
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary::after {
+      content: '+'; width: 28px; height: 28px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      font-weight: 400; font-size: 18px; color: var(--text-muted);
+      transition: all .2s ease;
+    }
+    .faq-item[open] summary::after { content: '−'; background: rgba(221, 86, 202, 0.18); color: #fff; }
+    .faq-item p { margin: 10px 0 0; font-size: 14.5px; }
+
+    /* Platform grid (overview cards on top) */
+    .grid-overview {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px; margin-top: 8px;
+    }
+    .overview-card {
+      padding: 18px; border-radius: 18px;
+      background: rgba(20, 7, 31, 0.52);
+      border: 1px solid var(--border);
+      cursor: pointer; transition: all .2s ease;
+      font: inherit; color: inherit; text-align: left; width: 100%;
+    }
+    .overview-card:hover {
+      border-color: rgba(255, 134, 223, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 18px 40px rgba(13, 5, 18, 0.36);
+    }
+    .overview-ico {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, rgba(221, 86, 202, 0.28), rgba(143, 49, 132, 0.22));
+      border: 1px solid rgba(255, 134, 223, 0.28);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 12px;
+    }
+    .overview-card h4 { margin-bottom: 4px; }
+    .overview-card p { margin: 0; font-size: 13.5px; }
+
+    /* Panels (hidden by default) */
+    .panel { display: none; animation: fadeIn .3s ease; }
+    .panel.is-active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .subpanel { display: none; }
+    .subpanel.is-active { display: block; }
+
+    .footer {
+      text-align: center; color: var(--text-dim);
+      padding: 40px 20px 0; font-size: 13px;
+    }
+    .footer a { color: var(--brand-300); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 640px) {
+      .container { padding: 20px 16px 80px; }
+      .card { padding: 22px 18px; border-radius: 20px; }
+      .step { grid-template-columns: 48px 1fr; gap: 14px; padding: 16px; }
+      .step-num { width: 40px; height: 40px; font-size: 16px; }
+      .topbar-inner { padding: 14px 16px; }
+      .tab { min-width: 0; flex: 1 1 calc(50% - 8px); font-size: 13px; padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><div class="b3"></div></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/">
+        <div class="brand-mark">DJ</div>
+        <div class="brand-name">DJ <span>VPN</span></div>
+      </a>
+      <a class="back-link" href="/">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+        В кабинет
+      </a>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="container">
+
+      <section class="hero">
+        <h1>Настройка DJ&nbsp;VPN</h1>
+        <p>
+          Пошаговые гайды по установке и подключению приложения&nbsp;Happ
+          на смартфоне, компьютере, телевизоре и через Telegram-бот.
+        </p>
+      </section>
+
+      <!-- Quick overview -->
+      <section class="card">
+        <h2>С чего начать</h2>
+        <p class="section-lead">Выберите устройство — мы сразу откроем гайд для него.</p>
+        <div class="grid-overview">
+          <button class="overview-card" data-jump="mobile">
+            <div class="overview-ico">📱</div>
+            <h4>Смартфон</h4>
+            <p>iPhone, iPad и Android</p>
+          </button>
+          <button class="overview-card" data-jump="desktop">
+            <div class="overview-ico">💻</div>
+            <h4>Компьютер</h4>
+            <p>Windows, macOS, Linux</p>
+          </button>
+          <button class="overview-card" data-jump="tv">
+            <div class="overview-ico">📺</div>
+            <h4>Телевизор</h4>
+            <p>Android TV, Apple TV, приставки</p>
+          </button>
+          <button class="overview-card" data-jump="bot">
+            <div class="overview-ico">🤖</div>
+            <h4>Telegram-бот</h4>
+            <p>Автоматическая настройка из чата</p>
+          </button>
+        </div>
+      </section>
+
+      <!-- Category tabs -->
+      <section class="card">
+        <div class="tabs" role="tablist" aria-label="Категории гайдов">
+          <button class="tab is-active" role="tab" aria-selected="true" data-tab="mobile"><span class="ico">📱</span>Смартфон</button>
+          <button class="tab" role="tab" data-tab="desktop"><span class="ico">💻</span>Компьютер</button>
+          <button class="tab" role="tab" data-tab="tv"><span class="ico">📺</span>Телевизор</button>
+          <button class="tab" role="tab" data-tab="bot"><span class="ico">🤖</span>Бот</button>
+          <button class="tab" role="tab" data-tab="cabinet"><span class="ico">🪪</span>Кабинет</button>
+          <button class="tab" role="tab" data-tab="faq"><span class="ico">❓</span>Вопросы</button>
+        </div>
+
+        <!-- =================== MOBILE =================== -->
+        <div class="panel is-active" id="panel-mobile" role="tabpanel">
+          <h2>Смартфон и планшет</h2>
+          <p class="section-lead">Самый быстрый способ: в личном кабинете или боте нажмите «Настроить подключение» — Happ откроется и сам импортирует ключ.</p>
+
+          <div class="chips" role="tablist" aria-label="Платформа">
+            <button class="chip is-active" data-sub="mobile-ios">iOS · iPhone / iPad</button>
+            <button class="chip" data-sub="mobile-android">Android</button>
+          </div>
+
+          <!-- iOS -->
+          <div class="subpanel is-active" id="sub-mobile-ios">
+            <div class="steps">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Установите Happ из App&nbsp;Store</h4>
+                  <p>Откройте App&nbsp;Store и найдите <strong>Happ Proxy Utility</strong>. Приложение бесплатное, работает на iOS&nbsp;15 и новее.</p>
+                  <a class="btn btn-primary" href="https://apps.apple.com/app/happ/id6744897585" target="_blank" rel="noopener">Открыть App&nbsp;Store</a>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Откройте «Настроить подключение»</h4>
+                  <p>В ЛК или Telegram-боте нажмите кнопку <strong>«Настроить подключение»</strong> рядом с активной подпиской — она откроет Happ и автоматически добавит ваш ключ.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Разрешите VPN-конфигурацию</h4>
+                  <p>При первом запуске iOS попросит подтвердить VPN-профиль — нажмите «Разрешить» и введите код-пароль устройства.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Подключайтесь одним тапом</h4>
+                  <p>В Happ выберите сервер и нажмите большую кнопку подключения. Иконка VPN в статус-баре подтвердит, что трафик защищён.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="callout">
+              <span class="ico">💡</span>
+              <p>Не открылся Happ автоматически? Скопируйте ссылку подписки в ЛК и в Happ нажмите <strong>«+» → «Добавить подписку»</strong>.</p>
+            </div>
+          </div>
+
+          <!-- Android -->
+          <div class="subpanel" id="sub-mobile-android">
+            <div class="steps">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Установите Happ</h4>
+                  <p>Откройте Google&nbsp;Play и найдите <strong>Happ Proxy Utility</strong>. Если в вашем регионе Play недоступен — скачайте APK с официального сайта Happ.</p>
+                  <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=com.happ.vpn" target="_blank" rel="noopener">Открыть Google&nbsp;Play</a>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Нажмите «Настроить подключение»</h4>
+                  <p>В ЛК или Telegram-боте нажмите <strong>«Настроить подключение»</strong> — Happ откроется и сам добавит ваш ключ.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Подтвердите VPN-запрос</h4>
+                  <p>Android попросит разрешение на создание VPN-подключения — нажмите «ОК». Это нужно только при первом запуске.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Выберите сервер и подключитесь</h4>
+                  <p>Нажмите большую кнопку в Happ. Зелёный индикатор и значок «ключик» в шторке уведомлений означают, что VPN включён.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="callout">
+              <span class="ico">🛡️</span>
+              <p>Антивирусы Xiaomi/Huawei иногда блокируют установку APK — разрешите установку из неизвестных источников только для браузера и удалите APK после установки.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- =================== DESKTOP =================== -->
+        <div class="panel" id="panel-desktop" role="tabpanel">
+          <h2>Компьютер и ноутбук</h2>
+          <p class="section-lead">Happ доступен под Windows, macOS и Linux. Подойдут и любые v2rayN-совместимые клиенты по той же ссылке-подписке.</p>
+
+          <div class="chips" role="tablist" aria-label="ОС">
+            <button class="chip is-active" data-sub="desktop-windows">Windows</button>
+            <button class="chip" data-sub="desktop-macos">macOS</button>
+            <button class="chip" data-sub="desktop-linux">Linux</button>
+          </div>
+
+          <!-- Windows -->
+          <div class="subpanel is-active" id="sub-desktop-windows">
+            <div class="callout">
+              <span class="ico">ℹ️</span>
+              <p>Под Windows DJ&nbsp;VPN использует клиент <strong>Hiddify</strong> — он понимает ту же ссылку-подписку, что и Happ на других платформах.</p>
+            </div>
+
+            <div class="steps">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Скачайте Hiddify для Windows</h4>
+                  <p>Откройте страницу релизов и скачайте файл <strong>Hiddify-Windows-Setup-x64.exe</strong> (для Windows&nbsp;10/11).</p>
+                  <a class="btn btn-primary" href="https://github.com/hiddify/hiddify-app/releases/latest" target="_blank" rel="noopener">Скачать с GitHub</a>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Установите приложение</h4>
+                  <p>Запустите установщик и пройдите шаги мастера. SmartScreen может предупредить о неизвестном издателе — нажмите <strong>«Подробнее → Выполнить в любом случае»</strong>.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Импортируйте подписку</h4>
+                  <p>В ЛК нажмите <strong>«Настроить подключение»</strong> — Hiddify откроется через системный обработчик ссылок и автоматически добавит ваш ключ. Если этого не произошло — скопируйте ссылку и в Hiddify нажмите <strong>«+ Добавить профиль» → «Из буфера обмена»</strong>.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Включите Tun-режим и подключитесь</h4>
+                  <p>В Hiddify включите <strong>Tun&nbsp;Mode</strong> — трафик всех приложений пойдёт через VPN без ручной настройки прокси. Нажмите большую кнопку «Connect».</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- macOS -->
+          <div class="subpanel" id="sub-desktop-macos">
+            <div class="steps">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Установите Happ для macOS</h4>
+                  <p>Скачайте <strong>.dmg</strong> со страницы релизов и перетащите Happ в Applications. Поддерживаются как Apple Silicon (M-серия), так и Intel.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Разрешите запуск</h4>
+                  <p>При первом запуске macOS может заблокировать приложение. Откройте <strong>Системные настройки → Конфиденциальность и безопасность</strong> и нажмите «Открыть всё равно».</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Импортируйте подписку</h4>
+                  <p>В ЛК нажмите <strong>«Настроить подключение»</strong> — Happ откроется и сам добавит ключ. Либо скопируйте ссылку и в Happ нажмите <strong>«+» → «Добавить подписку»</strong>.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Разрешите VPN-профиль</h4>
+                  <p>macOS попросит подтверждение конфигурации сети — нажмите «Разрешить» и введите пароль администратора. Включайте VPN из меню-бара одним кликом.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Linux -->
+          <div class="subpanel" id="sub-desktop-linux">
+            <div class="steps">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Установите v2rayA или Nekoray</h4>
+                  <p>Под Linux рекомендуем <strong>v2rayA</strong> (веб-интерфейс) или <strong>Nekoray</strong> (GUI). Оба поддерживают ту же ссылку-подписку.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Скопируйте ссылку подписки</h4>
+                  <p>В ЛК нажмите <strong>«Скопировать ссылку подписки»</strong> на карточке настройки.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Импортируйте подписку в клиент</h4>
+                  <p>В Nekoray: <em>Программа → Группы → Добавить → Из ссылки</em>. В v2rayA: <em>Группы → Импорт URL</em>. Вставьте ссылку и обновите серверы.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Включите Tun-режим</h4>
+                  <p>Активируйте Tun-mode — трафик всех приложений пойдёт через VPN без ручной настройки прокси.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="callout">
+              <span class="ico">⚙️</span>
+              <p>Для CLI и серверов используйте <strong>sing-box</strong> или <strong>xray-core</strong>: они принимают ту же подписку и работают как systemd-сервис.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- =================== TV =================== -->
+        <div class="panel" id="panel-tv" role="tabpanel">
+          <h2>Телевизор и приставка</h2>
+          <p class="section-lead">Happ работает на Android TV / Google TV и на Apple TV (tvOS). Подписка переносится со смартфона по QR-коду — без ручного ввода.</p>
+
+          <div class="chips" role="tablist" aria-label="Платформа">
+            <button class="chip is-active" data-sub="tv-android">Android TV / Google TV</button>
+            <button class="chip" data-sub="tv-apple">Apple TV (tvOS)</button>
+          </div>
+
+          <!-- Android TV -->
+          <div class="subpanel is-active" id="sub-tv-android">
+            <div class="callout">
+              <span class="ico">📺</span>
+              <p>Поддерживаются устройства с <strong>Android TV / Google TV</strong>.</p>
+            </div>
+
+            <div class="pills">
+              <span class="pill">Sony Bravia</span>
+              <span class="pill">Philips</span>
+              <span class="pill">TCL</span>
+              <span class="pill">Xiaomi Mi TV</span>
+              <span class="pill">Chromecast w/ Google TV</span>
+              <span class="pill">NVIDIA Shield</span>
+              <span class="pill">Apple TV (через Happ for TV)</span>
+            </div>
+            <p style="margin-top: 14px; font-size: 13.5px; color: var(--text-dim);">
+              Samsung Tizen и LG webOS Happ не поддерживают — используйте Android TV-приставку.
+            </p>
+
+            <div class="steps" style="margin-top: 22px;">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Установите Happ на телевизоре</h4>
+                  <p>Откройте Google&nbsp;Play на ТВ → найдите <strong>Happ Proxy Utility</strong>. Если приложения нет в каталоге, передайте APK через <em>Send Files to TV</em> или флешку.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Откройте экран добавления подписки</h4>
+                  <p>В Happ на ТВ нажмите <strong>«+» → «Сканировать QR со смартфона»</strong>. Появится экран с большим QR-кодом.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Отсканируйте QR со смартфона</h4>
+                  <p>На телефоне откройте Happ → <strong>«Поделиться подпиской»</strong> → выберите камеру и наведите её на QR на экране ТВ. Ключ перенесётся за секунду.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Подключитесь и проверьте</h4>
+                  <p>Выберите сервер, активируйте VPN. Проверьте YouTube или Netflix — должны работать в полном качестве.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Apple TV -->
+          <div class="subpanel" id="sub-tv-apple">
+            <div class="steps">
+              <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <h4>Установите Happ Proxy Utility for TV</h4>
+                  <p>Откройте App&nbsp;Store на Apple&nbsp;TV и найдите <strong>Happ Proxy Utility for TV</strong>. Нужна tvOS&nbsp;17 или новее.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <h4>Откройте экран QR в приложении</h4>
+                  <p>Запустите Happ — он покажет QR-код для импорта подписки со смартфона.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <h4>Перенесите подписку с iPhone</h4>
+                  <p>На iPhone в Happ откройте подписку → <strong>«Поделиться» → «Сканировать QR»</strong>. Наведите камеру на QR с телевизора — подписка перенесётся автоматически.</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <h4>Включите VPN</h4>
+                  <p>Выберите сервер и подтвердите создание VPN-конфигурации в tvOS. После этого VPN включается одной кнопкой в приложении.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- =================== TELEGRAM BOT =================== -->
+        <div class="panel" id="panel-bot" role="tabpanel">
+          <h2>Telegram-бот</h2>
+          <p class="section-lead">В боте удобно управлять подпиской, продлевать тариф и автоматически настраивать любое устройство — без захода в кабинет.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <h4>Откройте бота</h4>
+                <p>Запустите <strong>@Dj_VPN_bot</strong> в Telegram и нажмите <strong>/start</strong>. Если у вас уже есть подписка — она появится в меню сразу.</p>
+                <a class="btn btn-primary" href="https://t.me/Dj_VPN_bot" target="_blank" rel="noopener">Открыть @Dj_VPN_bot</a>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <h4>Выберите активную подписку</h4>
+                <p>В главном меню нажмите кнопку с тарифом (например, <em>«12 месяцев −35% ✅ Работает»</em>) — откроется карточка с действиями.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <h4>Нажмите «Настроить подключение»</h4>
+                <p>Бот откроет мастер настройки внутри Telegram. Выберите устройство и следуйте подсказкам — Happ откроется и сам добавит ваш ключ.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <h4>Управляйте подпиской</h4>
+                <p>В том же меню можно сменить тариф, продлить подписку, удалить ключ, открыть промокод, написать в поддержку или пригласить друга.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <span class="ico">🔗</span>
+            <p>Если открываете ЛК прямо из бота — авторизация подхватится автоматически: вход не потребуется.</p>
+          </div>
+        </div>
+
+        <!-- =================== CABINET =================== -->
+        <div class="panel" id="panel-cabinet" role="tabpanel">
+          <h2>Личный кабинет</h2>
+          <p class="section-lead">В ЛК доступны статистика трафика, управление тарифом, оплата и автоматическая настройка любого устройства.</p>
+
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <h4>Войдите в кабинет</h4>
+                <p>Откройте <a href="/" style="color: var(--brand-300); text-decoration: none;">lk.djvpn.ru</a> через Telegram-бота (кнопка <em>«Открыть ЛК»</em>) или авторизуйтесь логином/паролем.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <h4>Откройте раздел «Подписки»</h4>
+                <p>В нижнем меню перейдите в <strong>«Подписки»</strong>. Карточка тарифа покажет срок действия, оставшийся трафик и устройства.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <h4>Нажмите «Настроить подключение»</h4>
+                <p>Откроется мастер: выберите устройство (Windows, macOS, iOS, Android, TV) → нажмите <strong>«Подключить»</strong>. Подписка добавится в Happ автоматически.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <h4>QR-код для переноса на ТВ</h4>
+                <p>В этом же мастере доступен <strong>QR-код</strong> — наведите камеру смартфона или ТВ-приставки, чтобы добавить подписку без копирования ссылки.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <span class="ico">📊</span>
+            <p>На главной странице ЛК — баланс, бонусы, скидка и быстрый доступ к смене тарифа. В <strong>«Платежах»</strong> хранится история всех оплат и чеков.</p>
+          </div>
+        </div>
+
+        <!-- =================== FAQ =================== -->
+        <div class="panel" id="panel-faq" role="tabpanel">
+          <h2>Частые вопросы</h2>
+          <p class="section-lead">Не нашли ответ? Напишите в <strong>«Онлайн-поддержку»</strong> прямо в боте — отвечаем быстро.</p>
+
+          <details class="faq-item">
+            <summary>QR-код не сканируется на ТВ</summary>
+            <p>Проверьте, что на смартфоне открыт именно Happ, в нём активная подписка и режим «Сканировать QR». Уменьшите яркость экрана ТВ — глянец иногда мешает камере. Попробуйте отойти на 30–40&nbsp;см от телевизора.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Happ нет в Google Play на моём ТВ</summary>
+            <p>На некоторых моделях каталог Play урезан. Установите APK через <strong>Send Files to TV</strong>, флешку или браузер на ТВ. Ссылка на APK есть в боте — кнопка «Ручная установка».</p>
+          </details>
+          <details class="faq-item">
+            <summary>Кнопка «Настроить подключение» не открывает приложение</summary>
+            <p>Скорее всего, клиент ещё не установлен — сначала поставьте Happ (мобильные/macOS) или Hiddify (Windows), потом нажимайте кнопку. На Windows проверьте, что в системе разрешён обработчик ссылок <code>hiddify://</code> — приложение предложит назначить себя при первом запуске.</p>
+          </details>
+          <details class="faq-item">
+            <summary>YouTube тормозит, страницы открываются медленно</summary>
+            <p>Откройте Happ и переключитесь на другой сервер с меньшим пингом. Для стриминга лучше работают серверы с пометкой <em>«Streaming»</em>. Если проблема осталась — напишите в поддержку, проверим маршрут именно для вашего ISP.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Samsung Smart TV / LG не поддерживают Happ</summary>
+            <p>На Tizen и webOS нет нативного клиента. Решения: купите Android TV-приставку (Xiaomi Mi&nbsp;Box, Chromecast, NVIDIA Shield) или поднимите VPN на роутере — тогда все устройства в Wi-Fi сети, включая ТВ, пойдут через VPN.</p>
+          </details>
+          <details class="faq-item">
+            <summary>На сколько устройств действует подписка</summary>
+            <p>Одну подписку можно использовать одновременно на нескольких устройствах — лимит и точные значения видны в карточке тарифа в ЛК и в боте. Ключ переносится между устройствами по QR-коду.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Сменить пароль / привязать e-mail</summary>
+            <p>В ЛК откройте <strong>«Профиль»</strong> — там кнопки «Сменить пароль» и «Привязать e-mail». В боте отдельная кнопка <em>«Сменить пароль»</em> открывает ту же страницу с авто-входом.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Что делать, если VPN перестал подключаться</summary>
+            <p>Откройте Happ → попробуйте другой сервер. Если ни один не работает — проверьте интернет без VPN, перезапустите Happ, обновите подписку (<em>«Обновить»</em> в карточке подписки). Не помогло — поддержка в боте.</p>
+          </details>
+        </div>
+
+      </section>
+
+      <!-- CTA -->
+      <section class="card" style="text-align: center;">
+        <h2>Не получилось настроить?</h2>
+        <p style="max-width: 540px; margin: 0 auto 18px;">Поддержка отвечает прямо в Telegram-боте — обычно в течение нескольких минут.</p>
+        <div style="display: inline-flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+          <a class="btn btn-primary" href="https://t.me/Dj_VPN_bot" target="_blank" rel="noopener">Открыть бота</a>
+          <a class="btn btn-ghost" href="/">Перейти в кабинет</a>
+        </div>
+      </section>
+
+      <div class="footer">
+        © <span id="year"></span> DJ&nbsp;VPN · <a href="/">Личный кабинет</a> · <a href="https://t.me/Dj_VPN_bot" target="_blank" rel="noopener">@Dj_VPN_bot</a>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var year = document.getElementById('year');
+      if (year) year.textContent = new Date().getFullYear();
+
+      var tabs = document.querySelectorAll('.tab');
+      var panels = document.querySelectorAll('.panel');
+
+      function activateTab(name) {
+        tabs.forEach(function (t) {
+          var isActive = t.getAttribute('data-tab') === name;
+          t.classList.toggle('is-active', isActive);
+          t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        panels.forEach(function (p) {
+          p.classList.toggle('is-active', p.id === 'panel-' + name);
+        });
+        try {
+          if (location.hash !== '#' + name) {
+            history.replaceState(null, '', '#' + name);
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      tabs.forEach(function (t) {
+        t.addEventListener('click', function () {
+          activateTab(t.getAttribute('data-tab'));
+        });
+      });
+
+      // Overview cards jump to category
+      document.querySelectorAll('[data-jump]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var name = btn.getAttribute('data-jump');
+          activateTab(name);
+          var card = btn.closest('.container').querySelectorAll('.card')[1];
+          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+
+      // Sub-tabs (platform chips)
+      document.querySelectorAll('.panel').forEach(function (panel) {
+        var chips = panel.querySelectorAll('.chip');
+        chips.forEach(function (chip) {
+          chip.addEventListener('click', function () {
+            var target = chip.getAttribute('data-sub');
+            chips.forEach(function (c) { c.classList.toggle('is-active', c === chip); });
+            panel.querySelectorAll('.subpanel').forEach(function (sp) {
+              sp.classList.toggle('is-active', sp.id === 'sub-' + target);
+            });
+          });
+        });
+      });
+
+      // Initial tab from hash
+      var initial = (location.hash || '').replace('#', '');
+      var valid = ['mobile', 'desktop', 'tv', 'bot', 'cabinet', 'faq'];
+      if (valid.indexOf(initial) !== -1) activateTab(initial);
+    })();
+  </script>
+</body>
+</html>
