@@ -89,6 +89,17 @@ export default function Layout() {
               <span className="text-sm font-mono text-fuchsia-100">{balance.toFixed(2)} ₽</span>
             </div>
 
+            <a
+              href="/setup.html"
+              aria-label="Инструкции"
+              title="Инструкции"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              <svg className="h-5 w-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+              </svg>
+            </a>
+
             <NotificationBell />
 
             <div className="relative" ref={menuRef}>
