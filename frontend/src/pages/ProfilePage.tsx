@@ -358,7 +358,7 @@ export default function ProfilePage() {
         <MenuRow
           icon={<GuideIcon />}
           label="Инструкции"
-          onClick={() => show('Раздел в разработке', 'info')}
+          onClick={() => { window.location.href = '/setup.html' }}
         />
         <MenuRow
           icon={<SupportIcon />}
