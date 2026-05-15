@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" ry="14" fill="url(#g)"/>
+  <text x="32" y="28" text-anchor="middle"
+        font-family="'Golos Text', 'Inter', Arial, sans-serif"
+        font-weight="900" font-size="18" fill="#2A0A4A"
+        letter-spacing="-0.5">DJ</text>
+  <text x="32" y="48" text-anchor="middle"
+        font-family="'Golos Text', 'Inter', Arial, sans-serif"
+        font-weight="900" font-size="18" fill="#2A0A4A"
+        letter-spacing="-0.5">VPN</text>
+</svg>
