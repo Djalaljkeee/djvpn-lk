@@ -1,5 +1,22 @@
 # Уроки
 
+## `<summary>` + `display: flex` ломает `<details>` в старых Safari/Chromium
+
+- Симптом: FAQ-аккордеон визуально на месте, курсор-pointer, hover есть,
+  но клик не переключает `open` — блок не открывается. На iOS Safari < 17
+  и Chromium < 89 любое `display`, отличное от дефолтного `list-item`
+  (`flex`, `grid`, `block`), на самом `<summary>` ломает нативный toggle.
+- НЕ ставь `display: flex/grid/block` прямо на `<summary>`. Если нужен
+  flex-layout с иконкой справа — позиционируй `::after` абсолютно
+  (`position: absolute; right: 0; top: 50%; transform: translateY(-50%)`)
+  и оставь summary в дефолтном `list-item`. Или оборачивай контент в
+  `<span>` и навешивай flex на span.
+- `list-style: none` + `summary::-webkit-details-marker { display: none }`
+  — этого достаточно, чтобы убрать дефолтный треугольник. `display`
+  трогать не нужно.
+- Тот же баг лечится «на современных браузерах», но Safari 16 ещё
+  заметная доля; для публичного лендинга безопаснее не полагаться.
+
 ## Публичные лендинги — `frontend/public/*.html`, не React-страницы
 
 - Если страница должна быть доступна **без авторизации** (например,
