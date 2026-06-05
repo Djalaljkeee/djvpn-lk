@@ -4,9 +4,8 @@ import json
 import logging
 from typing import Optional
 
-import httpx
-
 from config import settings
+from shm_client import get_shm_client
 
 
 async def fetch_storage_data(user_service_id: int, session_id: str, user_id: int = 0) -> dict:
@@ -20,13 +19,13 @@ async def fetch_storage_data(user_service_id: int, session_id: str, user_id: int
     url = f"{settings.SHM_BASE_URL}/shm/v1/storage/manage/vpn_mrzb_{user_service_id}"
     try:
         params = {"user_id": user_id} if user_id else {}
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                url,
-                cookies={"session_id": session_id},
-                headers={"Accept": "text/plain, application/json"},
-                params=params,
-            )
+        client = get_shm_client()
+        resp = await client.get(
+            url,
+            cookies={"session_id": session_id},
+            headers={"Accept": "text/plain, application/json"},
+            params=params,
+        )
         if resp.status_code != 200:
             logging.warning("_fetch_storage_data(usi=%s, user_id=%s) HTTP %s: %s",
                             user_service_id, user_id, resp.status_code, resp.text[:200])

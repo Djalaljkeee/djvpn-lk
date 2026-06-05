@@ -7,15 +7,60 @@
      (см. storage.py) — теперь под пользовательской сессией.
 
 Admin Basic Auth и регистрация/логин-обёртки удалены — этим занимается фронт.
+
+httpx-клиент держится singleton'ом на весь lifecycle процесса:
+создание AsyncClient на каждый запрос не переиспользует keep-alive и
+под нагрузкой исчерпывает локальные сокеты — отдельные запросы начинают
+висеть на connect() без видимой ошибки. Один клиент с явными `Limits`
+и `Timeout` решает обе проблемы и даёт нам понятную точку shutdown.
 """
 
 import logging
+from typing import Optional
 
 import httpx
 from fastapi import HTTPException
 
 from config import settings
 from logging_config import client_ip_ctx
+
+
+# Лимиты подобраны под одиночный uvicorn-воркер: 50 одновременных коннектов
+# с запасом перекрывают пиковую параллельность (gather по N услугам), а
+# keepalive_expiry=30 закрывает идл-соединения раньше, чем SHM/прокси успеют
+# их тихо обнулить.
+_SHM_LIMITS = httpx.Limits(
+    max_connections=50,
+    max_keepalive_connections=20,
+    keepalive_expiry=30.0,
+)
+# connect — отдельный, короткий: ошибки сети должны падать быстро.
+# read/write — 15с: оставляем существующий бюджет SHM-запросов.
+# pool — 5с: если пул исчерпан, лучше быстро вернуть 503, чем копить хвост.
+_SHM_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=5.0)
+
+_shm_client: Optional[httpx.AsyncClient] = None
+
+
+def get_shm_client() -> httpx.AsyncClient:
+    """Ленивая инициализация singleton-клиента SHM.
+
+    Тот же клиент переиспользуют storage.py и routers/shm_proxy.py —
+    у них общий upstream (admin.djvpn.ru/shm/*) и совпадающие сетевые
+    характеристики.
+    """
+    global _shm_client
+    if _shm_client is None:
+        _shm_client = httpx.AsyncClient(timeout=_SHM_TIMEOUT, limits=_SHM_LIMITS)
+    return _shm_client
+
+
+async def close_shm_client() -> None:
+    """Закрывает singleton-клиент SHM. Вызывается из lifespan shutdown."""
+    global _shm_client
+    if _shm_client is not None:
+        await _shm_client.aclose()
+        _shm_client = None
 
 
 def _proxy_headers() -> dict:
@@ -39,11 +84,11 @@ async def shm_request(
         **_proxy_headers(),
     }
     cookies = {"session_id": session_id} if session_id else None
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.request(
-            method, url, headers=headers, cookies=cookies,
-            json=json_data, params=params,
-        )
+    client = get_shm_client()
+    resp = await client.request(
+        method, url, headers=headers, cookies=cookies,
+        json=json_data, params=params,
+    )
     if resp.status_code in (200, 201):
         if resp.content:
             try:

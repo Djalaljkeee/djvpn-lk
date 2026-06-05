@@ -21,14 +21,17 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from cache import cache
 from config import settings
 from db import db_enabled, init_engine, run_migrations, shutdown_engine
+from kuma_status import close_kuma_client
 from logging_config import configure_logging, get_logger
 from metrics import PrometheusMiddleware
 from middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from rate_limit import limiter
+from remnawave_client import close_remna_client
 from routers import devices, public, shm_proxy, status, system, vpn
 from routers import cart as cart_router
 from routers import notifications as notifications_router
 from scheduler import shutdown_scheduler, start_scheduler
+from shm_client import close_shm_client
 
 
 # Настраиваем logging до всех прочих импортов бизнес-логики, чтобы
@@ -80,6 +83,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     shutdown_scheduler()
     await shutdown_engine()
+    # Закрываем singleton-httpx-клиенты, чтобы корректно отпустить keep-alive
+    # соединения и не оставлять «висячие» сокеты при graceful-перезапуске.
+    await close_shm_client()
+    await close_remna_client()
+    await close_kuma_client()
 
 
 app = FastAPI(title="SHM Cabinet API", version="1.0.0", lifespan=lifespan)

@@ -17,6 +17,13 @@ from logging_config import request_id_ctx, user_id_ctx, client_ip_ctx
 log = structlog.get_logger("http")
 
 
+# Запрос дольше этого порога логируется отдельным событием `http.slow_request`
+# на уровне warning — помогает быстро увидеть в логах, какие endpoints начали
+# тормозить (внешний SHM/Remna, медленный SQL, и т.п.) до того, как они
+# успевают забить event loop.
+_SLOW_REQUEST_MS = 5000.0
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Присваивает request_id каждому запросу, пишет access-лог с latency."""
 
@@ -48,6 +55,15 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 latency_ms=duration_ms,
                 client=request.client.host if request.client else None,
             )
+            if duration_ms >= _SLOW_REQUEST_MS:
+                log.warning(
+                    "http.slow_request",
+                    method=request.method,
+                    path=request.url.path,
+                    status=status_code,
+                    latency_ms=duration_ms,
+                    threshold_ms=_SLOW_REQUEST_MS,
+                )
             request_id_ctx.reset(rid_token)
             user_id_ctx.reset(uid_token)
             client_ip_ctx.reset(ip_token)
