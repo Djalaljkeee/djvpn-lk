@@ -55,7 +55,18 @@ class _RedisCache:
     def __init__(self, url: str) -> None:
         import redis.asyncio as redis_async  # локальный импорт — redis опционален
 
-        self._client = redis_async.from_url(url, decode_responses=True)
+        # Без явных timeout'ов redis-py может ждать ответа БЕСКОНЕЧНО. Если
+        # Redis потеряет ответ (network blip, OOM, swap), ВСЕ корутины cache.*
+        # повиснут навсегда — а вместе с ними event loop FastAPI. С таймаутами
+        # вместо немого зависания мы получаем явный TimeoutError, который
+        # вызывающий код уже умеет ловить.
+        self._client = redis_async.from_url(
+            url,
+            decode_responses=True,
+            socket_timeout=5.0,
+            socket_connect_timeout=3.0,
+            health_check_interval=30,
+        )
 
     async def get(self, key: str) -> Optional[Any]:
         raw = await self._client.get(key)

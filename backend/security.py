@@ -18,8 +18,21 @@ from shm_client import shm_request
 
 # In-process кэш верификаций: session_id -> (user_id, expires_at).
 # 60 секунд достаточно: дольше — раздуваем окно после logout/блокировки.
+# Жёсткий лимит размера + грубая FIFO-эвикция: Telegram WebApp генерит новый
+# session_id на каждом запуске, и без потолка dict растёт неограниченно.
 _SESSION_CACHE: dict[str, tuple[int, float]] = {}
 _SESSION_TTL = 60.0
+_SESSION_CACHE_MAX = 10_000
+_SESSION_CACHE_EVICT_BATCH = 1_000
+
+
+def _session_cache_put(session_id: str, user_id: int) -> None:
+    if len(_SESSION_CACHE) >= _SESSION_CACHE_MAX:
+        # Питоновский dict сохраняет порядок вставки: дропаем самые старые,
+        # независимо от TTL — просто чтобы ограничить рост.
+        for stale_key in list(_SESSION_CACHE.keys())[:_SESSION_CACHE_EVICT_BATCH]:
+            _SESSION_CACHE.pop(stale_key, None)
+    _SESSION_CACHE[session_id] = (user_id, time.time() + _SESSION_TTL)
 
 
 async def _resolve_user_id(session_id: str) -> int:
@@ -35,7 +48,7 @@ async def _resolve_user_id(session_id: str) -> int:
     if not user_id:
         raise HTTPException(status_code=401, detail="SHM session не содержит user_id")
 
-    _SESSION_CACHE[session_id] = (user_id, time.time() + _SESSION_TTL)
+    _session_cache_put(session_id, user_id)
     return user_id
 
 

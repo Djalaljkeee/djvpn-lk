@@ -5,8 +5,10 @@
 роутеры и (в проде) отдаёт статику SPA.
 """
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +62,30 @@ if settings.SENTRY_DSN:
         log.warning("sentry.init_failed", error=str(exc))
 
 
+# --- Heartbeat -------------------------------------------------------------
+# Раз в _HEARTBEAT_INTERVAL_S фоновая корутина пишет `app.heartbeat`. Если
+# event loop встанет (sync-блокировка, deadlock, забитый пул), heartbeat
+# перестанет появляться в логах ровно с момента залипа — это даёт нам
+# точную точку отсчёта вместо «работало и вдруг тишина».
+_HEARTBEAT_INTERVAL_S = 30.0
+_heartbeat_task: Optional[asyncio.Task] = None
+
+
+async def _heartbeat_loop() -> None:
+    hb_log = get_logger("app")
+    while True:
+        try:
+            await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+        except asyncio.CancelledError:
+            break
+        try:
+            tasks = asyncio.all_tasks()
+            running = sum(1 for t in tasks if not t.done())
+            hb_log.info("app.heartbeat", running_tasks=running)
+        except Exception as exc:  # pragma: no cover — диагностический лог не должен валить процесс
+            hb_log.warning("app.heartbeat_failed", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -79,8 +105,25 @@ async def lifespan(app: FastAPI):
                      "DB-backed endpoints (cart/notifications) will return 503.",
             )
     start_scheduler()
+    global _heartbeat_task
+    _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+    # Явный сигнал «lifespan-startup закончился» с версией. BUILD_SHA имеет
+    # смысл пробрасывать из CI/Dockerfile; пока его нет — будет "unknown",
+    # но сам факт записи покажет, что новый код доехал до прода.
+    log.info(
+        "app.ready",
+        build_sha=os.environ.get("BUILD_SHA", "unknown"),
+        heartbeat_interval_s=_HEARTBEAT_INTERVAL_S,
+    )
     yield
     # Shutdown
+    if _heartbeat_task is not None:
+        _heartbeat_task.cancel()
+        try:
+            await _heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        _heartbeat_task = None
     shutdown_scheduler()
     await shutdown_engine()
     # Закрываем singleton-httpx-клиенты, чтобы корректно отпустить keep-alive
