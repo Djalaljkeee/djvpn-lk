@@ -21,6 +21,22 @@ _REMNA_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=5.0)
 
 _remna_client: Optional[httpx.AsyncClient] = None
 
+_remna_in_flight: int = 0
+
+
+def _remna_inflight_inc() -> None:
+    global _remna_in_flight
+    _remna_in_flight += 1
+
+
+def _remna_inflight_dec() -> None:
+    global _remna_in_flight
+    _remna_in_flight -= 1
+
+
+def get_remna_in_flight() -> int:
+    return _remna_in_flight
+
 
 def get_remna_client() -> httpx.AsyncClient:
     global _remna_client
@@ -58,7 +74,11 @@ async def remnawave_request(
         "X-Real-IP":          "127.0.0.1",
     }
     client = get_remna_client()
-    resp = await client.request(method, url, headers=headers, json=json_data, params=params)
+    _remna_inflight_inc()
+    try:
+        resp = await client.request(method, url, headers=headers, json=json_data, params=params)
+    finally:
+        _remna_inflight_dec()
     if resp.status_code in (200, 201):
         return resp.json() if resp.content else {}
     if resp.status_code == 404:
