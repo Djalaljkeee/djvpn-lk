@@ -53,8 +53,28 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
         )
 
     valid_services = [s for s in raw_list if s.get("user_service_id")]
-    results = await asyncio.gather(*[fetch_devices_for_service(s) for s in valid_services])
-    return list(results)
+    # return_exceptions=True изолирует параллельные ветки: одна повисшая или
+    # упавшая `fetch_devices_for_service` (CancelledError, неожиданный
+    # KeyError и т.п.) не должна отменять остальные. Каждая ветка уже имеет
+    # внутренний try/except, поэтому до сюда долетают только системные
+    # исключения — их превращаем в пустые ServiceDevicesOut.
+    raw_results = await asyncio.gather(
+        *[fetch_devices_for_service(s) for s in valid_services],
+        return_exceptions=True,
+    )
+    results: list[ServiceDevicesOut] = []
+    for svc, res in zip(valid_services, raw_results):
+        if isinstance(res, BaseException):
+            logging.warning("get_devices usi=%s: %s", svc.get("user_service_id"), res)
+            results.append(ServiceDevicesOut(
+                service_id=svc.get("service_id", 0),
+                service_name=(svc.get("service") or {}).get("name") or svc.get("name", ""),
+                user_service_id=svc.get("user_service_id"),
+                devices=[],
+            ))
+        else:
+            results.append(res)
+    return results
 
 
 @router.delete("/api/user/devices")
@@ -123,8 +143,18 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
             logging.warning("get_remna_info usi=%s: %s", user_service_id, e)
             return RemnaUserInfo(user_service_id=user_service_id)
 
-    results = await asyncio.gather(*[fetch_remna_user(s) for s in valid_services])
-    return list(results)
+    raw_results = await asyncio.gather(
+        *[fetch_remna_user(s) for s in valid_services],
+        return_exceptions=True,
+    )
+    results: list[RemnaUserInfo] = []
+    for svc, res in zip(valid_services, raw_results):
+        if isinstance(res, BaseException):
+            logging.warning("get_remna_info usi=%s: %s", svc.get("user_service_id"), res)
+            results.append(RemnaUserInfo(user_service_id=svc.get("user_service_id")))
+        else:
+            results.append(res)
+    return results
 
 
 @router.delete("/api/user/devices/all")

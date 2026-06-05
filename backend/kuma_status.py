@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from typing import Optional
 
 import httpx
 from fastapi import HTTPException
@@ -12,6 +13,28 @@ from config import settings
 
 _kuma_cache: dict = {"data": None, "ts": 0}
 _KUMA_CACHE_TTL = 30  # секунд
+
+_KUMA_LIMITS = httpx.Limits(
+    max_connections=10,
+    max_keepalive_connections=5,
+    keepalive_expiry=30.0,
+)
+_KUMA_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)
+_kuma_client: Optional[httpx.AsyncClient] = None
+
+
+def get_kuma_client() -> httpx.AsyncClient:
+    global _kuma_client
+    if _kuma_client is None:
+        _kuma_client = httpx.AsyncClient(timeout=_KUMA_TIMEOUT, limits=_KUMA_LIMITS)
+    return _kuma_client
+
+
+async def close_kuma_client() -> None:
+    global _kuma_client
+    if _kuma_client is not None:
+        await _kuma_client.aclose()
+        _kuma_client = None
 
 
 def _parse_kuma_url(url: str):
@@ -35,19 +58,26 @@ async def get_server_status_data() -> dict:
     if not base or not slug:
         raise HTTPException(status_code=500, detail="Invalid KUMA_STATUS_URL format")
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            page_resp, hb_resp = await asyncio.gather(
-                client.get(f"{base}/api/status-page/{slug}"),
-                client.get(f"{base}/api/status-page/heartbeat/{slug}"),
-            )
-            page_resp.raise_for_status()
-            hb_resp.raise_for_status()
-        except Exception as e:
-            logging.error("Kuma fetch error: %s", e)
-            if _kuma_cache["data"]:
-                return _kuma_cache["data"]
-            raise HTTPException(status_code=502, detail="Cannot reach status page")
+    client = get_kuma_client()
+    try:
+        # return_exceptions=True: один зависший вызов не должен парализовать
+        # второй; обрабатываем результат вручную ниже.
+        results = await asyncio.gather(
+            client.get(f"{base}/api/status-page/{slug}"),
+            client.get(f"{base}/api/status-page/heartbeat/{slug}"),
+            return_exceptions=True,
+        )
+        page_resp, hb_resp = results
+        for r in (page_resp, hb_resp):
+            if isinstance(r, BaseException):
+                raise r
+        page_resp.raise_for_status()
+        hb_resp.raise_for_status()
+    except Exception as e:
+        logging.error("Kuma fetch error: %s", e)
+        if _kuma_cache["data"]:
+            return _kuma_cache["data"]
+        raise HTTPException(status_code=502, detail="Cannot reach status page")
 
     page_data = page_resp.json()
     hb_data = hb_resp.json()

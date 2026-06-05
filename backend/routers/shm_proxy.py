@@ -18,6 +18,7 @@ from fastapi import APIRouter, Request, Response
 
 from config import settings
 from logging_config import client_ip_ctx, get_logger
+from shm_client import get_shm_client
 
 
 router = APIRouter()
@@ -81,15 +82,19 @@ async def shm_proxy(path: str, request: Request) -> Response:
     body = await request.body()
 
     started = time.perf_counter()
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-        upstream = await client.request(
-            request.method,
-            url,
-            params=request.query_params,
-            headers=fwd_headers,
-            cookies=cookies,
-            content=body or None,
-        )
+    # Shared singleton AsyncClient (см. shm_client.get_shm_client) — без него
+    # каждый прокси-запрос открывал новое TCP/TLS-соединение, что под нагрузкой
+    # съедает локальные сокеты и приводит к зависанию connect() на минуты.
+    client = get_shm_client()
+    upstream = await client.request(
+        request.method,
+        url,
+        params=request.query_params,
+        headers=fwd_headers,
+        cookies=cookies,
+        content=body or None,
+        follow_redirects=False,
+    )
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     log.info(
         "shm_proxy.forwarded",

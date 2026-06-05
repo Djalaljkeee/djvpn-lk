@@ -56,6 +56,13 @@ def init_engine() -> None:
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
+        # Явные тайминги вместо неявных дефолтов SQLAlchemy:
+        # pool_timeout=10 — если пул исчерпан, лучше быстро вернуть 503,
+        #   чем копить хвост запросов, ждущих коннект (по умолчанию 30с).
+        # pool_recycle=1800 — переоткрываем коннекты раз в 30 минут, чтобы
+        #   не натыкаться на TCP idle-таймауты со стороны Postgres/балансера.
+        pool_timeout=10,
+        pool_recycle=1800,
     )
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
     log.info("db.engine_initialized")
