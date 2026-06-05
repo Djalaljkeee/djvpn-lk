@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from logging.config import fileConfig
@@ -29,7 +30,17 @@ from db import models as _models  # noqa: E402,F401  # регистрирует 
 
 config = context.config
 
-if config.config_file_name:
+# fileConfig(alembic.ini) с дефолтным `disable_existing_loggers=True`
+# ПОЛНОСТЬЮ ломает наш structlog: сбрасывает handlers root-логгера и
+# дисейблит все именованные логгеры (app/db/cache/http/scheduler), которые
+# не перечислены в alembic.ini. Симптом — после первого `alembic upgrade`
+# из JSON-логов остаются только `WARNI [root] ...` строки stdlib, а
+# `app.ready`, `app.heartbeat`, `request` access-лог и `db.migrations_done`
+# исчезают. Поэтому applies the alembic-CLI-only fileConfig ТОЛЬКО когда
+# логгинг ещё не настроен (т.е. при standalone-вызове `alembic upgrade head`
+# из CLI). Внутри FastAPI-lifespan configure_logging() уже отработал, и
+# трогать его не нужно.
+if config.config_file_name and not logging.getLogger().handlers:
     try:
         fileConfig(config.config_file_name)
     except Exception:
