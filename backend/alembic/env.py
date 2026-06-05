@@ -78,6 +78,11 @@ async def run_migrations_online() -> None:
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # У asyncpg по умолчанию НЕТ connect-timeout — без этого alembic мог
+        # бесконечно ждать handshake, не выбрасывая исключение, и `run_migrations`
+        # снаружи не мог рестартовать попытку. `timeout` ограничивает фазу
+        # установки соединения, `command_timeout` — выполнение каждого DDL.
+        connect_args={"timeout": 10, "command_timeout": 60},
     )
 
     async with connectable.connect() as connection:
