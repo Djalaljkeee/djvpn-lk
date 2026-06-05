@@ -41,6 +41,25 @@ _SHM_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=5.0)
 
 _shm_client: Optional[httpx.AsyncClient] = None
 
+# Счётчик in-flight запросов к SHM (включая shm_request и routers/shm_proxy).
+# Логируется heartbeat'ом раз в 30с — если значение растёт и не падает,
+# значит SHM upstream залип и пул коннектов забивается.
+_shm_in_flight: int = 0
+
+
+def _shm_inflight_inc() -> None:
+    global _shm_in_flight
+    _shm_in_flight += 1
+
+
+def _shm_inflight_dec() -> None:
+    global _shm_in_flight
+    _shm_in_flight -= 1
+
+
+def get_shm_in_flight() -> int:
+    return _shm_in_flight
+
 
 def get_shm_client() -> httpx.AsyncClient:
     """Ленивая инициализация singleton-клиента SHM.
@@ -85,10 +104,14 @@ async def shm_request(
     }
     cookies = {"session_id": session_id} if session_id else None
     client = get_shm_client()
-    resp = await client.request(
-        method, url, headers=headers, cookies=cookies,
-        json=json_data, params=params,
-    )
+    _shm_inflight_inc()
+    try:
+        resp = await client.request(
+            method, url, headers=headers, cookies=cookies,
+            json=json_data, params=params,
+        )
+    finally:
+        _shm_inflight_dec()
     if resp.status_code in (200, 201):
         if resp.content:
             try:
