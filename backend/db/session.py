@@ -70,6 +70,34 @@ async def shutdown_engine() -> None:
         log.info("db.engine_disposed")
 
 
+_PROBE_TIMEOUT_S = 5.0
+_MIGRATION_TIMEOUT_S = 120.0
+
+
+async def _wait_for_db_ready(url: str, timeout: float = _PROBE_TIMEOUT_S) -> None:
+    """Проверяет, что Postgres реально принимает asyncpg-коннекшены.
+
+    `pg_isready` в docker-healthcheck говорит только про TCP/процесс, но не
+    про готовность принимать клиентский startup-пакет (recovery, scram, SSL
+    handshake могут ещё не завершиться). У asyncpg по умолчанию нет
+    connect-timeout — без него миграции могут зависнуть **бесконечно** без
+    единой строки в логах. Эта проба ограничивает ожидание явным таймаутом
+    и логирует точку сбоя.
+    """
+    import asyncpg
+
+    pure = url
+    if pure.startswith("postgresql+asyncpg://"):
+        pure = "postgresql://" + pure[len("postgresql+asyncpg://"):]
+    log.info("db.probe_start", timeout_s=timeout)
+    conn = await asyncio.wait_for(asyncpg.connect(pure), timeout=timeout)
+    try:
+        await asyncio.wait_for(conn.fetchval("SELECT 1"), timeout=timeout)
+    finally:
+        await conn.close()
+    log.info("db.probe_ok")
+
+
 async def run_migrations() -> None:
     """Применяет alembic upgrade head.
 
@@ -79,8 +107,14 @@ async def run_migrations() -> None:
     `asyncio.to_thread`: там loop не запущен, и alembic спокойно
     стартует свой собственный.
 
-    Дополнительно делаем 5 попыток с экспоненциальным бэкоффом — postgres
-    может ответить healthy раньше, чем реально готов принимать asyncpg.
+    Перед каждой попыткой делаем lightweight asyncpg-пробу с явным
+    таймаутом — без неё зависание на handshake не видно в логах.
+    Сам upgrade ограничен `_MIGRATION_TIMEOUT_S`: даже если внутри
+    Alembic что-то встанет (lock, бесконечный DDL), мы упадём, залогируем
+    и попробуем ещё раз вместо тихого простоя.
+
+    5 попыток с экспоненциальным бэкоффом — postgres может ответить
+    healthy раньше, чем реально готов принимать asyncpg.
     """
     if not db_enabled():
         return
@@ -95,9 +129,10 @@ async def run_migrations() -> None:
         log.warning("db.alembic_ini_missing", path=alembic_ini)
         return
 
+    url = _normalize_url(settings.DATABASE_URL)
     cfg = Config(alembic_ini)
     cfg.set_main_option("script_location", os.path.join(here, "alembic"))
-    cfg.set_main_option("sqlalchemy.url", _normalize_url(settings.DATABASE_URL))
+    cfg.set_main_option("sqlalchemy.url", url)
 
     max_attempts = 5
     backoff = 1.0
@@ -106,7 +141,12 @@ async def run_migrations() -> None:
     for attempt in range(1, max_attempts + 1):
         log.info("db.migrations_start", attempt=attempt, max_attempts=max_attempts)
         try:
-            await asyncio.to_thread(command.upgrade, cfg, "head")
+            await _wait_for_db_ready(url)
+            log.info("db.migrations_applying", timeout_s=_MIGRATION_TIMEOUT_S)
+            await asyncio.wait_for(
+                asyncio.to_thread(command.upgrade, cfg, "head"),
+                timeout=_MIGRATION_TIMEOUT_S,
+            )
             log.info("db.migrations_done")
             return
         except Exception as exc:
