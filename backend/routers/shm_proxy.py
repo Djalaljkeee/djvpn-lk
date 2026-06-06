@@ -174,7 +174,38 @@ async def shm_proxy(path: str, request: Request) -> Response:
             samesite="lax",
         )
 
+    # Forensic: лог реальных Set-Cookie заголовков, которые мы отдаём клиенту.
+    # Срабатывает только когда мы что-то выставили (новая сессия / любые
+    # set-cookie от SHM). Значение session_id маскируем — len + первые/последние
+    # 2 символа достаточно, чтобы поймать «кука обёрнута в кавычки», «в значении
+    # точка с запятой / пробел», «значение пустое» и подобные баги без
+    # утечки рабочего токена в логи.
+    if body_session_id or set_cookie_headers:
+        outgoing = [
+            _mask_set_cookie(v.decode("latin-1"))
+            for k, v in response.raw_headers
+            if k.decode("latin-1").lower() == "set-cookie"
+        ]
+        log.info(
+            "shm_proxy.set_cookie_raw",
+            path=path,
+            headers=outgoing,
+        )
+
     return response
+
+
+def _mask_set_cookie(raw: str) -> str:
+    """Прячем значение session_id в Set-Cookie, оставляя метаданные."""
+    import re
+
+    def _repl(match: "re.Match[str]") -> str:
+        value = match.group(2)
+        head = value[:2] if len(value) > 4 else value
+        tail = value[-2:] if len(value) > 4 else ""
+        return f"{match.group(1)}<len={len(value)} head={head!r} tail={tail!r}>"
+
+    return re.sub(r"(session_id=)([^;]*)", _repl, raw)
 
 
 def _sid_fingerprint(sid: str | None) -> str | None:
