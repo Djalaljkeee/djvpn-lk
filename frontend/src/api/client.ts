@@ -3,6 +3,19 @@ import { useAuthStore } from '../store/authStore'
 
 const SHM_BASE = import.meta.env.VITE_SHM_BASE_URL || '/api/shm/v1'
 
+// Без явного timeout axios ждёт ответа бесконечно. На мобильной сети,
+// при переключении Wi-Fi → LTE или из-под TG WebView один зависший TCP
+// заваливал весь дашборд: fetchDashboard() делает Promise.allSettled
+// по 11 запросам, и если ХОТЯ БЫ один не отвечает, allSettled ждёт его
+// навечно. dashboardStore.inflight остаётся залипшим Promise'ом,
+// последующие ensure() возвращают его же, ничего нового не дёргается —
+// именно так выглядит "frontend silence" в логах: notifications+
+// maintenance polls идут, но никаких /v1/user* и /api/user/* нет.
+// 15 секунд — с запасом на любой здоровый SHM-ответ (медиана 100ms),
+// а зависший request отвалится с ECONNABORTED и Promise.allSettled
+// корректно завершит цикл. inflight чистится в .finally.
+const TIMEOUT_MS = 15_000
+
 // SHM API клиент — фронт ходит в backend-прокси /api/shm/* same-origin.
 // Backend форвардит запрос в admin.djvpn.ru/shm/v1/* и переписывает Set-Cookie
 // так, чтобы session_id жила на домене ЛК. Это снимает CORS полностью:
@@ -10,6 +23,7 @@ const SHM_BASE = import.meta.env.VITE_SHM_BASE_URL || '/api/shm/v1'
 export const shm = axios.create({
   baseURL: SHM_BASE,
   withCredentials: true,
+  timeout: TIMEOUT_MS,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -20,6 +34,7 @@ export const shm = axios.create({
 const api = axios.create({
   baseURL: '/api',
   withCredentials: true,
+  timeout: TIMEOUT_MS,
   headers: { 'Content-Type': 'application/json' },
 })
 
