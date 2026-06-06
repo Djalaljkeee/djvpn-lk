@@ -23,11 +23,20 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// Гард против шторма редиректов: дашборд бьёт 11 запросов параллельно,
+// и если все 11 ловят 401, без флага они все одновременно делают
+// window.location.href = '/login'. В обычном Chrome это безвредно, но
+// внутри Telegram WebView гонка из нескольких location-assign'ов вешает
+// поток и страница перестаёт реагировать на тапы. Один редирект — один раз.
+let redirectingOn401 = false
 const handle401 = (err: any) => {
   if (err.response?.status === 401) {
-    useAuthStore.getState().logout()
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login'
+    if (!redirectingOn401) {
+      redirectingOn401 = true
+      useAuthStore.getState().logout()
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
     }
   }
   return Promise.reject(err)
