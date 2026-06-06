@@ -71,7 +71,14 @@ function TelegramWebAppGate({ children }: { children: React.ReactNode }) {
         clearRefId()
         // Кеш дашборда мог быть привязан к прошлой shm_session —
         // сбрасываем, чтобы свежий запрос ушёл с обновлёнными credentials.
+        // Дополнительно дёргаем ensure({force:true}) — если на устройстве
+        // лежит persist'нутый dashboard < 60s (TTL), reset() очищает память,
+        // но без явного force последующий useDashboard.ensure() в Layout
+        // мог увидеть свежий кеш до того, как мы его реально перезальём.
+        // На iPhone WebView без этого fetchDashboard() не отстреливал свои
+        // 11 параллельных запросов после auth, и кабинет оставался пустым.
         useDashboardStore.getState().reset()
+        void useDashboardStore.getState().ensure({ force: true })
         // Только если пользователь пришёл на /login — отправляем на главную.
         // Любой deep-link (например /change-password) сохраняем как есть,
         // иначе ссылка из телеграм-бота «съедается» редиректом.
