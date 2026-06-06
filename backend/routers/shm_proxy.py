@@ -76,8 +76,9 @@ async def shm_proxy(path: str, request: Request) -> Response:
     # Из cookie ЛК форвардим только session_id — это единственное, что
     # понимает SHM.
     cookies = {}
-    if (sid := request.cookies.get("session_id")):
-        cookies["session_id"] = sid
+    incoming_sid = request.cookies.get("session_id")
+    if incoming_sid:
+        cookies["session_id"] = incoming_sid
 
     body = await request.body()
 
@@ -124,7 +125,6 @@ async def shm_proxy(path: str, request: Request) -> Response:
     # наш прокси живёт на /api/shm/..., и cookie с Path=/shm не будет
     # отправляться обратно.
     # domain не задаём → cookie привяжется к домену запроса (lk.djvpn.ru).
-    # secure только под https, иначе локалка по http не сохранит cookie.
     # Secure-флаг ставим по реальному внешнему протоколу — X-Forwarded-Proto
     # от Caddy, а не по локальному request.url.scheme (внутри docker всегда
     # http, потому что между nginx и backend нет TLS). Читаем заголовок
@@ -139,13 +139,18 @@ async def shm_proxy(path: str, request: Request) -> Response:
         path=path,
         upstream_set_cookie_count=len(set_cookie_headers),
         body_session_id_present=bool(body_session_id),
+        # Хеш входящей session_id — НЕ значение, а 8 hex символов sha256.
+        # Этого хватит, чтобы по логам сопоставить «какая кука пришла на /v1/user»
+        # с «какую куку выставил предыдущий /webapp/auth», и поймать момент,
+        # когда браузер не сохраняет нашу новую сессию.
+        incoming_sid=_sid_fingerprint(incoming_sid),
+        outgoing_sid=_sid_fingerprint(body_session_id),
+        is_secure=is_secure,
     )
     for raw in set_cookie_headers:
         name, value, max_age = _parse_cookie(raw)
         if not name:
             continue
-        if name == "session_id":
-            _delete_legacy_session_cookie(response, opposite_secure=not is_secure)
         response.set_cookie(
             key=name,
             value=value,
@@ -160,7 +165,6 @@ async def shm_proxy(path: str, request: Request) -> Response:
     # Без этой ветки cookie session_id никогда не появляется на ЛК и каждый
     # следующий /v1/user возвращает 401.
     if body_session_id:
-        _delete_legacy_session_cookie(response, opposite_secure=not is_secure)
         response.set_cookie(
             key="session_id",
             value=body_session_id,
@@ -173,26 +177,11 @@ async def shm_proxy(path: str, request: Request) -> Response:
     return response
 
 
-def _delete_legacy_session_cookie(response: Response, opposite_secure: bool) -> None:
-    """Сносим у клиента старый session_id с противоположным флагом Secure.
-
-    RFC 6265 формально различает cookies только по (name, domain, path), но
-    Chrome/Firefox реально хранят отдельные записи, если различается флаг
-    Secure (видно в DevTools → Application → Cookies). Мы могли наплодить
-    такие дубликаты в прошлом, когда X-Forwarded-Proto некорректно ставился
-    в http. Если их не вычистить — браузер шлёт обе в одном `Cookie:`
-    заголовке, SHM берёт устаревшую и отвечает 401 на каждый /v1/user.
-
-    Max-Age=0 на cookie с теми же name/path/domain/secure что у застрявшего
-    варианта говорит браузеру эту запись удалить. Если её нет — no-op.
-    """
-    response.delete_cookie(
-        key="session_id",
-        path="/",
-        secure=opposite_secure,
-        httponly=True,
-        samesite="lax",
-    )
+def _sid_fingerprint(sid: str | None) -> str | None:
+    if not sid:
+        return None
+    import hashlib
+    return hashlib.sha256(sid.encode("utf-8")).hexdigest()[:8]
 
 
 def _extract_body_session(path: str, upstream: httpx.Response) -> str | None:
