@@ -1,3 +1,4 @@
+import type { AxiosResponse } from 'axios'
 import { shm, unwrapOne } from './client'
 import type { User } from '../types'
 
@@ -14,6 +15,28 @@ export interface RegisterPayload {
   captcha_token?: string
   captcha_code?: string
   partner_id?: number
+}
+
+// Резервный канал для session_id: достаём из тела auth-ответа и пишем в
+// document.cookie. Бек уже шлёт корректный Set-Cookie (HttpOnly; Secure;
+// SameSite=Lax), но некоторые браузерные фильтры приватности (наблюдается
+// в YaBrowser «Protect» на GET /telegram/webapp/auth с большим query-
+// string'ом из initData) молча выбрасывают HttpOnly-куку, считая endpoint
+// трекером — и следующий /v1/user летит без сессии и ловит 401.
+// Дублирующая запись через document.cookie не HttpOnly (JS обязан её
+// видеть), но (name, path, domain) совпадают со server-side кукой, и по
+// RFC 6265 они перезатирают друг друга, так что итоговая кука одна.
+function captureSessionFromBody(resp: AxiosResponse): void {
+  const body = resp.data
+  if (!body || typeof body !== 'object') return
+  const sessionId: unknown =
+    body.session_id ??
+    body.id ??
+    body.data?.[0]?.session_id ??
+    body.data?.[0]?.id
+  if (typeof sessionId !== 'string' || !sessionId) return
+  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `session_id=${sessionId}; Path=/; SameSite=Lax${secure}`
 }
 
 async function fetchSelf(): Promise<User> {
@@ -33,14 +56,16 @@ async function fetchSelf(): Promise<User> {
 
 export const loginWithPassword = async (login: string, password: string): Promise<AuthResult> => {
   // POST /user/auth — SHM ставит cookie session_id (Secure; HttpOnly; SameSite=None).
-  await shm.post('/user/auth', { login, password })
+  const resp = await shm.post('/user/auth', { login, password })
+  captureSessionFromBody(resp)
   const user = await fetchSelf()
   return { user }
 }
 
 export const loginWithTelegram = async (tgData: object, partnerId?: number): Promise<AuthResult> => {
   const body = partnerId ? { ...tgData, partner_id: partnerId } : tgData
-  await shm.post('/telegram/web/auth', body)
+  const resp = await shm.post('/telegram/web/auth', body)
+  captureSessionFromBody(resp)
   const user = await fetchSelf()
   return { user }
 }
@@ -48,7 +73,8 @@ export const loginWithTelegram = async (tgData: object, partnerId?: number): Pro
 export const loginWithWebApp = async (initData: string, partnerId?: number): Promise<AuthResult> => {
   const params: Record<string, string> = { initData }
   if (partnerId) params.partner_id = String(partnerId)
-  await shm.get('/telegram/webapp/auth', { params })
+  const resp = await shm.get('/telegram/webapp/auth', { params })
+  captureSessionFromBody(resp)
   const user = await fetchSelf()
   return { user }
 }
@@ -70,7 +96,8 @@ export const registerWithPassword = async (payload: RegisterPayload): Promise<Au
     body.captcha_code = payload.captcha_code
   }
   await shm.put('/user', body)
-  await shm.post('/user/auth', { login: payload.login, password: payload.password })
+  const authResp = await shm.post('/user/auth', { login: payload.login, password: payload.password })
+  captureSessionFromBody(authResp)
 
   // Просим SHM отправить письмо с кодом верификации email.
   let email_verification_sent = false
