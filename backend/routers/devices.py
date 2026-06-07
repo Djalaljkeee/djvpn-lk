@@ -43,7 +43,11 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
             devices_raw = response.get("devices") or []
             devices = [DeviceOut(**d) for d in devices_raw if isinstance(d, dict)]
         except Exception as e:
-            logging.warning("get_devices usi=%s: %s", user_service_id, e)
+            # %r вместо %s: httpx.ConnectTimeout() и подобные пустые
+            # исключения через %s выводятся пустой строкой и в логах
+            # появляется `get_devices usi=N: ` без причины. repr() даёт
+            # хотя бы тип класса.
+            logging.warning("get_devices usi=%s: %r", user_service_id, e)
             devices = []
         return ServiceDevicesOut(
             service_id=service_id,
@@ -65,7 +69,7 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
     results: list[ServiceDevicesOut] = []
     for svc, res in zip(valid_services, raw_results):
         if isinstance(res, BaseException):
-            logging.warning("get_devices usi=%s: %s", svc.get("user_service_id"), res)
+            logging.warning("get_devices usi=%s: %r", svc.get("user_service_id"), res)
             results.append(ServiceDevicesOut(
                 service_id=svc.get("service_id", 0),
                 service_name=(svc.get("service") or {}).get("name") or svc.get("name", ""),
@@ -140,7 +144,7 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
                 locations=tags,
             )
         except Exception as e:
-            logging.warning("get_remna_info usi=%s: %s", user_service_id, e)
+            logging.warning("get_remna_info usi=%s: %r", user_service_id, e)
             return RemnaUserInfo(user_service_id=user_service_id)
 
     raw_results = await asyncio.gather(
@@ -150,7 +154,7 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     results: list[RemnaUserInfo] = []
     for svc, res in zip(valid_services, raw_results):
         if isinstance(res, BaseException):
-            logging.warning("get_remna_info usi=%s: %s", svc.get("user_service_id"), res)
+            logging.warning("get_remna_info usi=%s: %r", svc.get("user_service_id"), res)
             results.append(RemnaUserInfo(user_service_id=svc.get("user_service_id")))
         else:
             results.append(res)

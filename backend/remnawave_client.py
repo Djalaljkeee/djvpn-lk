@@ -77,6 +77,17 @@ async def remnawave_request(
     _remna_inflight_inc()
     try:
         resp = await client.request(method, url, headers=headers, json=json_data, params=params)
+    except httpx.TimeoutException as exc:
+        # Без обёртки httpx-таймаут долетал до вызывающего кода в
+        # devices.py как пустой `ConnectTimeout()` (logging.warning %s
+        # рендерит как ""), и в логах было видно `get_devices usi=N: `
+        # без причины. 504 + явный type(exc).__name__ делают upstream-сбой
+        # видимым в логах и для фронта.
+        logging.warning("Remnawave %s %s upstream_error: %s", method, path, type(exc).__name__)
+        raise HTTPException(status_code=504, detail="Remnawave upstream timeout")
+    except httpx.RequestError as exc:
+        logging.warning("Remnawave %s %s upstream_error: %s", method, path, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Remnawave upstream unreachable")
     finally:
         _remna_inflight_dec()
     if resp.status_code in (200, 201):
