@@ -1,3 +1,100 @@
+# Connect-ретрай для SHM/Remnawave + Remnawave token (переезд)
+
+## Контекст
+
+После фикса обёртки ошибок (504/502 вместо 500) всплыли два следствия:
+1. **Remnawave 401** — `REMNA_TOKEN` со старого сервера протух. На новом
+   сервере `GET remna.djvpn.ru/api/system/health` отдавал
+   `401 Unauthorized`. Трафик/устройства приходили пустыми (200 с
+   нулями), потому что `get_devices`/`get_remna_info` глотают per-service
+   ошибку и отдают заглушку. → Лечится обновлением токена в `.env`
+   (хост-сайд, не код).
+2. **504 на `/api/user/remna-info` снова** — НЕ Remnawave. Эти эндпоинты
+   сначала дёргают SHM (`/shm/v1/user`, `/shm/v1/user/service`), и
+   именно SHM-вызов таймаутит из-за нерешённого hairpin NAT (бёрст
+   page-load → cold connection pool → ConnectTimeout). Heartbeat в
+   момент инцидента: `running_tasks=45, shm_in_flight=8`, вся Подписки-
+   страница пустая, стена красных SHM-прокси-запросов.
+
+Хост-фикс hairpin (iptables SNAT / conntrack) — за пользователем.
+В коде добавляем слой устойчивости: connect-уровневый ретрай, который
+absorbs транзиентный «холодный» бёрст, пока сеть раскачивается.
+
+## План
+
+### Backend
+- [x] Новый `http_retry.py::request_with_connect_retry` — ретрай ТОЛЬКО
+      `ConnectTimeout`/`ConnectError`/`PoolTimeout` (запрос не дошёл до
+      сервера → идемпотентно для любого метода). `ReadTimeout` НЕ
+      ретраим. 1 повтор (2 попытки, worst-case ~10.5с < axios 15с),
+      бэкофф с джиттером `uniform(0.25, 0.5)` для де-синка параллельного
+      залпа.
+- [x] `shm_client.shm_request` — через helper (`label=path`).
+- [x] `routers/shm_proxy.shm_proxy` — через helper (body уже в памяти,
+      повтор безопасен).
+- [x] `remnawave_client.remnawave_request` — через helper.
+- [x] `storage.fetch_storage_data` — через helper (UUID-резолв переживает
+      блип).
+- [x] `routers/devices.py` — логирование per-service ошибок `%r` вместо
+      `%s` (пустой `ConnectTimeout()` через `%s` давал `usi=N: ` без
+      причины).
+
+### Тесты
+- [x] `tests/test_http_retry.py` — 5 кейсов: retry→success (connect
+      timeout / connect error), giving up после max, ReadTimeout НЕ
+      ретраится, success с первой попытки. Все зелёные (15/15 вместе с
+      test_shm_proxy).
+
+### Документация
+- [x] `tasks/lessons.md` — дополнить урок «Hairpin NAT»: правила ретрая
+      (только connect-уровень, джиттер, бюджет попыток) + ловушка
+      «504 на remna-info = SHM, не Remnawave».
+
+### Хост-сайд (за пользователем, вне репо)
+- [ ] Обновить `REMNA_TOKEN` в `.env` → `docker compose up -d backend`.
+      (Сделано пользователем — health-check 401 был на старом токене.)
+- [ ] Применить hairpin-фикс на хосте (iptables SNAT для docker→pub_ip
+      :443, и при необходимости `nf_conntrack_max`). Без него ретрай
+      лишь смягчает, но не убирает таймауты под бёрстом.
+
+## Решения / трейд-офы
+
+- **Ретрай только connect-уровня** — единственный класс сбоев, где
+  повтор гарантированно безопасен для любого метода (нет side-effect,
+  TCP-сессия не поднялась). Это снимает вопрос «а вдруг POST повторится
+  дважды».
+- **1 повтор, не 2+** — бюджет latency. Connect-таймаут 5с × 2 попытки
+  = ~10с, плюс джиттер; укладываемся под фронтовый axios-таймаут 15с.
+  Транзиентный hairpin восстанавливается за доли секунды, второй
+  попытки хватает.
+- **Джиттер обязателен** — синхронный ретрай N запросов = тот же бёрст.
+  `uniform(base, 2*base)` размазывает повторы.
+- **Ретрай — НЕ замена хост-фиксу** (CLAUDE.md: корневая причина). Это
+  defense-in-depth поверх flaky-сети; корень (hairpin) лечится на хосте.
+- **`label` вместо полного URL в логах** — в URL бывают session_id/uuid,
+  не светим их в warning-логах ретрая.
+
+## Ревью
+
+**Что сделано:**
+- `backend/http_retry.py` — новый shared helper, применён в 4 точках
+  выхода (shm_client, shm_proxy, remnawave_client, storage).
+- `backend/routers/devices.py` — `%r` в per-service логах.
+- `backend/tests/test_http_retry.py` — 5 кейсов, все зелёные.
+- Импорт-чейн без циклов (проверено `python -c "import ..."`).
+
+**Проверки в этом окружении:**
+- `pytest tests/test_http_retry.py tests/test_shm_proxy.py` — 15/15 ok.
+- Import smoke (no circular import) — ok.
+
+**Проверки на проде (за пользователем):**
+- Бёрст-тест из контейнера к `admin.djvpn.ru` (см. план Этап 4).
+- `docker compose logs backend | grep http_retry` — видеть, что
+  ретраи срабатывают и в основном со 2-й попытки успешны.
+- Remnawave health-check с НОВЫМ токеном должен дать 200, не 401.
+
+---
+
 # 500 на `/api/shm/*` после переезда — обёртка ошибок upstream
 
 ## Контекст

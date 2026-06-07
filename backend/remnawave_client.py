@@ -8,6 +8,7 @@ import httpx
 from fastapi import HTTPException
 
 from config import settings
+from http_retry import request_with_connect_retry
 
 
 # См. shm_client._SHM_LIMITS — те же соображения. Remna допускает self-signed
@@ -76,7 +77,10 @@ async def remnawave_request(
     client = get_remna_client()
     _remna_inflight_inc()
     try:
-        resp = await client.request(method, url, headers=headers, json=json_data, params=params)
+        resp = await request_with_connect_retry(
+            client, method, url, label=path,
+            headers=headers, json=json_data, params=params,
+        )
     except httpx.TimeoutException as exc:
         # Без обёртки httpx-таймаут долетал до вызывающего кода в
         # devices.py как пустой `ConnectTimeout()` (logging.warning %s

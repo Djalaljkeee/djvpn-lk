@@ -22,6 +22,7 @@ import httpx
 from fastapi import HTTPException
 
 from config import settings
+from http_retry import request_with_connect_retry
 from logging_config import client_ip_ctx
 
 
@@ -106,8 +107,9 @@ async def shm_request(
     client = get_shm_client()
     _shm_inflight_inc()
     try:
-        resp = await client.request(
-            method, url, headers=headers, cookies=cookies,
+        resp = await request_with_connect_retry(
+            client, method, url, label=path,
+            headers=headers, cookies=cookies,
             json=json_data, params=params,
         )
     except httpx.TimeoutException as exc:

@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 from config import settings
+from http_retry import request_with_connect_retry
 from shm_client import get_shm_client
 
 
@@ -20,8 +21,8 @@ async def fetch_storage_data(user_service_id: int, session_id: str, user_id: int
     try:
         params = {"user_id": user_id} if user_id else {}
         client = get_shm_client()
-        resp = await client.get(
-            url,
+        resp = await request_with_connect_retry(
+            client, "GET", url, label=f"storage:vpn_mrzb_{user_service_id}",
             cookies={"session_id": session_id},
             headers={"Accept": "text/plain, application/json"},
             params=params,
