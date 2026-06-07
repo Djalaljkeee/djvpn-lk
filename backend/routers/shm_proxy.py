@@ -17,6 +17,7 @@ import httpx
 from fastapi import APIRouter, Request, Response
 
 from config import settings
+from http_retry import request_with_connect_retry
 from logging_config import client_ip_ctx, get_logger
 from shm_client import _shm_inflight_dec, _shm_inflight_inc, get_shm_client
 
@@ -89,9 +90,11 @@ async def shm_proxy(path: str, request: Request) -> Response:
     client = get_shm_client()
     _shm_inflight_inc()
     try:
-        upstream = await client.request(
+        upstream = await request_with_connect_retry(
+            client,
             request.method,
             url,
+            label=path,
             params=request.query_params,
             headers=fwd_headers,
             cookies=cookies,
