@@ -1,3 +1,92 @@
+# 500 на `/api/shm/*` после переезда — обёртка ошибок upstream
+
+## Контекст
+
+После переноса ЛК на новый сервер при первой нагрузке пачка
+запросов `/api/shm/v1/*` падала в `500 Internal Server Error` с
+голым traceback'ом `httpx.ConnectTimeout` через 5с. Через
+несколько минут «само починилось», одиночный `curl` из контейнера
+на `https://admin.djvpn.ru` в тот же момент отдавал нормальный
+ответ. Синхронно с SHM-таймаутами падал `Kuma fetch error` —
+Kuma живёт на том же хосте, значит проблема общая для outbound
+на свой же сервер (hairpin NAT захлёбывается на бёрсте).
+
+Полный план (диагностика хоста + iptables + код) лежит в
+`/root/.claude/plans/structured-wobbling-barto.md`. Сетевой фикс
+(`iptables -t nat ... SNAT`, conntrack tuning) делается на хосте
+вне репозитория. В код идёт только то, что превращает голый 500
+в честный 502/504 с понятным detail — иначе следующий аналогичный
+инцидент снова съест часы на разбор traceback'ов.
+
+## План
+
+### Backend
+- [x] `routers/shm_proxy.py::shm_proxy` — обернуть `client.request`
+      в try/except: `httpx.TimeoutException` → 504, `httpx.RequestError`
+      → 502, `log.warning("shm_proxy.upstream_error", ...)` в одном
+      стиле с существующим `shm_proxy.forwarded`. `_shm_inflight_dec()`
+      остаётся в `finally`.
+- [x] `shm_client.py::shm_request` — то же самое, но наружу
+      `HTTPException(504/"SHM upstream timeout")` /
+      `HTTPException(502/"SHM upstream unreachable")`, потому что
+      эта функция вызывается из `security.py::_resolve_user_id` и
+      роутеров (devices/storage), где ожидается HTTPException.
+
+### Документация
+- [x] `tasks/lessons.md` — добавить урок «Hairpin NAT и outbound из
+      контейнера на свой же сервер»: симптом, диагностический
+      индикатор через `Kuma fetch error` синхронно с SHM, фикс
+      iptables SNAT vs. `host-gateway`, conntrack tuning.
+
+### Что НЕ делаем (явно)
+- Не переводим `SHM_BASE_URL` на внутренний docker-хост (`http://shm-admin:port`)
+  — пользователь отверг: CORS API SHM требует «реальные адреса».
+- Не поднимаем `_SHM_TIMEOUT.connect` — маскировка hairpin-проблемы.
+- Не вводим retry/circuit-breaker в `shm_client` — отдельная история,
+  не блокирует инцидент.
+- Не трогаем `docker-compose.yml` — пользователь оставляет публичный URL.
+
+## Решения / трейд-офы
+
+- **504 vs 502 разделение**: TimeoutException ловим первым (это
+  подкласс TransportError → RequestError) и отдаём 504 — фронт по
+  504 показывает «попробуйте позже / SHM медленный», по 502 — «SHM
+  недоступен». Разная UX-семантика, дешёво поддерживать.
+- **Тело ответа в `shm_proxy` — bytes JSON, не `JSONResponse`**: уже
+  работаем на уровне Starlette `Response` с raw content, чтобы не
+  тянуть лишний слой сериализации в горячий путь прокси.
+- **`elapsed_ms` в логах ошибок** — позволяет в Kibana/grep сразу
+  видеть «таймаут на 5001ms» (connect-timeout) vs «таймаут на
+  15001ms» (read-timeout) без раскопок stack-trace'ов.
+- **Не пишем тело SHM-ошибки в наш JSON** — детали upstream'а не
+  должны утекать клиенту (могут содержать stacktrace SHM или
+  internal-хосты). Generic-сообщение + всё в логи.
+
+## Ревью
+
+**Что сделано:**
+- `backend/routers/shm_proxy.py:91-148` — try/except с разделением
+  TimeoutException → 504 / RequestError → 502, `log.warning`
+  `shm_proxy.upstream_error` со всеми контекстными полями.
+- `backend/shm_client.py:108-122` — то же для shared shm_request,
+  но через `HTTPException`. `_shm_inflight_dec()` в `finally` —
+  счётчик in-flight не съезжает при ошибках.
+- `tasks/lessons.md` — новый раздел про hairpin NAT с диагностикой
+  и фиксом.
+
+**Проверки (что НЕ выполнено в этом окружении):**
+- Бёрст-тест из контейнера к `admin.djvpn.ru` — нужен доступ к
+  prod-серверу.
+- E2E через браузер на `lk.djvpn.ru` — после деплоя.
+- Smoke 502 (подмена SHM_BASE_URL на unroutable) — после деплоя.
+
+**Что остаётся за рамками этого PR (по плану):**
+- Хост-side фиксы: iptables SNAT для hairpin, расширение
+  `nf_conntrack_max` — выполняются администратором сервера по
+  результатам диагностики из `Этапа 1` плана.
+
+---
+
 # Документация-сайдбар + быстрый доступ к инструкциям
 
 ## Контекст

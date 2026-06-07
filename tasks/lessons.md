@@ -183,6 +183,45 @@
   прямой вызов **сразу** портируй нормализатор на TS, а не «потом
   починим UI». UI потом не починят.
 
+## Hairpin NAT и outbound из контейнера на свой же сервер
+
+- Если backend в docker-compose ходит на публичный URL сервиса,
+  который сам обслуживается Caddy/nginx на том же хосте (например,
+  `https://admin.djvpn.ru` при том, что SHM admin живёт в соседнем
+  контейнере), трафик идёт через hairpin NAT: контейнер → docker
+  SNAT → публичный IP сервера → обратно Caddy → upstream-контейнер.
+- Симптом: одиночный `curl` из контейнера на этот URL проходит, а
+  бёрст 5+ параллельных запросов через `httpx.AsyncClient` падает
+  ровно через 5с в `httpx.ConnectTimeout` (`connect_tcp` не
+  отвечает). Через несколько минут «само починилось». В логах
+  бэкенда — голый `500 Internal Server Error` без detail.
+- Диагностический индикатор, что это hairpin, а не SHM-проблема:
+  ВСЕ outbound на свой же хост падают синхронно. Если в той же
+  миллисекунде, что и SHM-таймаут, появляется `Kuma fetch error`
+  (а Kuma живёт на том же хосте) — это общий сетевой путь, а не
+  конкретный upstream.
+- Прямой фикс на хосте — явный SNAT для трафика из docker-подсети
+  на свой публичный IP:
+  ```bash
+  iptables -t nat -A POSTROUTING -s <docker_subnet> \
+    -d <pub_ip> -p tcp --dport 443 -j SNAT --to-source <pub_ip>
+  ```
+  Source IP сохраняется как публичный — это важно, если upstream
+  завязан на «реальные адреса» (CORS / IP whitelist).
+- Альтернатива `extra_hosts: admin.djvpn.ru:host-gateway` уводит
+  трафик на docker-bridge IP хоста, минуя hairpin совсем. Source IP
+  для upstream становится `172.x.x.x` — применимо только если
+  upstream НЕ проверяет реальный публичный IP клиента.
+- Дополнительный фактор — переполнение conntrack: `dmesg | grep
+  nf_conntrack` покажет `table full, dropping packet`. Лечится
+  `sysctl -w net.netfilter.nf_conntrack_max=262144`.
+- На уровне приложения ОБЯЗАТЕЛЬНО ловить `httpx.TimeoutException`
+  и `httpx.RequestError` в proxy/client и превращать в `504`/`502`
+  с JSON-detail — иначе диагностика занимает часы вместо минут.
+  Логировать через `log.warning("shm_proxy.upstream_error",
+  error=type(exc).__name__, path=path, elapsed_ms=...)` рядом с
+  существующим `shm_proxy.forwarded`.
+
 ## Find-before-create в проксях — когда применимо, а когда нет
 
 - Find-before-create оправдан, если внешний поиск действительно
