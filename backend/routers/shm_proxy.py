@@ -98,6 +98,40 @@ async def shm_proxy(path: str, request: Request) -> Response:
             content=body or None,
             follow_redirects=False,
         )
+    except httpx.TimeoutException as exc:
+        # ConnectTimeout/ReadTimeout/PoolTimeout — upstream висит, отдаём 504.
+        # Без этой ветки FastAPI рендерит голый 500 без тела, и причина
+        # инцидента (hairpin NAT, conntrack overflow, SHM-залип) теряется
+        # в traceback'е uvicorn'а. См. tasks/lessons.md «Hairpin NAT».
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        log.warning(
+            "shm_proxy.upstream_error",
+            method=request.method,
+            path=path,
+            error=type(exc).__name__,
+            elapsed_ms=elapsed_ms,
+        )
+        return Response(
+            status_code=504,
+            content=b'{"detail":"SHM upstream timeout"}',
+            media_type="application/json",
+        )
+    except httpx.RequestError as exc:
+        # ConnectError/NetworkError/ProtocolError и прочие транспортные
+        # ошибки httpx — сеть до SHM лежит, отдаём 502.
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        log.warning(
+            "shm_proxy.upstream_error",
+            method=request.method,
+            path=path,
+            error=type(exc).__name__,
+            elapsed_ms=elapsed_ms,
+        )
+        return Response(
+            status_code=502,
+            content=b'{"detail":"SHM upstream unreachable"}',
+            media_type="application/json",
+        )
     finally:
         _shm_inflight_dec()
     elapsed_ms = int((time.perf_counter() - started) * 1000)

@@ -110,6 +110,16 @@ async def shm_request(
             method, url, headers=headers, cookies=cookies,
             json=json_data, params=params,
         )
+    except httpx.TimeoutException as exc:
+        # Без этой ветки таймаут до SHM долетал до FastAPI как 500 без
+        # detail — вызывающий код в security.py/роутерах не отличал «SHM
+        # лёг» от «бизнес-логика 500». 504 + JSON позволяет фронту
+        # показать «попробуйте позже» вместо generic-ошибки.
+        logging.warning("SHM %s %s upstream_error: %s", method, path, type(exc).__name__)
+        raise HTTPException(status_code=504, detail="SHM upstream timeout")
+    except httpx.RequestError as exc:
+        logging.warning("SHM %s %s upstream_error: %s", method, path, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="SHM upstream unreachable")
     finally:
         _shm_inflight_dec()
     if resp.status_code in (200, 201):
