@@ -239,6 +239,46 @@
   Remnawave-сбой проявляется как пустые данные (нули трафика/устройств)
   при 200, а не как 5xx.
 
+## Реальный client IP теряется на upstream-Caddy после переезда (trusted_proxies)
+
+- Симптом: в access-логах SHM по запросам, идущим через наш backend-прокси
+  (`/api/shm/*` и server-to-server `python-httpx`), `X-Forwarded-For`
+  показывает внутренний docker-IP (напр. `172.20.0.1`), а не реальный IP
+  клиента. По прямым браузер→SHM запросам реальный IP на месте. «Раньше
+  работало, после переезда нет.»
+- Это НЕ баг нашего кода. Цепочка `браузер → frontend-nginx → backend →
+  Caddy(SHM) → SHM-api`:
+  - `frontend/nginx.conf` шлёт backend'у `X-Forwarded-For` через
+    `$proxy_add_x_forwarded_for` (реальный IP сохранён).
+  - `ProxyHeadersMiddleware(trusted_hosts="*")` переписывает
+    `scope["client"]` → реальный IP (виден в backend access-логах как
+    `client`).
+  - `routers/shm_proxy.py` форвардит входящий `X-Forwarded-For` как есть
+    (его нет в `_DROP_REQ_HEADERS`) И перезаписывает реальным IP из
+    `client_ip_ctx`. То есть наш backend ГАРАНТИРОВАННО отправляет
+    `X-Forwarded-For: <real_ip>`.
+  - **Точка потери — Caddy на стороне SHM.** Он получает соединение от
+    backend с source-IP, которого НЕТ в его `trusted_proxies` (после
+    переезда source сменился на новый docker-IP / hairpin-SNAT
+    `172.20.0.1`), поэтому Caddy ОТБРАСЫВАЕТ наш `X-Forwarded-For` и
+    проставляет origin = свой peer.
+- Фикс — на стороне SHM-Caddy (вне этого репо): добавить source-IP
+  backend'а в `trusted_proxies`:
+  ```
+  # Caddyfile, глобально или в reverse_proxy
+  trusted_proxies static 172.20.0.0/16
+  ```
+  (узкий вариант — конкретный /32, который Caddy видит как peer; смотри
+  `remote_addr` в логах SHM-api по проксированным запросам).
+- Критично: эта потеря IP одинакова и для публичного URL (hairpin SNAT'ит
+  source), и для docker-internal маршрута. То есть аргумент «через docker
+  теряются реальные адреса» неверен — реальный адрес едет в
+  `X-Forwarded-For`, а не в TCP-source, и сохраняется в ОБОИХ случаях
+  через `trusted_proxies`. CORS вообще про заголовок `Origin` (мы его
+  дропаем), а не про IP. Поэтому docker-internal + `trusted_proxies`
+  одновременно чинит и hairpin-таймауты, и реальный IP — это
+  предпочтительная комбинация.
+
 ## Find-before-create в проксях — когда применимо, а когда нет
 
 - Find-before-create оправдан, если внешний поиск действительно
