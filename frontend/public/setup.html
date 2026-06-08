@@ -33,11 +33,15 @@
       --sidebar-w: 280px;
     }
 
-    body {
+    html {
       background:
-        radial-gradient(circle at top left, rgba(255, 156, 235, 0.10), transparent 28%),
-        radial-gradient(circle at top right, rgba(168, 82, 255, 0.10), transparent 26%),
-        var(--surface-0);
+        radial-gradient(circle at top left, rgba(255, 156, 235, 0.28), transparent 28%),
+        radial-gradient(circle at top right, rgba(168, 82, 255, 0.24), transparent 26%),
+        linear-gradient(180deg, #2f0e45 0%, #14071f 42%, #12061a 100%);
+      background-color: var(--surface-0);
+    }
+    body {
+      background: transparent;
       color: var(--text);
       font-family: 'Golos Text', system-ui, -apple-system, Arial, sans-serif;
       line-height: 1.55;
@@ -71,14 +75,18 @@
       display: flex; align-items: center; gap: 12px; color: var(--text); font-weight: 700;
     }
     .brand-mark {
-      width: 36px; height: 36px; border-radius: 10px;
-      background: linear-gradient(135deg, #ffd1fb, #e56fff 55%, #b641a9);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; color: #2a0832; font-size: 16px;
+      width: 40px; height: 40px; border-radius: 12px;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.10);
       box-shadow: 0 12px 30px rgba(221, 86, 202, 0.32);
     }
-    .brand-name { font-size: 17px; }
-    .brand-name span { color: var(--brand-300); }
+    .brand-text { line-height: 1.15; }
+    .brand-name {
+      font-size: 13px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.32em;
+      color: rgba(255, 156, 235, 0.78);
+    }
+    .brand-tag { font-size: 11px; color: var(--text-muted); }
 
     .topbar-actions { display: flex; align-items: center; gap: 8px; }
     .icon-btn {
@@ -330,8 +338,11 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/">
-        <div class="brand-mark">DJ</div>
-        <div class="brand-name">DJ <span>VPN</span></div>
+        <img class="brand-mark" src="/djvpn-brand.jpg" alt="DJ VPN" width="40" height="40" />
+        <div class="brand-text">
+          <div class="brand-name">DJ VPN</div>
+          <div class="brand-tag">fast secure reliable</div>
+        </div>
       </a>
       <div class="topbar-actions">
         <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Меню">

@@ -1,17 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="DJ VPN">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#A855F7"/>
-      <stop offset="100%" stop-color="#6D28D9"/>
+    <!-- Base purple gradient -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A24FEA"/>
+      <stop offset="0.55" stop-color="#9647E4"/>
+      <stop offset="1" stop-color="#8540DC"/>
     </linearGradient>
+    <!-- Squircle clip so blobs stay inside -->
+    <clipPath id="clip">
+      <rect x="0" y="0" width="512" height="512" rx="116" ry="116"/>
+    </clipPath>
   </defs>
-  <rect width="64" height="64" rx="14" ry="14" fill="url(#g)"/>
-  <text x="32" y="28" text-anchor="middle"
-        font-family="'Golos Text', 'Inter', Arial, sans-serif"
-        font-weight="900" font-size="18" fill="#2A0A4A"
-        letter-spacing="-0.5">DJ</text>
-  <text x="32" y="48" text-anchor="middle"
-        font-family="'Golos Text', 'Inter', Arial, sans-serif"
-        font-weight="900" font-size="18" fill="#2A0A4A"
-        letter-spacing="-0.5">VPN</text>
+
+  <!-- Rounded-square background -->
+  <rect x="0" y="0" width="512" height="512" rx="116" ry="116" fill="url(#bg)"/>
+
+  <!-- Organic light blobs -->
+  <g clip-path="url(#clip)">
+    <path d="M-20 70 C120 30 210 120 330 80 C440 45 520 110 540 200
+             C470 240 420 180 320 220 C200 270 90 230 -30 280 Z"
+          fill="#CE74F1" opacity="0.55"/>
+    <path d="M520 360 C400 320 330 410 210 380 C110 355 30 420 -20 470
+             L-20 540 L540 540 Z"
+          fill="#C168EE" opacity="0.45"/>
+    <path d="M40 150 C120 120 150 210 250 200 C340 192 400 250 470 240
+             C420 300 350 270 260 290 C150 314 70 280 30 230 Z"
+          fill="#B557EB" opacity="0.40"/>
+  </g>
+
+  <!-- Wi-Fi arcs -->
+  <g fill="none" stroke="#260945" stroke-linecap="round">
+    <path d="M192 138 A92 92 0 0 1 320 138" stroke-width="26"/>
+    <path d="M214 168 A60 60 0 0 1 298 168" stroke-width="26"/>
+    <path d="M236 198 A28 28 0 0 1 276 198" stroke-width="26"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g fill="#260945" font-family="'Arial Black','Helvetica Neue',Arial,sans-serif" font-weight="900" text-anchor="middle">
+    <text x="256" y="318" font-size="150" letter-spacing="-4">DJ</text>
+    <text x="256" y="468" font-size="172" letter-spacing="-6">VPN</text>
+  </g>
 </svg>
