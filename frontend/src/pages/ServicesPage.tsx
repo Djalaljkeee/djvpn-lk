@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { buyService } from '../api/services'
-import { fetchUserServices, changeService, deleteAllDevices } from '../api/user'
+import { fetchUserServices, changeService, deleteAllDevices, deleteService } from '../api/user'
 import { saveCart, clearCart } from '../api/cart'
 import { useToast } from '../components/Toast'
 import { useDashboard, useDashboardSlice, useInvalidateDashboard, useCatalog } from '../hooks/useDashboard'
@@ -162,6 +162,8 @@ export default function ServicesPage() {
   const [topupPrompt, setTopupPrompt] = useState<{ amount: number; balance: number } | null>(null)
   const [setupTarget, setSetupTarget] = useState<{ url?: string; serviceId?: number } | null>(null)
   const [catalogOpen, setCatalogOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<UserService | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const availableIds = useMemo(() => new Set(orders.map(o => o.service_id)), [orders])
   const remnaMap = useMemo(
@@ -256,6 +258,20 @@ export default function ServicesPage() {
     }
   }
 
+  const handleDelete = async (svc: UserService) => {
+    setDeleting(true)
+    try {
+      await deleteService(svc.id)
+      await invalidate()
+      show('Услуга удалена', 'success')
+      setConfirmDelete(null)
+    } catch (e: any) {
+      show(e?.response?.data?.detail || 'Не удалось удалить услугу', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const activeSvc = myServices.find(s => s.status === 1) ?? null
   const activeRemna = activeSvc ? (remnaMap[activeSvc.id] ?? null) : null
   const activeDevices = activeSvc ? (devicesMap[activeSvc.id] ?? []) : []
@@ -318,13 +334,22 @@ export default function ServicesPage() {
                     Ожидает оплаты
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 items-center gap-2">
                   {svc.cost != null && <span className="text-sm font-semibold text-white">{svc.cost} ₽</span>}
                   <button
                     onClick={() => navigate('/payments')}
                     className="rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 px-3 py-1.5 text-xs font-semibold text-white shadow-brand hover:brightness-110 transition-all"
                   >
                     Оплатить
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(svc)}
+                    aria-label="Удалить услугу"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-300/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 transition-colors"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -460,6 +485,38 @@ export default function ServicesPage() {
                 className="w-full rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand hover:brightness-110 transition-all"
               >
                 Перейти к оплате
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {confirmDelete && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4">
+          <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => !deleting && setConfirmDelete(null)} />
+          <div className="relative w-full max-h-[90dvh] overflow-y-auto rounded-t-[2rem] bg-[rgba(32,11,44,0.96)] p-5 animate-slide-up sm:max-w-md sm:rounded-[2rem]">
+            <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
+            <div className="text-4xl">🗑️</div>
+            <h2 className="mt-3 text-xl font-bold text-white">Удалить услугу?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Услуга <span className="text-white">«{confirmDelete.name}»</span> будет удалена без возможности восстановления.
+            </p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="w-full rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-rose-700 px-4 py-3 text-sm font-semibold text-white hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                {deleting && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                {deleting ? 'Удаляем…' : 'Удалить'}
               </button>
             </div>
           </div>
