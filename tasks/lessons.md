@@ -239,6 +239,32 @@
   Remnawave-сбой проявляется как пустые данные (нули трафика/устройств)
   при 200, а не как 5xx.
 
+## `<img crossOrigin="use-credentials">` ломает same-origin картинку
+
+- Симптом: `GET /api/shm/v1/user/captcha` отдаёт `200 OK` с правильным
+  PNG в теле, в DevTools запрос зелёный, но `<img>` рендерит
+  broken-image placeholder. «Доходит, но не показывает.»
+- Причина: атрибут `crossOrigin="use-credentials"` на `<img>` ВСЕГДА
+  переводит загрузку картинки в CORS-режим — даже когда URL same-origin
+  (`lk.djvpn.ru → /api/...`). Браузер шлёт `Origin: https://lk.djvpn.ru`
+  и требует в ответе `Access-Control-Allow-Origin: <origin>` +
+  `Access-Control-Allow-Credentials: true`.
+- Дальше дело в `CORSMiddleware` нашего FastAPI (main.py): он смотрит
+  Origin против `ALLOWED_ORIGINS` (по умолчанию `["https://bill.djvpn.ru"]`)
+  и для same-origin `lk.djvpn.ru` НЕ добавляет ACA-O — потому что
+  считается, что same-origin CORS не нужен. Браузер видит 200 без
+  ACA-O → отказывается отдать картинку JS/`<img>` → broken image.
+- Лечение: `crossOrigin` на same-origin `<img>` НЕ НУЖЕН вообще. Куки
+  отправляются автоматически при same-origin image-loads. Просто убрать
+  атрибут. Альтернатива (хуже) — добавлять lk-домен в `ALLOWED_ORIGINS`,
+  чтобы middleware начал отвечать CORS-заголовками на собственный
+  домен; это лишний шум без выигрыша.
+- `crossOrigin` нужен только когда:
+  - URL картинки на ДРУГОМ origin'е (CDN, чужой домен) И
+  - вам нужно работать с пикселями через `<canvas>.getContext('2d')`
+    (иначе canvas помечается tainted и `getImageData` бросает
+    SecurityError). Для обычного отображения капчи это не наш случай.
+
 ## Реальный client IP теряется на upstream-Caddy после переезда
 
 - Симптом: в access-логах SHM-api по запросам, идущим через наш

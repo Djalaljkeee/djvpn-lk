@@ -395,7 +395,6 @@ export default function LoginPage() {
                               <img
                                 src={captcha.image_url}
                                 alt="captcha"
-                                crossOrigin="use-credentials"
                                 className="h-full w-full object-contain"
                               />
                             ) : (
