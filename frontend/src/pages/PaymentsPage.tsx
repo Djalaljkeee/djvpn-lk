@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { applyPromoCode } from '../api/user'
 import { buildPaymentUrl } from '../api/services'
 import { useToast } from '../components/Toast'
@@ -34,6 +34,7 @@ export default function PaymentsPage() {
   const [amount, setAmount] = useState('')
   const suggestedAmounts = [199, 499, 899, 1599]
   const loading = dashLoading && !data
+  const topUpRef = useRef<HTMLElement>(null)
 
   const buildPayUrl = (ps: { shm_url?: string; paysystem?: string; name: string }) => {
     const n = Number(amount)
@@ -57,15 +58,24 @@ export default function PaymentsPage() {
   const bonuses = forecastEntry?.bonuses ?? 0
   const forecastItems = forecastEntry?.items ?? []
 
-  // Тарифы с предстоящим продлением (у которых есть next-период).
+  // Все позиции прогноза с предстоящим списанием (next-период). Делим их на:
+  //  • продления активных подписок (status ACTIVE) — это «Предстоящие расходы»;
+  //  • неоплаченные услуги — заказы в корзине, которые ещё не перешли в оплату.
   const upcomingItems = forecastItems.filter(item => item.next)
-  // Номинальная сумма (цена без скидки) — крупное число в шапке и в строках тарифов.
-  const nominalTotal = upcomingItems.reduce((sum, item) => sum + (item.next!.cost ?? 0), 0)
-  // Реально к списанию при продлении (со скидкой) — строка-итог и проверка средств.
-  const chargedTotal = upcomingItems.reduce((sum, item) => sum + (item.next!.total ?? 0), 0)
+  const renewalItems = upcomingItems.filter(item => item.status === 'ACTIVE')
+  const unpaidItems = upcomingItems.filter(item => item.status !== 'ACTIVE')
 
-  const nearestItem = forecastItems
-    .filter(item => item.expire && item.status === 'ACTIVE')
+  // Прогноз продления активных подписок: номинал (без скидки) и сумма к списанию.
+  const renewalNominal = renewalItems.reduce((sum, item) => sum + (item.next!.cost ?? 0), 0)
+  const renewalCharged = renewalItems.reduce((sum, item) => sum + (item.next!.total ?? 0), 0)
+  const renewalNeedsTopUp = renewalCharged > 0 && balance < renewalCharged
+
+  // Неоплаченные услуги: сумма к оплате и сколько ещё нужно доплатить.
+  const unpaidCharged = unpaidItems.reduce((sum, item) => sum + (item.next!.total ?? 0), 0)
+  const unpaidShortfall = Math.max(0, unpaidCharged - balance)
+
+  const nearestItem = renewalItems
+    .filter(item => item.expire)
     .sort((a, b) =>
       new Date(a.expire!.replace(' ', 'T')).getTime() - new Date(b.expire!.replace(' ', 'T')).getTime()
     )[0] ?? null
@@ -74,7 +84,12 @@ export default function PaymentsPage() {
     ? differenceInDays(parseISO(nearestItem.expire.replace(' ', 'T')), new Date())
     : null
 
-  const needsTopUp = chargedTotal > 0 && balance < chargedTotal
+  // Кнопка «Пополнить» из карточки неоплаченных услуг: подставляем недостающую
+  // сумму в поле пополнения и прокручиваем к секции пополнения.
+  const handleTopUpForUnpaid = () => {
+    if (unpaidShortfall > 0) setAmount(String(Math.ceil(unpaidShortfall)))
+    topUpRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const handlePromo = async () => {
     const code = promoCode.trim()
@@ -124,8 +139,71 @@ export default function PaymentsPage() {
         )}
       </section>
 
-      {/* Upcoming expenses */}
-      {forecastEntry && upcomingItems.length > 0 && (
+      {/* Unpaid services (cart) — заказы, добавленные в корзину, но не оплаченные */}
+      {unpaidItems.length > 0 && (
+        <section className="rounded-[2rem] border border-amber-300/25 bg-amber-500/10 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-200">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-medium uppercase tracking-wide text-amber-200/80">Требует оплаты</div>
+                <h2 className="text-lg font-semibold text-white">Неоплаченные услуги</h2>
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-2xl font-bold text-white">{unpaidCharged.toFixed(0)} ₽</div>
+              <div className="text-xs text-amber-200/80">к оплате</div>
+            </div>
+          </div>
+
+          <p className="mt-2 text-sm text-amber-100/90">
+            Добавлены в корзину, но ещё не оплачены. Пополните баланс, чтобы активировать.
+          </p>
+
+          <div className="mt-3 space-y-2">
+            {unpaidItems.map((item, idx) => (
+              <div key={item.user_service_id || item.usi || idx} className="rounded-2xl border border-white/10 bg-black/15 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-white">{item.name}</div>
+                    <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-amber-200/90">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                      Ожидает оплаты
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sm font-semibold text-white">{item.next!.total.toFixed(2)} ₽</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {unpaidShortfall > 0 ? (
+            <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-amber-100">
+                Недостаточно средств. Пополните баланс на{' '}
+                <span className="font-semibold">{Math.ceil(unpaidShortfall)} ₽</span>
+              </div>
+              <button
+                onClick={handleTopUpForUnpaid}
+                className="shrink-0 rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-2 text-sm font-semibold text-white shadow-brand hover:brightness-110 transition-all"
+              >
+                Пополнить
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+              Баланса достаточно — услуга активируется при ближайшем списании.
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Renewal forecast — продления активных подписок */}
+      {renewalItems.length > 0 && (
         <section className={`rounded-[2rem] p-5 ${
           daysUntilPayment !== null && daysUntilPayment <= 3
             ? 'border border-amber-300/20 bg-amber-500/10'
@@ -143,11 +221,11 @@ export default function PaymentsPage() {
                 <h2 className="text-lg font-semibold text-white">Предстоящие расходы</h2>
               </div>
             </div>
-            <div className="shrink-0 text-2xl font-bold text-white">{nominalTotal.toFixed(0)} ₽</div>
+            <div className="shrink-0 text-2xl font-bold text-white">{renewalNominal.toFixed(0)} ₽</div>
           </div>
 
           <div className="mt-3 space-y-2">
-            {upcomingItems.map((item, idx) => (
+            {renewalItems.map((item, idx) => (
               <div key={item.user_service_id || item.usi || idx} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 truncate text-sm font-medium text-white">{item.name}</div>
@@ -166,13 +244,13 @@ export default function PaymentsPage() {
 
           <div className="mt-3 flex items-center gap-2 text-sm text-amber-100">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
-            <span>Будет списано при продлении: <span className="font-semibold">{chargedTotal.toFixed(2)} ₽</span></span>
+            <span>Будет списано при продлении: <span className="font-semibold">{renewalCharged.toFixed(2)} ₽</span></span>
           </div>
 
-          {needsTopUp && (
+          {renewalNeedsTopUp && (
             <div className="mt-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
               Недостаточно средств. Пополните баланс на{' '}
-              <span className="font-semibold">{(chargedTotal - balance).toFixed(0)} ₽</span>
+              <span className="font-semibold">{(renewalCharged - balance).toFixed(0)} ₽</span>
             </div>
           )}
         </section>
@@ -212,7 +290,7 @@ export default function PaymentsPage() {
       </section>
 
       {/* Top-up: payment systems */}
-      <section className="glass rounded-[2rem] p-5">
+      <section ref={topUpRef} className="glass rounded-[2rem] p-5">
         <h2 className="mb-4 text-xl font-semibold text-white">Пополнение баланса</h2>
 
         <div className="mb-4 space-y-2">
