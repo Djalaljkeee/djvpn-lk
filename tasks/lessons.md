@@ -239,6 +239,74 @@
   Remnawave-сбой проявляется как пустые данные (нули трафика/устройств)
   при 200, а не как 5xx.
 
+## Реальный client IP теряется на upstream-Caddy после переезда
+
+- Симптом: в access-логах SHM-api по запросам, идущим через наш
+  backend-прокси (`/api/shm/*` и server-to-server `python-httpx`),
+  `forwarded_for` показывает внутренний docker-IP (напр. `172.20.0.1`),
+  а не реальный IP клиента. По прямым браузер→SHM запросам IP на месте.
+  «Раньше работало, после переезда нет.»
+- Это НЕ баг нашего кода. Цепочка `браузер → frontend-nginx → backend →
+  Caddy(SHM) → SHM-api`:
+  - `frontend/nginx.conf` шлёт backend'у `X-Forwarded-For` через
+    `$proxy_add_x_forwarded_for` (реальный IP сохранён).
+  - `ProxyHeadersMiddleware(trusted_hosts="*")` переписывает
+    `scope["client"]` → реальный IP (виден в backend access-логах как
+    `client`).
+  - `routers/shm_proxy.py:67-75` форвардит входящий `X-Forwarded-For`
+    как есть (его нет в `_DROP_REQ_HEADERS`) И перезаписывает реальным
+    IP из `client_ip_ctx`. Наш backend ГАРАНТИРОВАННО отправляет
+    `X-Forwarded-For: <real_ip>`.
+  - **Точка потери — Caddy на стороне SHM.** Конкретно — строка
+    `header_up X-Forwarded-For {remote_host}` в reverse_proxy. Плейсхолдер
+    `{remote_host}` в Caddy это ВСЕГДА прямой TCP-peer, поэтому строка
+    БЕЗУСЛОВНО перезаписывает входящий XFF от backend на peer-IP
+    (`172.20.0.1`). Default `reverse_proxy` без явного `header_up XFF`
+    appendил бы peer к существующей цепочке — явная строка этот append
+    выключает.
+- Правильный фикс — пара изменений в Caddyfile на стороне SHM (вне репо):
+  1. Глобальный блок `servers` — научить Caddy резолвить реальный IP
+     клиента из XFF, когда peer попадает в private-диапазоны:
+     ```caddyfile
+     {
+         servers {
+             trusted_proxies   static private_ranges
+             client_ip_headers X-Forwarded-For
+         }
+     }
+     ```
+     `private_ranges` (Caddy 2.7+) — alias для 10/8, 172.16/12,
+     192.168/16; покрывает любую docker-подсеть без необходимости знать
+     точный CIDR. Безопасно: внешний клиент не сможет подделать XFF,
+     потому что его peer-IP — публичный, вне trusted.
+  2. В блоке `admin.{$DOMAIN}` (и для консистентности — в `bill`/`lk`)
+     заменить `{remote_host}` на `{client_ip}` в `header_up X-Real-IP`
+     и `header_up X-Forwarded-For`. `{client_ip}` = реальный IP клиента
+     если peer trusted (резолв из XFF); fallback на `{remote_host}` для
+     прямых внешних хитов — без регрессии.
+- Только trusted_proxies БЕЗ замены `{remote_host}` → `{client_ip}` не
+  лечит: `header_up` всё равно затрёт XFF на peer. Только замена БЕЗ
+  trusted_proxies тоже не лечит: `{client_ip}` для нетрастового peer
+  падает в `{remote_host}`, и мы возвращаемся к docker-IP. Нужны ОБЕ
+  правки.
+- Regression-тест после `caddy reload`:
+  1. Прямой браузер → admin.djvpn.ru: `forwarded_for` остаётся
+     `"<real_ip>, ..."` (не должен стать `"<caddy_docker_ip>, ..."`).
+  2. Браузер → `lk.djvpn.ru/api/shm/*` → backend → SHM: `forwarded_for`
+     по запросам с `user_agent=python-httpx` впервые показывает
+     `<real_ip>` вместо `172.20.0.1`.
+  3. Negative smoke с внешнего хоста:
+     `curl -H 'X-Forwarded-For: 1.2.3.4' https://admin.djvpn.ru/...` —
+     в логах SHM-api должен быть реальный публичный IP curl'а, НЕ
+     `1.2.3.4`. Это доказывает, что trusted_proxies сужен корректно.
+- Критично: эта потеря IP одинакова и для публичного URL (hairpin
+  SNAT'ит source в docker-IP), и для docker-internal маршрута. Аргумент
+  «через docker теряются реальные адреса» неверен — реальный адрес едет
+  в XFF, а не в TCP-source, и сохраняется через `trusted_proxies` +
+  `{client_ip}` в ОБОИХ случаях. CORS вообще про заголовок `Origin` (мы
+  его дропаем), а не про IP. Поэтому docker-internal маршрут +
+  trusted_proxies одновременно чинит и hairpin-таймауты, и реальный IP.
+
 ## Find-before-create в проксях — когда применимо, а когда нет
 
 - Find-before-create оправдан, если внешний поиск действительно
