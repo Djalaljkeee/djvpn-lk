@@ -115,16 +115,25 @@ export const registerWithPassword = async (payload: RegisterPayload): Promise<Au
 }
 
 export interface CaptchaData {
-  // Прямой URL картинки на SHM. Браузер сам грузит и принимает cookie session_id,
-  // которая дальше пойдёт в PUT /user.
+  // data: URL с распакованной SVG-картинкой. SHM `/user/captcha` отдаёт
+  // НЕ raw image, а JSON вида `{TZ, data: [{image: "<base64-svg>"}]}`,
+  // поэтому прямой `<img src="/api/shm/.../captcha">` рендерится как
+  // broken-image: браузер видит `Content-Type: application/json` и
+  // отказывается интерпретировать тело как картинку. Здесь делаем
+  // честный fetch, достаём base64 из `data[0].image` и собираем data: URL
+  // — `<img>` тогда рисует SVG локально, без сетевых проверок.
   image_url: string
 }
 
 export const fetchCaptcha = async (): Promise<CaptchaData> => {
-  // GET /user/captcha рендерит PNG и Set-Cookie ставит SHM. Возвращаем сам URL —
-  // <img src="..."> с cross-origin + credentials заставит браузер запросить
-  // и сохранить cookie, после чего PUT /user пройдёт валидацию.
-  // Добавляем cache-buster, чтобы кнопка «Обновить» реально перезапросила картинку.
-  const base = shm.defaults.baseURL || ''
-  return { image_url: `${base}/user/captcha?_=${Date.now()}` }
+  // withCredentials=true (см. api/client.ts) — cookie session_id, которую
+  // SHM ставит в ответе, сохраняется на домене ЛК и автоматически уйдёт
+  // в PUT /user, где SHM сматчит код против сессии.
+  const resp = await shm.get('/user/captcha')
+  const item = unwrapOne<{ image?: string }>(resp)
+  const b64 = item?.image
+  if (typeof b64 !== 'string' || !b64) {
+    throw new Error('captcha: empty response')
+  }
+  return { image_url: `data:image/svg+xml;base64,${b64}` }
 }
