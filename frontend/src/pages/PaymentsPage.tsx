@@ -7,6 +7,17 @@ import type { PromoApplyResult } from '../types'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
+const HISTORY_PAGE_SIZE = 25
+
+// Русская плюрализация счётчика: 1 транзакция, 2 транзакции, 5 транзакций.
+function pluralTransactions(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'транзакция'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'транзакции'
+  return 'транзакций'
+}
+
 export default function PaymentsPage() {
   const { show } = useToast()
   const { data, loading: dashLoading } = useDashboard()
@@ -19,6 +30,7 @@ export default function PaymentsPage() {
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoState, setPromoState] = useState<PromoApplyResult | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyPage, setHistoryPage] = useState(0)
   const [amount, setAmount] = useState('')
   const suggestedAmounts = [199, 499, 899, 1599]
   const loading = dashLoading && !data
@@ -89,6 +101,15 @@ export default function PaymentsPage() {
     if (daysUntilPayment === 1) return 'Списание завтра'
     return `Списание через ${daysUntilPayment} дн.`
   }
+
+  // История операций: прячем «мусорные» нулевые операции (отменённые пополнения
+  // ЮKassa приходят суммой 0.00 ₽), остальное листаем по HISTORY_PAGE_SIZE.
+  const visiblePayments = payments.filter(p => Math.abs(p.amount ?? 0) >= 0.005)
+  const historyTotal = visiblePayments.length
+  const historyPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE))
+  const historyPageSafe = Math.min(historyPage, historyPages - 1)
+  const historyStart = historyPageSafe * HISTORY_PAGE_SIZE
+  const historyItems = visiblePayments.slice(historyStart, historyStart + HISTORY_PAGE_SIZE)
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -261,7 +282,10 @@ export default function PaymentsPage() {
           onClick={() => setHistoryOpen(v => !v)}
           className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
         >
-          <h2 className="text-xl font-semibold text-white">История операций</h2>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-white">История операций</h2>
+            <p className="mt-0.5 text-sm text-slate-400">{historyTotal} {pluralTransactions(historyTotal)}</p>
+          </div>
           <svg
             className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${historyOpen ? 'rotate-180' : ''}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
@@ -271,26 +295,65 @@ export default function PaymentsPage() {
         </button>
 
         {historyOpen && (
-          payments.length > 0 ? (
+          historyTotal > 0 ? (
             <div className="border-t border-white/10">
-              {payments.slice(0, 20).map((pay, idx) => (
-                <div key={pay.id ?? idx} className="flex items-center justify-between gap-4 border-b border-white/5 px-5 py-3 last:border-0">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-white">
-                      {pay.pay_system_name && typeof pay.pay_system_name === 'string' && isNaN(Number(pay.pay_system_name))
-                        ? pay.pay_system_name
-                        : (pay.amount ?? 0) >= 0 ? 'Пополнение' : 'Списание'}
+              {historyItems.map((pay, idx) => {
+                const amount = pay.amount ?? 0
+                const incoming = amount >= 0
+                const name = pay.pay_system_name && typeof pay.pay_system_name === 'string' && isNaN(Number(pay.pay_system_name))
+                  ? pay.pay_system_name
+                  : incoming ? 'Пополнение' : 'Списание'
+                return (
+                  <div key={pay.id ?? idx} className="flex items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${incoming ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d={incoming ? 'M19.5 4.5l-15 15m0 0h11.25m-11.25 0V8.25' : 'M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25'} />
+                      </svg>
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-400">
-                      {pay.created ? format(parseISO(pay.created.replace(' ', 'T')), 'd MMM yyyy, HH:mm', { locale: ru }) : '—'}
-                      {pay.comment && ` · ${pay.comment}`}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">{name}</div>
+                      <div className="mt-0.5 text-xs text-slate-400">
+                        {pay.created ? format(parseISO(pay.created.replace(' ', 'T')), 'd MMM yyyy, HH:mm', { locale: ru }) : '—'}
+                        {pay.comment && ` · ${pay.comment}`}
+                      </div>
+                    </div>
+                    <div className={`shrink-0 text-sm font-semibold ${incoming ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {incoming ? '+' : ''}{amount.toFixed(2)} ₽
                     </div>
                   </div>
-                  <div className={`shrink-0 text-sm font-semibold ${(pay.amount ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {(pay.amount ?? 0) >= 0 ? '+' : ''}{(pay.amount ?? 0).toFixed(2)} ₽
+                )
+              })}
+
+              {historyPages > 1 && (
+                <div className="flex items-center justify-between gap-3 px-5 py-3 text-xs text-slate-400">
+                  <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">{HISTORY_PAGE_SIZE}/стр</span>
+                  <div className="flex items-center gap-3">
+                    <span>{historyStart + 1}–{historyStart + historyItems.length} / {historyTotal}</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setHistoryPage(p => Math.max(0, p - 1))}
+                        disabled={historyPageSafe <= 0}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 disabled:opacity-40"
+                        aria-label="Предыдущая страница"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setHistoryPage(p => Math.min(historyPages - 1, p + 1))}
+                        disabled={historyPageSafe >= historyPages - 1}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 disabled:opacity-40"
+                        aria-label="Следующая страница"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           ) : (
             <div className="border-t border-white/10 px-5 py-8 text-center text-sm text-slate-400">
