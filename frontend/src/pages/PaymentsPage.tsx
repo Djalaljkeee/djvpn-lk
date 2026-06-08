@@ -43,8 +43,14 @@ export default function PaymentsPage() {
 
   const forecastEntry = forecast[0] ?? null
   const bonuses = forecastEntry?.bonuses ?? 0
-  const forecastTotal = forecastEntry?.total ?? 0
   const forecastItems = forecastEntry?.items ?? []
+
+  // Тарифы с предстоящим продлением (у которых есть next-период).
+  const upcomingItems = forecastItems.filter(item => item.next)
+  // Номинальная сумма (цена без скидки) — крупное число в шапке и в строках тарифов.
+  const nominalTotal = upcomingItems.reduce((sum, item) => sum + (item.next!.cost ?? 0), 0)
+  // Реально к списанию при продлении (со скидкой) — строка-итог и проверка средств.
+  const chargedTotal = upcomingItems.reduce((sum, item) => sum + (item.next!.total ?? 0), 0)
 
   const nearestItem = forecastItems
     .filter(item => item.expire && item.status === 'ACTIVE')
@@ -56,7 +62,7 @@ export default function PaymentsPage() {
     ? differenceInDays(parseISO(nearestItem.expire.replace(' ', 'T')), new Date())
     : null
 
-  const needsTopUp = forecastTotal > 0 && balance < forecastTotal
+  const needsTopUp = chargedTotal > 0 && balance < chargedTotal
 
   const handlePromo = async () => {
     const code = promoCode.trim()
@@ -97,48 +103,55 @@ export default function PaymentsPage() {
         )}
       </section>
 
-      {/* Payment forecast */}
-      {forecastEntry && forecastTotal > 0 && (
+      {/* Upcoming expenses */}
+      {forecastEntry && upcomingItems.length > 0 && (
         <section className={`rounded-[2rem] p-5 ${
           daysUntilPayment !== null && daysUntilPayment <= 3
             ? 'border border-amber-300/20 bg-amber-500/10'
             : 'glass'
         }`}>
           <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Прогноз списания</h2>
-              <p className="mt-0.5 text-sm text-slate-300">{daysLabel()}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-medium uppercase tracking-wide text-amber-300/70">{daysLabel()}</div>
+                <h2 className="text-lg font-semibold text-white">Предстоящие расходы</h2>
+              </div>
             </div>
-            <div className="rounded-2xl bg-white/10 px-4 py-2 text-lg font-bold text-white">
-              {forecastTotal.toFixed(0)} ₽
-            </div>
+            <div className="shrink-0 text-2xl font-bold text-white">{nominalTotal.toFixed(0)} ₽</div>
           </div>
 
           <div className="mt-3 space-y-2">
-            {forecastItems.filter(item => item.next).map((item, idx) => (
+            {upcomingItems.map((item, idx) => (
               <div key={item.user_service_id || item.usi || idx} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">{item.name}</div>
-                    <div className="mt-0.5 text-xs text-slate-400">
-                      {item.next!.name}
-                      {item.expire && (
-                        <span className="ml-1.5">
-                          · {format(parseISO(item.expire.replace(' ', 'T')), 'd MMM yyyy', { locale: ru })}
-                        </span>
-                      )}
-                    </div>
+                  <div className="min-w-0 truncate text-sm font-medium text-white">{item.name}</div>
+                  <div className="flex shrink-0 items-baseline gap-2">
+                    {item.expire && (
+                      <span className="text-xs text-slate-400">
+                        {format(parseISO(item.expire.replace(' ', 'T')), 'd MMMM', { locale: ru })}
+                      </span>
+                    )}
+                    <span className="text-sm font-semibold text-white">{item.next!.cost.toFixed(2)} ₽</span>
                   </div>
-                  <div className="shrink-0 text-sm font-semibold text-white">{item.next!.total.toFixed(0)} ₽</div>
                 </div>
               </div>
             ))}
           </div>
 
+          <div className="mt-3 flex items-center gap-2 text-sm text-amber-100">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
+            <span>Будет списано при продлении: <span className="font-semibold">{chargedTotal.toFixed(2)} ₽</span></span>
+          </div>
+
           {needsTopUp && (
             <div className="mt-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
               Недостаточно средств. Пополните баланс на{' '}
-              <span className="font-semibold">{(forecastTotal - balance).toFixed(0)} ₽</span>
+              <span className="font-semibold">{(chargedTotal - balance).toFixed(0)} ₽</span>
             </div>
           )}
         </section>
