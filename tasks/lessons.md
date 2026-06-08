@@ -239,21 +239,48 @@
   Remnawave-сбой проявляется как пустые данные (нули трафика/устройств)
   при 200, а не как 5xx.
 
+## SHM `/v1/user/captcha` — это JSON, а не картинка
+
+- Симптом: `<img src="/api/shm/v1/user/captcha?_=ts">` рендерит
+  broken-image placeholder. В DevTools запрос зелёный (200 OK),
+  Content-Length ненулевой, в Console — тишина.
+- Реальный формат ответа SHM:
+  ```
+  Content-Type: application/json; charset=utf-8
+  Body: {"TZ":"Europe/Moscow","data":[{"image":"PHN2Zy...(base64-SVG)"}]}
+  ```
+  Браузер видит `application/json` на `<img src>` и молча отказывается
+  интерпретировать тело как картинку. Никаких ошибок в Console — это
+  тихий fail рендеринга image.
+- Лечение: фронт делает **честный** `fetch` через axios (`shm.get(
+  '/user/captcha')`), разворачивает SHM-конверт (`unwrapOne` →
+  `data[0]`), декодирует base64 в data: URL и кладёт его в `<img src>`:
+  ```ts
+  const item = unwrapOne<{ image?: string }>(await shm.get('/user/captcha'))
+  return { image_url: `data:image/svg+xml;base64,${item.image}` }
+  ```
+  Backend-прокси трогать не нужно — он честно прокидывает что прислал
+  SHM, и заодно сохраняет `Set-Cookie: session_id`, которой SHM связывает
+  капчу с последующим `PUT /user`.
+- НЕ путать с CORS-ловушкой `crossOrigin="use-credentials"` (см. ниже):
+  убрать атрибут — необходимое условие для same-origin картинок, но при
+  JSON-обёртке оно не решит проблему: даже после правильных CORS-
+  заголовков `<img>` всё равно не отрендерит JSON как PNG/SVG.
+- Диагностика будущих «200 OK, картинка broken»: ВСЕГДА смотреть
+  `Content-Type` и первые 16 байт тела. `89 50 4e 47` = PNG,
+  `ff d8 ff` = JPEG, `47 49 46` = GIF, `3c 73 76 67` = SVG, `7b 22` =
+  `{"` (JSON-обёртка, нужен декодер).
+
 ## `<img crossOrigin="use-credentials">` ломает same-origin картинку
 
-- Симптом: `GET /api/shm/v1/user/captcha` отдаёт `200 OK` с правильным
-  PNG в теле, в DevTools запрос зелёный, но `<img>` рендерит
-  broken-image placeholder. «Доходит, но не показывает.»
-- Причина: атрибут `crossOrigin="use-credentials"` на `<img>` ВСЕГДА
-  переводит загрузку картинки в CORS-режим — даже когда URL same-origin
-  (`lk.djvpn.ru → /api/...`). Браузер шлёт `Origin: https://lk.djvpn.ru`
-  и требует в ответе `Access-Control-Allow-Origin: <origin>` +
-  `Access-Control-Allow-Credentials: true`.
-- Дальше дело в `CORSMiddleware` нашего FastAPI (main.py): он смотрит
-  Origin против `ALLOWED_ORIGINS` (по умолчанию `["https://bill.djvpn.ru"]`)
-  и для same-origin `lk.djvpn.ru` НЕ добавляет ACA-O — потому что
-  считается, что same-origin CORS не нужен. Браузер видит 200 без
-  ACA-O → отказывается отдать картинку JS/`<img>` → broken image.
+- Симптом отдельной ловушки: даже если SHM отдаёт настоящий PNG/SVG в
+  бинаре, `<img crossOrigin="use-credentials">` на same-origin URL
+  переводит загрузку в CORS-режим, шлёт `Origin: <lk>`, требует
+  `Access-Control-Allow-Origin` в ответе. Наш `CORSMiddleware`
+  (main.py) для same-origin lk-домена ACA-O не выставляет (он не в
+  `ALLOWED_ORIGINS`, и same-origin CORS считается ненужным), браузер
+  отказывается отдать картинку `<img>` — снова broken image, снова
+  тишина в Console.
 - Лечение: `crossOrigin` на same-origin `<img>` НЕ НУЖЕН вообще. Куки
   отправляются автоматически при same-origin image-loads. Просто убрать
   атрибут. Альтернатива (хуже) — добавлять lk-домен в `ALLOWED_ORIGINS`,
