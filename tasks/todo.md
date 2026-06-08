@@ -1,3 +1,22 @@
+# Favicon + единый стиль страницы документации
+
+## Контекст
+
+Заказчик прислал новый SVG-логотип для favicon и попросил привести публичную страницу документации (`frontend/public/setup.html`) к общему стилю приложения — логотип и задний фон.
+
+## Сделано
+
+- [x] `frontend/public/favicon.svg`: заменён на новый SVG (DJ VPN, squircle + Wi-Fi дуги). Обе страницы (`index.html` и `setup.html`) ссылаются на `/favicon.svg`, поэтому фавикон обновился сразу везде.
+- [x] `setup.html` — фон приведён к общему: gradient как в `src/index.css` (`html`: радиальные блобы 0.28/0.24 + `linear-gradient(180deg,#2f0e45→#14071f→#12061a)`), `body` сделан прозрачным, чтобы root-фон покрывал всю прокрутку.
+- [x] `setup.html` — логотип в топбаре: фейковый CSS-бокс «DJ» заменён на реальный `/djvpn-brand.jpg` (как `BrandLogo` в SPA) + вордмарк «DJ VPN / fast secure reliable».
+
+## Проверки
+
+- `npm run build` — успешно; `dist/favicon.svg` (1.8 КБ) и `dist/setup.html` собраны.
+- `python3 xml.dom.minidom` — favicon.svg валидный XML.
+
+---
+
 # Редизайн страницы входа и блока реферальной программы
 
 ## Контекст
