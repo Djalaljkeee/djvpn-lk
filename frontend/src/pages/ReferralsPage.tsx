@@ -5,6 +5,33 @@ import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
 import type { ReferralStats } from '../types'
 
+const SUPPORT_URL = 'https://t.me/help_djvpn'
+
+const steps = [
+  {
+    icon: <ShareIcon className="h-5 w-5" />,
+    title: 'Поделитесь ссылкой',
+    text: 'Отправьте ссылку другу любым удобным способом.',
+  },
+  {
+    icon: <UserPlusIcon className="h-5 w-5" />,
+    title: 'Пользователь регистрируется',
+    text: 'Друг проходит регистрацию и становится пользователем.',
+  },
+  {
+    icon: <PercentIcon className="h-5 w-5" />,
+    title: 'Получайте 15%',
+    text: 'Вы получаете 15% с каждого пополнения баланса друга.',
+  },
+]
+
+const conditions = [
+  '15% от каждого пополнения баланса реферала',
+  'Начисление происходит автоматически',
+  'Бонусы зачисляются на баланс аккаунта',
+  'Ограничений по количеству рефералов нет',
+]
+
 export default function ReferralsPage() {
   const { user } = useAuthStore()
   const { show } = useToast()
@@ -26,8 +53,6 @@ export default function ReferralsPage() {
     : ''
   const totalReferrals = stats?.total_referrals ?? 0
   const totalIncome = stats?.total_income ?? 0
-  const items = stats?.items ?? 0
-  const hasDetails = !!stats?.referrals?.length
 
   const copyLink = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -36,127 +61,248 @@ export default function ReferralsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <section className="brand-panel rounded-[2rem] p-5 sm:p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="text-sm uppercase tracking-[0.35em] text-fuchsia-100/70">Referral program</div>
-            <h1 className="mt-3 text-3xl font-bold text-white sm:text-4xl">Реферальная программа с честной статистикой.</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-200 sm:text-base">
-              Экран опирается на фактический контракт SHM API: основной KPI — количество приглашенных пользователей, а детальный список показывается только когда backend реально его отдает.
-            </p>
-          </div>
+      <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="brand-panel rounded-[2rem] p-6 sm:p-8">
+          <h1 className="text-4xl font-bold leading-tight text-white sm:text-5xl">
+            Реферальная<br />
+            <span className="gradient-text">программа</span>
+          </h1>
+          <p className="mt-4 max-w-md text-base font-medium leading-7 text-white">
+            Получайте 15% с каждого пополнения приглашённых пользователей.
+          </p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-slate-300">
+            Поделитесь своей ссылкой и бонусы будут автоматически начисляться на ваш баланс.
+          </p>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:min-w-[340px] sm:grid-cols-3">
-            <StatCard label="Рефералов" value={String(totalReferrals)} />
-            <StatCard label="С деталями" value={String(items)} />
-            <StatCard label="Доход" value={`${totalIncome.toFixed(2)} ₽`} />
+        <div className="glass flex flex-col justify-center rounded-[2rem] p-6 sm:p-8">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-500/20 text-fuchsia-100">
+              <WalletIcon className="h-7 w-7" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm text-slate-300">Заработано</div>
+              {loading ? (
+                <div className="mt-2 h-10 w-40 animate-pulse rounded-xl bg-white/10" />
+              ) : (
+                <div className="text-4xl font-bold text-white sm:text-5xl">{totalIncome.toFixed(2)} ₽</div>
+              )}
+            </div>
           </div>
+          <p className="mt-4 text-sm text-slate-300">
+            Всего бонусов по реферальной программе
+            {totalReferrals > 0 && (
+              <> · приглашено: <span className="font-semibold text-white">{totalReferrals}</span></>
+            )}
+          </p>
         </div>
       </section>
 
       <section className="glass rounded-[2rem] p-5 sm:p-6">
-        <h2 className="text-xl font-semibold text-white">Ваши реферальные ссылки</h2>
-        <p className="mt-1 text-sm text-slate-300">
-          Делитесь любой из ссылок: при регистрации новый пользователь автоматически закрепится за вами.
-        </p>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Telegram deeplink</div>
-            <div className="mt-2 break-all text-sm leading-6 text-white">{tgRefLink || 'Ссылка появится после загрузки профиля и конфигурации бота.'}</div>
-            <button
-              onClick={() => tgRefLink && copyLink(tgRefLink, 'Telegram ссылка')}
-              disabled={!tgRefLink}
-              className="mt-4 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand disabled:opacity-40"
-            >
-              Скопировать deeplink
-            </button>
-          </div>
-
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Ссылка на личный кабинет</div>
-            <div className="mt-2 break-all text-sm leading-6 text-white">{webRefLink || 'Ссылка появится после загрузки профиля.'}</div>
-            <button
-              onClick={() => webRefLink && copyLink(webRefLink, 'Ссылка на ЛК')}
-              disabled={!webRefLink}
-              className="mt-4 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40"
-            >
-              Скопировать ссылку
-            </button>
-          </div>
+        <h2 className="text-xl font-semibold text-white">Ваша реферальная ссылка</h2>
+        <div className="mt-5 space-y-4">
+          <LinkRow
+            icon={<LinkIcon className="h-5 w-5" />}
+            label="Реферальная ссылка"
+            value={webRefLink || 'Ссылка появится после загрузки профиля.'}
+            buttonLabel="Скопировать ссылку"
+            primary
+            disabled={!webRefLink}
+            onCopy={() => webRefLink && copyLink(webRefLink, 'Ссылка на ЛК')}
+          />
+          <LinkRow
+            icon={<TelegramIcon className="h-5 w-5" />}
+            label="Telegram Deeplink"
+            value={tgRefLink || 'Ссылка появится после загрузки профиля и конфигурации бота.'}
+            buttonLabel="Скопировать Deeplink"
+            disabled={!tgRefLink}
+            onCopy={() => tgRefLink && copyLink(tgRefLink, 'Telegram ссылка')}
+          />
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+      <section className="grid gap-6 lg:grid-cols-2">
         <div className="glass rounded-[2rem] p-5 sm:p-6">
           <h2 className="text-xl font-semibold text-white">Как это работает</h2>
-          <div className="mt-5 space-y-4">
-            {[
-              'Отправьте другу Telegram deeplink.',
-              'Друг открывает бота и проходит регистрацию.',
-              'Реферальная статистика обновляется по данным SHM.',
-            ].map((text, index) => (
-              <div key={text} className="flex items-start gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500/20 text-sm font-bold text-white">
-                  {index + 1}
+          <div className="mt-6 space-y-5">
+            {steps.map((step, index) => (
+              <div key={step.title} className="flex items-start gap-4">
+                <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-fuchsia-100">
+                  {step.icon}
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
+                    {index + 1}
+                  </span>
                 </div>
-                <p className="text-sm leading-6 text-slate-200">{text}</p>
+                <div>
+                  <div className="text-sm font-semibold text-white">{step.title}</div>
+                  <div className="mt-1 text-sm leading-6 text-slate-300">{step.text}</div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
         <div className="glass rounded-[2rem] p-5 sm:p-6">
-          <h2 className="text-xl font-semibold text-white">Статус данных из API</h2>
-
-          {loading ? (
-            <div className="mt-5 space-y-3 animate-pulse">
-              <div className="h-20 rounded-2xl bg-white/5" />
-              <div className="h-20 rounded-2xl bg-white/5" />
-            </div>
-          ) : (
-            <div className="mt-5 space-y-4">
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-                <div className="text-sm font-semibold text-white">Основная метрика</div>
-                <div className="mt-2 text-sm leading-6 text-slate-200">
-                  SHM сейчас отдает общее количество рефералов. Поэтому этот экран сначала показывает KPI, а не строит фейковую таблицу.
-                </div>
+          <h2 className="text-xl font-semibold text-white">Условия программы</h2>
+          <div className="mt-6 space-y-4">
+            {conditions.map(item => (
+              <div key={item} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+                  <CheckIcon className="h-4 w-4" />
+                </span>
+                <span className="text-sm leading-6 text-slate-200">{item}</span>
               </div>
-
-              {hasDetails ? (
-                <div className="space-y-3">
-                  {stats?.referrals?.map((ref, index) => (
-                    <div key={`${ref.user_id ?? 'ref'}-${index}`} className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-                      <div className="text-sm font-semibold text-white">{ref.name || ref.login || `Реферал #${index + 1}`}</div>
-                      <div className="mt-2 text-sm text-slate-300">
-                        {ref.login && <div>Логин: {ref.login}</div>}
-                        {ref.created && <div>Дата: {ref.created}</div>}
-                        {typeof ref.income === 'number' && <div>Доход: {ref.income.toFixed(2)} ₽</div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-white/5 p-5">
-                  <div className="text-sm font-semibold text-white">Детального списка пока нет</div>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    Как только backend начнет отдавать подробные записи, экран сможет показать их здесь без полной переработки UX.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+            ))}
+          </div>
         </div>
+      </section>
+
+      <section className="glass flex flex-col gap-3 rounded-[2rem] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-fuchsia-100">
+            <InfoIcon className="h-4 w-4" />
+          </span>
+          <p className="text-sm leading-6 text-slate-300">
+            Бонусы можно использовать для оплаты подписки или вывести на баланс.
+          </p>
+        </div>
+        <a
+          href={SUPPORT_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 self-start text-sm font-medium text-fuchsia-200 hover:text-white sm:self-auto"
+        >
+          Подробнее <span aria-hidden>→</span>
+        </a>
       </section>
     </div>
   )
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function LinkRow({
+  icon,
+  label,
+  value,
+  buttonLabel,
+  onCopy,
+  primary = false,
+  disabled = false,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  buttonLabel: string
+  onCopy: () => void
+  primary?: boolean
+  disabled?: boolean
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-xs uppercase tracking-[0.18em] text-slate-300">{label}</div>
-      <div className="mt-2 text-2xl font-bold text-white">{value}</div>
+    <div className="flex flex-col gap-4 rounded-[1.5rem] border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-brand-500/20 text-fuchsia-100">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-[0.18em] text-slate-300">{label}</div>
+          <div className="mt-1 break-all text-sm leading-6 text-white">{value}</div>
+        </div>
+      </div>
+      <button
+        onClick={onCopy}
+        disabled={disabled}
+        className={
+          primary
+            ? 'flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand transition-all hover:brightness-110 disabled:opacity-40'
+            : 'flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-40'
+        }
+      >
+        <CopyIcon className="h-4 w-4" />
+        {buttonLabel}
+      </button>
     </div>
+  )
+}
+
+function WalletIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="3" y="6" width="18" height="13" rx="2.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 12h3" />
+    </svg>
+  )
+}
+
+function LinkIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1.5 1.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.5-1.5" />
+    </svg>
+  )
+}
+
+function TelegramIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-7 20-4-9-9-4 20-7Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-11 11" />
+    </svg>
+  )
+}
+
+function CopyIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  )
+}
+
+function ShareIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="6" r="2.5" />
+      <circle cx="18" cy="18" r="2.5" />
+      <path strokeLinecap="round" d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6" />
+    </svg>
+  )
+}
+
+function UserPlusIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 20c0-3.3 3.1-6 8-6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 14v6M15 17h6" />
+    </svg>
+  )
+}
+
+function PercentIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" d="m6 18 12-12" />
+      <circle cx="7.5" cy="7.5" r="1.5" />
+      <circle cx="16.5" cy="16.5" r="1.5" />
+    </svg>
+  )
+}
+
+function CheckIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+    </svg>
+  )
+}
+
+function InfoIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M12 11v5M12 8h.01" />
+    </svg>
   )
 }

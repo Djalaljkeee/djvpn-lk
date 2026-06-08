@@ -225,36 +225,61 @@ export default function LoginPage() {
     navigate('/')
   }
 
+  const features = [
+    {
+      icon: <BoltIcon className="h-5 w-5" />,
+      title: 'Высокая скорость',
+      text: 'Серверы с запасом ресурсов для стриминга, звонков, игр и загрузок без ограничений.',
+    },
+    {
+      icon: <ShieldIcon className="h-5 w-5" />,
+      title: 'Надёжная работа',
+      text: 'Резервирование узлов и постоянный мониторинг обеспечивают стабильное соединение 24/7.',
+    },
+    {
+      icon: <PhoneIcon className="h-5 w-5" />,
+      title: 'Подключение за минуту',
+      text: 'Вход через Telegram, готовые конфигурации и простая настройка на любых устройствах.',
+    },
+  ]
+
   return (
     <div className="relative min-h-screen overflow-hidden px-4 py-6">
       <div className="absolute inset-x-0 top-0 h-[38vh] bg-gradient-to-b from-brand-300/25 to-transparent blur-3xl" />
       <div className="absolute left-[-8%] top-[22%] h-72 w-72 rounded-full bg-brand-700/25 blur-3xl" />
       <div className="absolute bottom-[-8%] right-[-5%] h-80 w-80 rounded-full bg-brand-500/20 blur-3xl" />
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center">
+      <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col justify-center gap-8">
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <section className="brand-panel hidden rounded-[2rem] p-8 lg:flex lg:flex-col lg:justify-between">
             <div className="space-y-6">
-              <BrandLogo size={96} showWordmark />
+              <BrandLogo size={72} showWordmark />
+
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200">
+                <BoltIcon className="h-4 w-4 text-fuchsia-200" />
+                Работает в РФ · Без логов · Подключение за 1 минуту
+              </div>
+
               <div className="max-w-xl">
-                <div className="text-sm uppercase tracking-[0.4em] text-fuchsia-100/70">DJ VPN cabinet</div>
-                <h1 className="mt-4 text-5xl font-bold leading-tight text-white">
-                  Управление VPN без лишнего шума и сложных экранов.
+                <h1 className="text-5xl font-bold leading-tight text-white">
+                  VPN, который<br />
+                  <span className="gradient-text">просто работает</span>
                 </h1>
                 <p className="mt-4 text-base leading-7 text-slate-200">
-                  Быстрый вход, понятные тарифы, баланс, промокоды и настройка подключения в одном интерфейсе.
+                  Получите стабильный доступ к нужным сайтам и сервисам через быстрые серверы
+                  по всему миру. Управляйте подпиской, устройствами и подключениями в личном
+                  кабинете или прямо через Telegram.
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              {[
-                { title: 'Mini App', text: 'Автовход внутри Telegram' },
-                { title: 'Тарифы', text: 'Понятные цены и статусы' },
-                { title: 'Deeplink', text: 'Подключение в пару касаний' },
-              ].map(item => (
+              {features.map(item => (
                 <div key={item.title} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-sm font-semibold text-white">{item.title}</div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-fuchsia-100">
+                    {item.icon}
+                  </div>
+                  <div className="mt-3 text-sm font-semibold text-white">{item.title}</div>
                   <div className="mt-2 text-xs leading-5 text-slate-200">{item.text}</div>
                 </div>
               ))}
@@ -311,43 +336,66 @@ export default function LoginPage() {
                     </p>
                   </div>
 
+                  {botUsername ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div ref={tgRef} className="flex justify-center" />
+                    </div>
+                  ) : (
+                    <div className="h-14 rounded-2xl bg-white/5 animate-pulse" />
+                  )}
+
+                  <div className="my-5 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/10" />
+                    <span className="text-xs uppercase tracking-[0.25em] text-slate-400">или</span>
+                    <div className="h-px flex-1 bg-white/10" />
+                  </div>
+
                   <form onSubmit={handleSubmit} className="space-y-3">
                     {mode === 'register' && (
                       <Field label="Имя" optional>
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={e => setName(e.target.value)}
-                          placeholder="Ваше имя"
-                          className={fieldClass}
-                        />
+                        <div className="relative">
+                          <UserIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            placeholder="Ваше имя"
+                            className={`${fieldClass} pl-11`}
+                          />
+                        </div>
                       </Field>
                     )}
 
                     {mode === 'login' ? (
                       <Field label="Логин или email">
-                        <input
-                          type="text"
-                          value={login}
-                          onChange={e => setLogin(e.target.value)}
-                          placeholder="Введите логин или email"
-                          required
-                          autoComplete="username"
-                          className={fieldClass}
-                        />
+                        <div className="relative">
+                          <UserIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={login}
+                            onChange={e => setLogin(e.target.value)}
+                            placeholder="Введите логин или email"
+                            required
+                            autoComplete="username"
+                            className={`${fieldClass} pl-11`}
+                          />
+                        </div>
                       </Field>
                     ) : (
                       <Field label="Email">
-                        <input
-                          type="email"
-                          inputMode="email"
-                          autoComplete="email"
-                          value={email}
-                          onChange={e => setEmail(e.target.value)}
-                          placeholder="you@example.com"
-                          required
-                          className={fieldClass}
-                        />
+                        <div className="relative">
+                          <MailIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="email"
+                            inputMode="email"
+                            autoComplete="email"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            required
+                            className={`${fieldClass} pl-11`}
+                          />
+                        </div>
                         <span className="block text-xs text-slate-400">
                           Email будет вашим логином. Подтвердим кодом из письма.
                         </span>
@@ -356,13 +404,14 @@ export default function LoginPage() {
 
                     <Field label="Пароль">
                       <div className="relative">
+                        <LockIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                         <input
                           type={showPw ? 'text' : 'password'}
                           value={password}
                           onChange={e => setPassword(e.target.value)}
                           placeholder="Введите пароль"
                           required
-                          className={`${fieldClass} pr-12`}
+                          className={`${fieldClass} pl-11 pr-24`}
                         />
                         <button
                           type="button"
@@ -376,14 +425,17 @@ export default function LoginPage() {
 
                     {mode === 'register' && (
                       <Field label="Повтор пароля">
-                        <input
-                          type={showPw ? 'text' : 'password'}
-                          value={confirmPw}
-                          onChange={e => setConfirmPw(e.target.value)}
-                          placeholder="Повторите пароль"
-                          required
-                          className={fieldClass}
-                        />
+                        <div className="relative">
+                          <LockIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type={showPw ? 'text' : 'password'}
+                            value={confirmPw}
+                            onChange={e => setConfirmPw(e.target.value)}
+                            placeholder="Повторите пароль"
+                            required
+                            className={`${fieldClass} pl-11`}
+                          />
+                        </div>
                       </Field>
                     )}
 
@@ -441,26 +493,12 @@ export default function LoginPage() {
                     </div>
                   )}
 
-                  <div className="my-5 flex items-center gap-3">
-                    <div className="h-px flex-1 bg-white/10" />
-                    <span className="text-xs uppercase tracking-[0.25em] text-slate-400">Telegram</span>
-                    <div className="h-px flex-1 bg-white/10" />
-                  </div>
-
-                  {botUsername ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <div ref={tgRef} className="flex justify-center" />
-                    </div>
-                  ) : (
-                    <div className="h-14 rounded-2xl bg-white/5 animate-pulse" />
-                  )}
-
                   <p className="mt-5 text-center text-sm text-slate-300">
                     {mode === 'login' ? (
                       <>
                         Нет аккаунта?{' '}
                         <button onClick={() => switchMode('register')} className="font-medium text-fuchsia-200 hover:text-white">
-                          Зарегистрируйтесь
+                          Создайте его за минуту
                         </button>
                       </>
                     ) : (
@@ -476,6 +514,18 @@ export default function LoginPage() {
               )}
             </div>
           </section>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-slate-400">
+          <span className="inline-flex items-center gap-2">
+            <ShieldIcon className="h-4 w-4" /> Шифрование AES-256
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <LockIcon className="h-4 w-4" /> Без логов
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <ChatIcon className="h-4 w-4" /> Поддержка в Telegram 24/7
+          </span>
         </div>
       </div>
     </div>
@@ -510,7 +560,7 @@ function EmailVerifyBlock({
       <div className="mb-5">
         <h2 className="text-2xl font-bold text-white">Подтверждение email</h2>
         <p className="mt-2 text-sm leading-6 text-slate-300">
-          Мы отправили код на <span className="font-medium text-white">{email}</span>. Проверьте входящие (в том числе спам) и введите код ниже.
+          Мы отправили код на <span className="font-medium text-white">{email}</span>. Введите его ниже, чтобы подтвердить почту.
         </p>
       </div>
       <form onSubmit={onSubmit} className="space-y-3">
@@ -535,6 +585,12 @@ function EmailVerifyBlock({
           Подтвердить
         </button>
       </form>
+
+      <div className="mt-3 flex items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs leading-5 text-slate-300">
+        <MailIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-fuchsia-200" />
+        <span>Не нашли письмо? Проверьте папку «Спам» — код может попасть туда.</span>
+      </div>
+
       {success && (
         <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
           {success}
@@ -588,3 +644,64 @@ function Field({
 
 const fieldClass =
   'w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-400 outline-none transition-all focus:border-brand-300/50 focus:bg-white/10'
+
+function BoltIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13 3 4 14h7l-1 7 9-11h-7l1-7Z" />
+    </svg>
+  )
+}
+
+function ShieldIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 4.6-3.1 7.7-7 9-3.9-1.3-7-4.4-7-9V6l7-3Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m9 12 2 2 4-4" />
+    </svg>
+  )
+}
+
+function PhoneIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
+      <path strokeLinecap="round" d="M10.5 18.5h3" />
+    </svg>
+  )
+}
+
+function UserIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" />
+    </svg>
+  )
+}
+
+function MailIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m4 7 8 6 8-6" />
+    </svg>
+  )
+}
+
+function LockIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V8a4 4 0 1 1 8 0v3" />
+    </svg>
+  )
+}
+
+function ChatIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v10H8l-4 4V5Z" />
+    </svg>
+  )
+}
