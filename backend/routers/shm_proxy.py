@@ -188,28 +188,13 @@ async def shm_proxy(path: str, request: Request) -> Response:
         name, value, max_age = _parse_cookie(raw)
         if not name:
             continue
-        response.set_cookie(
-            key=name,
-            value=value,
-            max_age=max_age,
-            path="/",
-            secure=is_secure,
-            httponly=True,
-            samesite="lax",
-        )
+        _append_session_cookie(response, name, value, max_age, is_secure)
 
     # SHM auth-эндпоинты отдают session в body как {"id": "..."} (не Set-Cookie).
     # Без этой ветки cookie session_id никогда не появляется на ЛК и каждый
     # следующий /v1/user возвращает 401.
     if body_session_id:
-        response.set_cookie(
-            key="session_id",
-            value=body_session_id,
-            path="/",
-            secure=is_secure,
-            httponly=True,
-            samesite="lax",
-        )
+        _append_session_cookie(response, "session_id", body_session_id, None, is_secure)
 
     # Forensic: лог реальных Set-Cookie заголовков, которые мы отдаём клиенту.
     # Срабатывает только когда мы что-то выставили (новая сессия / любые
@@ -230,6 +215,48 @@ async def shm_proxy(path: str, request: Request) -> Response:
         )
 
     return response
+
+
+def _append_session_cookie(
+    response: Response,
+    name: str,
+    value: str,
+    max_age: int | None,
+    is_secure: bool,
+) -> None:
+    """Выставляет cookie session_id со SameSite=None; Partitioned (CHIPS) под HTTPS.
+
+    Контекст: Telegram WebApp, открытый в браузере (web.telegram.org),
+    грузит lk.djvpn.ru в iframe. Top-level site (web.telegram.org) не
+    совпадает с embed (lk.djvpn.ru) — кросс-сайт. Chrome и Yandex Browser
+    в этом контексте отбрасывают cookies с SameSite=Lax: даже Set-Cookie
+    проходит, кука не сохраняется, следующий запрос летит без неё и
+    SHM-прокси ловит 401. Симптом — пользователь в WebApp видит LoginPage
+    несмотря на корректную авторизацию по initData.
+
+    SameSite=None обязан идти в паре с Secure (RFC 6265bis), а для обхода
+    блокировки third-party cookies Chrome требует ещё и Partitioned (CHIPS) —
+    cookie ассоциируется с top-level site, что нам и нужно: сессия живёт
+    только пока юзер внутри WebApp, прямой заход на lk.djvpn.ru ходит в
+    отдельной партиции (там SameSite=Lax работает как обычно через
+    password-логин).
+
+    Под HTTP (локальная разработка) SameSite=None невозможен → откатываемся
+    на Lax. Старлеттовский response.set_cookie(partitioned=...) появился
+    только в Starlette 0.42; собираем header вручную, чтобы не привязываться
+    к версии.
+    """
+    parts: list[str] = [f"{name}={value}", "Path=/"]
+    if max_age is not None:
+        parts.append(f"Max-Age={max_age}")
+    parts.append("HttpOnly")
+    if is_secure:
+        parts.append("Secure")
+        parts.append("SameSite=None")
+        parts.append("Partitioned")
+    else:
+        parts.append("SameSite=Lax")
+    response.headers.append("set-cookie", "; ".join(parts))
 
 
 def _mask_set_cookie(raw: str) -> str:

@@ -47,6 +47,12 @@ export default function LoginPage() {
   const [verifySuccess, setVerifySuccess] = useState('')
 
   const tgRef = useRef<HTMLDivElement>(null)
+  // Внутри Telegram WebApp авторизация идёт по initData (TelegramWebAppGate),
+  // а Telegram Login Widget iframe-ит oauth.telegram.org, у которого CSP
+  // frame-ancestors не допускает цепочку [lk.djvpn.ru, web.telegram.org] —
+  // консоль засыпает Framing-ошибками, виджет всё равно не отрисовывается.
+  // Если юзер уже в WebApp — скрываем виджет и показываем форму логин/пароль.
+  const isInTelegramWebApp = Boolean(window.Telegram?.WebApp?.initData)
 
   useEffect(() => {
     if (isAuthenticated()) navigate('/', { replace: true })
@@ -79,6 +85,7 @@ export default function LoginPage() {
   }, [mode, loadCaptcha])
 
   useEffect(() => {
+    if (isInTelegramWebApp) return
     if (!botUsername || !tgRef.current) return
     tgRef.current.innerHTML = ''
     window.onTelegramAuth = async (tgUser) => {
@@ -110,7 +117,7 @@ export default function LoginPage() {
       window.onTelegramAuth = undefined
       if (tgRef.current) tgRef.current.innerHTML = ''
     }
-  }, [botUsername])
+  }, [botUsername, isInTelegramWebApp])
 
   const switchMode = (nextMode: Mode) => {
     setMode(nextMode)
@@ -331,24 +338,30 @@ export default function LoginPage() {
                     </h2>
                     <p className="mt-1 text-sm leading-6 text-slate-300">
                       {mode === 'login'
-                        ? 'Войдите по логину и паролю или используйте Telegram.'
+                        ? isInTelegramWebApp
+                          ? 'Войдите по логину и паролю.'
+                          : 'Войдите по логину и паролю или используйте Telegram.'
                         : 'Заполните форму, чтобы создать аккаунт и управлять услугами.'}
                     </p>
                   </div>
 
-                  {botUsername ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <div ref={tgRef} className="flex justify-center" />
-                    </div>
-                  ) : (
-                    <div className="h-14 rounded-2xl bg-white/5 animate-pulse" />
-                  )}
+                  {!isInTelegramWebApp && (
+                    <>
+                      {botUsername ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <div ref={tgRef} className="flex justify-center" />
+                        </div>
+                      ) : (
+                        <div className="h-14 rounded-2xl bg-white/5 animate-pulse" />
+                      )}
 
-                  <div className="my-5 flex items-center gap-3">
-                    <div className="h-px flex-1 bg-white/10" />
-                    <span className="text-xs uppercase tracking-[0.25em] text-slate-400">или</span>
-                    <div className="h-px flex-1 bg-white/10" />
-                  </div>
+                      <div className="my-5 flex items-center gap-3">
+                        <div className="h-px flex-1 bg-white/10" />
+                        <span className="text-xs uppercase tracking-[0.25em] text-slate-400">или</span>
+                        <div className="h-px flex-1 bg-white/10" />
+                      </div>
+                    </>
+                  )}
 
                   <form onSubmit={handleSubmit} className="space-y-3">
                     {mode === 'register' && (

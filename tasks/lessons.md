@@ -373,3 +373,58 @@
 - Самый надёжный путь — выполнить операцию, которая для существующего
   юзера сразу даёт результат: для auth это `POST /auth.cgi`. Получили
   session — юзер есть и логин ок. 401 — пробуем create/recover.
+
+## Telegram WebApp в браузере: cookie с `SameSite=Lax` не сохраняются
+
+- Когда юзер открывает Telegram WebApp в десктоп-Chrome / Yandex Browser,
+  `lk.djvpn.ru` грузится в iframe внутри `web.telegram.org`. Top-level
+  site (`web.telegram.org`) ≠ embed (`lk.djvpn.ru`) → контекст
+  кросс-сайт / третьесторонний.
+- В этом контексте Chrome (с поэтапным отключением 3rd-party cookies)
+  и Yandex Browser («Защита») **молча выбрасывают** Set-Cookie с
+  `SameSite=Lax` — кука не сохраняется, следующий запрос летит без
+  неё, бэк отдаёт 401. Симптом: юзер видит LoginPage, в консоли
+  два 401 на `/api/shm/v1/user` (один от webapp-auth-фолбэка, один
+  от редиректа). В нативном Telegram-клиенте всё работает, потому
+  что у него собственный webview без 3rd-party-блокировки.
+- Лечение: ставить session-cookie с `SameSite=None; Secure;
+  Partitioned`. `Partitioned` (CHIPS) обязателен — даже c
+  `SameSite=None; Secure` Chrome всё равно фильтрует 3rd-party cookies
+  в строгом режиме, а Partitioned привязывает cookie к top-level
+  site и явно проходит фильтр.
+- `SameSite=None` требует `Secure` (RFC 6265bis). Под HTTPS — окей,
+  под HTTP (локалка/CI) откатываемся на `SameSite=Lax`: в локалке
+  WebApp не воспроизводится, а same-site Lax работает как обычно.
+- Starlette `response.set_cookie(partitioned=...)` появился только
+  в 0.42 — в FastAPI≥0.111 транзитивно может быть и 0.37+, поэтому
+  безопаснее собирать `Set-Cookie` руками через
+  `response.headers.append("set-cookie", "...")`.
+- JS-фолбэк через `document.cookie` (используется как страховка от
+  «приватного фильтра» YaBrowser, который иногда дропает HttpOnly
+  Set-Cookie на больших query-string'ах) **должен совпадать по
+  атрибутам** с server-side кукой. Иначе Chrome будет хранить две
+  разные cookie с одним именем и слать какую попало.
+- Диагностика, что это именно cookie-проблема в iframe, а не падение
+  auth-эндпоинта: бэк-лог `shm_proxy.cookies path=v1/telegram/webapp/auth
+  body_session_id_present=true` (значит сессию выдали и Set-Cookie
+  отправили), но следующий `shm_proxy.cookies path=v1/user
+  incoming_sid=None` (cookie не пришла обратно). Если хеши `outgoing_sid`
+  предыдущего auth и `incoming_sid` следующего /user не совпадают —
+  то же самое, браузер не сохранил.
+
+## Telegram Login Widget внутри Telegram WebApp — CSP `frame-ancestors`
+
+- В консоли WebApp в браузере всплывают повторяющиеся ошибки
+  `Framing 'https://oauth.telegram.org/' violates ... frame-ancestors`.
+  Источник: на `/login` мы инжектим `telegram-widget.js`, который
+  пытается смонтировать iframe `https://oauth.telegram.org/embed/<bot>`.
+  У самого `oauth.telegram.org` CSP `frame-ancestors` не допускает
+  цепочку `[lk.djvpn.ru, web.telegram.org]` — Telegram умышленно
+  не разрешает встраивать свой OAuth-виджет внутри своего же WebApp.
+- Виджет в WebApp-контексте бесполезен: юзер уже авторизуется по
+  `initData` через наш бэк. Скрываем виджет (и блок «или») по
+  условию `Boolean(window.Telegram?.WebApp?.initData)`, виджет
+  остаётся только на прямом заходе на lk.djvpn.ru через браузер.
+- Важно: ранний return из `useEffect`, который грузит
+  `telegram-widget.js`, иначе скрипт всё равно подгружается и CSP-
+  ошибки никуда не уходят — лишь рендер iframe пропускается.

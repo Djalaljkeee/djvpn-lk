@@ -487,3 +487,53 @@ Kuma живёт на том же хосте, значит проблема об�
 **Что осталось / риски:**
 - Заказчику нужно завести в Telegram-боте Web App кнопку с URL `https://<домен>/change-password`. После этого можно тестировать end-to-end.
 - Для пользователей вне Telegram, у которых пароль ещё не задан (только Telegram-логин), ссылка из бота откроется как обычный URL без initData — там сработает только если у них уже есть валидный JWT в localStorage. Это допустимо: бот всегда даёт ссылку через Web App, не просто URL.
+
+---
+
+# Авторизация в Telegram WebApp через браузер (Chrome/Yandex)
+
+## Контекст
+
+Заказчик прислал скриншот: в Telegram WebApp, открытом в браузере (web.telegram.org → iframe lk.djvpn.ru), показывается LoginPage и сыпется в консоль:
+- `GET /api/shm/v1/user 401 (Unauthorized)` (дважды)
+- `Framing 'https://oauth.telegram.org/' violates the following Content Security Policy directive: 'frame-ancestors https://lk.djvpn.ru'` (трижды)
+
+Внутри нативного клиента Telegram (мобильный/десктоп) всё работает — только в браузере проблема.
+
+## Диагноз
+
+1. WebApp в браузере = `lk.djvpn.ru` грузится в iframe из `web.telegram.org`. Top-level site (`web.telegram.org`) ≠ embed (`lk.djvpn.ru`) → контекст cross-site / третьесторонний.
+2. Backend на `/api/shm/v1/telegram/webapp/auth` корректно вытягивает `session_id` из тела и ставит `Set-Cookie: session_id=...; Path=/; HttpOnly; Secure; SameSite=Lax` (shm_proxy.py:191, 205).
+3. Chrome (с поэтапным отключением 3rd-party cookies / sandbox) и Yandex Browser («Защита») в кросс-сайт iframe **отбрасывают** `SameSite=Lax` cookies — они не сохраняются. Cookie никогда не оседает на lk.djvpn.ru внутри WebApp.
+4. Следующий запрос `GET /api/shm/v1/user` уходит без cookie → 401 → handle401 в client.ts:53 редиректит на `/login`.
+5. LoginPage пытается загрузить Telegram Login Widget (`telegram-widget.js`), который монтирует iframe `https://oauth.telegram.org/embed/<bot>`. У oauth.telegram.org CSP `frame-ancestors` не допускает цепочку `[lk.djvpn.ru, web.telegram.org]` — отсюда трижды Framing-блокировка в консоли. Виджет в WebApp вообще не нужен (initData уже даёт авторизацию).
+
+## План
+
+- [x] `backend/routers/shm_proxy.py`: заменить `samesite="lax"` на `SameSite=None; Partitioned` (CHIPS) когда `is_secure=true`. Используем сырой `set-cookie` header, потому что Starlette `set_cookie(partitioned=...)` появился только в 0.42, а в проекте FastAPI≥0.111 → Starlette может быть 0.37+. Если не secure (локальная разработка по HTTP) — оставляем `SameSite=Lax`, потому что `SameSite=None` требует `Secure`.
+- [x] `frontend/src/api/auth.ts::captureSessionFromBody`: JS-фолбэк тоже переводим на `SameSite=None; Secure; Partitioned` (только когда HTTPS). На HTTP оставляем `SameSite=Lax`.
+- [x] `frontend/src/pages/LoginPage.tsx`: если `window.Telegram?.WebApp?.initData` присутствует — не рендерим Telegram Login Widget. Внутри WebApp юзер либо пройдёт автологин по initData (через TelegramWebAppGate), либо введёт логин/пароль; виджет в этом контексте бесполезен и спамит CSP-ошибками.
+- [x] `backend/tests/test_shm_proxy.py`: добавлены тесты `test_session_cookie_uses_samesite_none_partitioned_under_https` и `test_session_cookie_falls_back_to_lax_under_http` — фиксируют, что под HTTPS уходит `SameSite=None; Secure; Partitioned`, а на HTTP — `SameSite=Lax` без `Secure`.
+
+## Ревью
+
+**Что сделано:**
+- `shm_proxy.py`: единственное место установки `session_id` cookie перенесено в `_append_session_cookie` — ручной `set-cookie` header c `SameSite=None; Secure; Partitioned` под HTTPS и `SameSite=Lax` под HTTP. И тело-сессия из auth-эндпоинтов, и старый кейс «SHM прислал Set-Cookie сам» теперь идут через этот же helper, поведение одинаковое.
+- `auth.ts`: JS-fallback `document.cookie` под HTTPS пишет с теми же атрибутами, что и backend — иначе server-side и client-side куки имели бы разные SameSite и Chrome их рассматривал бы как разные cookie.
+- `LoginPage.tsx`: внутри WebApp (`window.Telegram.WebApp.initData` присутствует) Telegram Login Widget не монтируется (`useEffect` ранний return), блок виджета и разделитель «или» скрыты, подпись формы упрощена до «Войдите по логину и паролю». Если WebApp-автологин не прошёл (например, бот ещё не настроен на endpoint), юзер всё равно может войти через email/пароль.
+
+**Проверки:**
+- `python -m pytest backend/tests/test_shm_proxy.py -v` — 12/12 зелёные (10 старых + 2 новых для cookie-атрибутов).
+- `npx vite build` (frontend) — успешно: 456 KB JS, 39 KB CSS.
+- `npx vitest run` (frontend) — 6/6 зелёные.
+
+**Что осталось / риски:**
+- Под HTTPS все cookie теперь `Partitioned` — у юзеров, которые открывают ЛК через прямой URL (не WebApp), это тоже отдельная партиция. Это безопасно: SameSite=None+Partitioned cookie ведут себя как обычные cookie для same-site контекста, потому что в same-site top-level фрейме партиция совпадает.
+- Старые юзеры WebApp могут иметь в браузере залипшую `session_id` со старым `SameSite=Lax` — она ещё немного поживёт до Max-Age, и в кросс-сайт iframe Chrome её всё равно не отправит. После первого `/webapp/auth` поверх ляжет свежая кука с новыми атрибутами и проблема рассосётся.
+- Не трогаю `frontend/src/api/client.ts::handle401` — там логика глобальная и менять её ради WebApp не нужно: если webapp/auth действительно провалится (изменился initData hash, бот отозвал токен и т.п.), редирект на /login по-прежнему уместен.
+
+## Решения / трейд-офы
+
+- **`Partitioned` (CHIPS)** — это новый attribute, который явно подписывает cookie под top-level site. То есть в Telegram WebApp у нас будет одна партиция (top=web.telegram.org), при прямом заходе на lk.djvpn.ru — другая. Это ок: session SHM привязана к WebApp-сессии (`initData` -> `webapp/auth`) и должна жить только пока юзер внутри WebApp. Прямой заход в браузер использует password-логин, который ставит cookie из своей партиции.
+- Не трогаю CSP / Telegram Login Widget на самой странице — он нужен НЕ в WebApp (обычный заход через браузер на lk.djvpn.ru). Просто скрываем его внутри WebApp.
+- Не пишу новый middleware "force samesite=none" — модификация локализована в shm_proxy.py, где формируется единственное место установки session-cookie.
