@@ -10,8 +10,9 @@ SHM-эндпоинты `/v1/user/auth` и `/v1/telegram/*/auth` отдают с�
 from __future__ import annotations
 
 import httpx
+from starlette.responses import Response
 
-from routers.shm_proxy import _extract_body_session
+from routers.shm_proxy import _append_session_cookie, _extract_body_session
 
 
 def _resp(status: int, content: bytes) -> httpx.Response:
@@ -74,3 +75,46 @@ def test_handles_non_string_id() -> None:
 def test_handles_empty_id() -> None:
     resp = _resp(200, b'{"id":""}')
     assert _extract_body_session("v1/user/auth", resp) is None
+
+
+def _set_cookie_value(response: Response) -> str:
+    # Starlette складывает каждый Set-Cookie отдельной парой в response.raw_headers
+    headers = [
+        v.decode("latin-1")
+        for k, v in response.raw_headers
+        if k.decode("latin-1").lower() == "set-cookie"
+    ]
+    assert len(headers) == 1, headers
+    return headers[0]
+
+
+def test_session_cookie_uses_samesite_none_partitioned_under_https() -> None:
+    # Telegram WebApp в браузере (web.telegram.org → iframe lk.djvpn.ru) =
+    # кросс-сайт. Cookie должна быть SameSite=None; Secure; Partitioned (CHIPS),
+    # иначе Chrome/Yandex её выбросят и каждый следующий /user поймает 401.
+    response = Response()
+    _append_session_cookie(response, "session_id", "sess123", 3600, is_secure=True)
+    raw = _set_cookie_value(response)
+    assert raw.startswith("session_id=sess123")
+    assert "Path=/" in raw
+    assert "Max-Age=3600" in raw
+    assert "HttpOnly" in raw
+    assert "Secure" in raw
+    assert "SameSite=None" in raw
+    assert "Partitioned" in raw
+    # Под HTTPS не должно быть SameSite=Lax — иначе кросс-сайт iframe сломается.
+    assert "SameSite=Lax" not in raw
+
+
+def test_session_cookie_falls_back_to_lax_under_http() -> None:
+    # На локальной разработке (HTTP) SameSite=None невозможен без Secure.
+    # Откатываемся на Lax, контекст всё равно same-site → работает.
+    response = Response()
+    _append_session_cookie(response, "session_id", "sess", None, is_secure=False)
+    raw = _set_cookie_value(response)
+    assert "SameSite=Lax" in raw
+    assert "Secure" not in raw
+    assert "SameSite=None" not in raw
+    assert "Partitioned" not in raw
+    # Max-Age=None — атрибут отсутствует, кука становится session-only
+    assert "Max-Age" not in raw

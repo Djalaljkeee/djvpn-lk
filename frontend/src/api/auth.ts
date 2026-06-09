@@ -18,14 +18,20 @@ export interface RegisterPayload {
 }
 
 // Резервный канал для session_id: достаём из тела auth-ответа и пишем в
-// document.cookie. Бек уже шлёт корректный Set-Cookie (HttpOnly; Secure;
-// SameSite=Lax), но некоторые браузерные фильтры приватности (наблюдается
-// в YaBrowser «Protect» на GET /telegram/webapp/auth с большим query-
-// string'ом из initData) молча выбрасывают HttpOnly-куку, считая endpoint
-// трекером — и следующий /v1/user летит без сессии и ловит 401.
+// document.cookie. Бек шлёт корректный Set-Cookie (HttpOnly; Secure;
+// SameSite=None; Partitioned), но некоторые браузерные фильтры приватности
+// (наблюдается в YaBrowser «Protect» на GET /telegram/webapp/auth с большим
+// query-string'ом из initData) молча выбрасывают HttpOnly-куку, считая
+// endpoint трекером — и следующий /v1/user летит без сессии и ловит 401.
 // Дублирующая запись через document.cookie не HttpOnly (JS обязан её
 // видеть), но (name, path, domain) совпадают со server-side кукой, и по
 // RFC 6265 они перезатирают друг друга, так что итоговая кука одна.
+//
+// Атрибуты должны совпадать с тем, что выставляет backend, иначе в Telegram
+// WebApp (top-level web.telegram.org, embed lk.djvpn.ru — кросс-сайт) Chrome
+// и Yandex отбросят cookie c SameSite=Lax. Под HTTPS используем
+// SameSite=None; Secure; Partitioned (CHIPS), под HTTP (локалка) откатываемся
+// на Lax — SameSite=None без Secure невозможен.
 function captureSessionFromBody(resp: AxiosResponse): void {
   const body = resp.data
   if (!body || typeof body !== 'object') return
@@ -35,8 +41,11 @@ function captureSessionFromBody(resp: AxiosResponse): void {
     body.data?.[0]?.session_id ??
     body.data?.[0]?.id
   if (typeof sessionId !== 'string' || !sessionId) return
-  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-  document.cookie = `session_id=${sessionId}; Path=/; SameSite=Lax${secure}`
+  const isHttps = window.location.protocol === 'https:'
+  const attrs = isHttps
+    ? 'Secure; SameSite=None; Partitioned'
+    : 'SameSite=Lax'
+  document.cookie = `session_id=${sessionId}; Path=/; ${attrs}`
 }
 
 async function fetchSelf(): Promise<User> {
