@@ -83,6 +83,14 @@ export interface ReferralStats {
   total_paid: number
   total_income: number
   referrals: Referral[]
+  // Дельты за последние 30 дней. Для referrals_30d считаем на фронте из
+  // referrals[].created — это надёжно. Для paid_30d/income_30d ждём, что
+  // SHM добавит поля в шаблон (по списку рефералов их корректно не
+  // посчитать: реферал мог зарегистрироваться давно, а платежи — недавно).
+  // null означает «данных нет, не отрисовываем дельту».
+  referrals_30d: number
+  paid_30d: number | null
+  income_30d: number | null
 }
 
 export interface PromoApplyResult {

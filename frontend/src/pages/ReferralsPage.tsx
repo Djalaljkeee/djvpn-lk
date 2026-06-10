@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import QRCode from 'qrcode'
 import { fetchReferrals } from '../api/user'
 import { fetchConfig } from '../api/services'
 import { useAuthStore } from '../store/authStore'
@@ -7,8 +8,33 @@ import type { ReferralStats } from '../types'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
-const SUPPORT_URL = 'https://t.me/help_djvpn'
 const REFERRALS_PAGE_SIZE = 25
+
+// Реферальные уровни. Пока живут на фронте — заказчик переориентирует на
+// серверную логику, когда заведёт поля level/next_level в SHM-шаблоне.
+// Порядок: от младшего к старшему, последний элемент — потолок (next нет).
+type Level = { name: string; threshold: number; commission: number }
+const LEVELS: Level[] = [
+  { name: 'Партнер', threshold: 0,    commission: 20 },
+  { name: 'Эксперт', threshold: 100,  commission: 25 },
+  { name: 'Мастер',  threshold: 500,  commission: 30 },
+]
+
+function computeLevel(totalReferrals: number, commissionFromSHM: number) {
+  // Бежим от старшего к младшему — первый подходящий по порогу = текущий.
+  let currentIdx = 0
+  for (let i = LEVELS.length - 1; i >= 0; i--) {
+    if (totalReferrals >= LEVELS[i].threshold) { currentIdx = i; break }
+  }
+  const current = LEVELS[currentIdx]
+  const next = LEVELS[currentIdx + 1] ?? null
+  return {
+    current: { ...current, commission: commissionFromSHM || current.commission },
+    next,
+    progressTo: next ? Math.min(1, totalReferrals / next.threshold) : 1,
+    needForNext: next ? Math.max(0, next.threshold - totalReferrals) : 0,
+  }
+}
 
 export default function ReferralsPage() {
   const { user } = useAuthStore()
@@ -17,6 +43,7 @@ export default function ReferralsPage() {
   const [loading, setLoading] = useState(true)
   const [botUsername, setBotUsername] = useState('')
   const [page, setPage] = useState(0)
+  const [qrOpen, setQrOpen] = useState(false)
 
   useEffect(() => {
     fetchConfig().then(cfg => setBotUsername(cfg.telegram_bot_username)).catch(() => {})
@@ -31,18 +58,25 @@ export default function ReferralsPage() {
       .finally(() => setLoading(false))
   }, [user?.user_id])
 
-  const tgRefLink = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
+  // Короткая ссылка (макет: lk.djvpn.ru/r/ref-2). Резолвится через
+  // <Route path="/r/:id"> в App.tsx → захват + редирект на /.
   const webRefLink = user && typeof window !== 'undefined'
-    ? `${window.location.origin}/?ref=${user.user_id}`
+    ? `${window.location.origin}/r/ref-${user.user_id}`
     : ''
+  const tgRefLink = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
 
-  const commission = stats?.commission ?? 15
+  const commission = stats?.commission ?? 20
   const totalReferrals = stats?.total_referrals ?? 0
   const totalIncome = stats?.total_income ?? 0
   const totalPaid = stats?.total_paid ?? 0
+  const refs30 = stats?.referrals_30d ?? 0
+  const paid30 = stats?.paid_30d
+  const income30 = stats?.income_30d
 
-  // Сортируем по доходу убыванию (топ-плательщики наверху); вторичный ключ —
-  // user_id desc для стабильного порядка среди нулевых income.
+  const level = computeLevel(totalReferrals, commission)
+
+  // Сортируем по доходу убыв., вторичный ключ — user_id desc (стабильно
+  // для рефералов с нулевым income).
   const sortedReferrals = useMemo(() => {
     const list = [...(stats?.referrals ?? [])]
     list.sort((a, b) => (b.income - a.income) || ((b.user_id ?? 0) - (a.user_id ?? 0)))
@@ -55,94 +89,142 @@ export default function ReferralsPage() {
   const pageItems = sortedReferrals.slice(start, start + REFERRALS_PAGE_SIZE)
 
   const copyLink = (text: string, label: string) => {
+    if (!text) return
     navigator.clipboard.writeText(text)
     show(`${label} скопирована`, 'success')
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="brand-panel rounded-[2rem] p-6 sm:p-8">
-          <h1 className="text-4xl font-bold leading-tight text-white sm:text-5xl">
-            Реферальная<br />
-            <span className="gradient-text">программа</span>
-          </h1>
-          <p className="mt-4 max-w-md text-base font-medium leading-7 text-white">
-            Получайте {commission}% с каждого пополнения приглашённых пользователей.
-          </p>
-          <p className="mt-3 max-w-md text-sm leading-6 text-slate-300">
-            Поделитесь своей ссылкой и бонусы будут автоматически начисляться на ваш баланс.
-          </p>
-        </div>
-
-        <div className="glass flex flex-col justify-center rounded-[2rem] p-6 sm:p-8">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-500/20 text-fuchsia-100">
-              <WalletIcon className="h-7 w-7" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm text-slate-300">Заработано</div>
-              {loading ? (
-                <div className="mt-2 h-10 w-40 animate-pulse rounded-xl bg-white/10" />
-              ) : (
-                <div className="text-4xl font-bold text-white sm:text-5xl">{totalIncome.toFixed(2)} ₽</div>
-              )}
-            </div>
+      {/* Hero + блок уровня */}
+      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="brand-panel relative overflow-hidden rounded-[2rem] p-6 sm:p-8">
+          <div className="relative z-10 max-w-md">
+            <h1 className="text-4xl font-bold leading-tight text-white sm:text-5xl">
+              Реферальная<br />
+              <span className="gradient-text">программа</span>
+            </h1>
+            <p className="mt-4 text-base font-medium leading-7 text-white">
+              Получайте <span className="text-fuchsia-300">{commission}%</span> с каждого пополнения
+              приглашённых пользователей.
+            </p>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Чем больше активных друзей — тем выше ваш доход.
+            </p>
           </div>
-          <p className="mt-4 text-sm text-slate-300">
-            Всего бонусов по реферальной программе
-          </p>
+          <GiftIllustration className="pointer-events-none absolute -right-4 bottom-0 hidden h-44 w-44 opacity-90 sm:block" />
         </div>
+
+        <LevelCard level={level} totalReferrals={totalReferrals} loading={loading} />
       </section>
 
-      {/* Метрики: оплачено рефералами + количество приглашённых */}
-      <section className="grid gap-4 sm:grid-cols-2">
-        <StatCard
-          icon={<CoinsIcon className="h-6 w-6" />}
-          label="Оплачено рефералами"
-          value={loading ? null : `${totalPaid.toFixed(2)} ₽`}
-          hint="Суммарный оборот приглашённых"
+      {/* Три метрики */}
+      <section className="grid gap-4 sm:grid-cols-3">
+        <MetricCard
+          icon={<WalletIcon className="h-5 w-5" />}
+          tone="emerald"
+          label="Заработано"
+          value={loading ? null : `${formatMoney(totalIncome)} ₽`}
+          delta={income30 != null ? { value: income30, kind: 'money' } : null}
         />
-        <StatCard
-          icon={<UsersIcon className="h-6 w-6" />}
-          label="Приглашено"
+        <MetricCard
+          icon={<UsersIcon className="h-5 w-5" />}
+          tone="brand"
+          label="Рефералов"
           value={loading ? null : String(totalReferrals)}
-          hint="Всего рефералов по вашей ссылке"
+          delta={loading ? null : { value: refs30, kind: 'count' }}
+        />
+        <MetricCard
+          icon={<CoinsIcon className="h-5 w-5" />}
+          tone="amber"
+          label="Оборот рефералов"
+          value={loading ? null : `${formatMoney(totalPaid)} ₽`}
+          delta={paid30 != null ? { value: paid30, kind: 'money' } : null}
         />
       </section>
 
+      {/* Реферальная ссылка + кнопки */}
       <section className="glass rounded-[2rem] p-5 sm:p-6">
-        <h2 className="text-xl font-semibold text-white">Ваша реферальная ссылка</h2>
-        <div className="mt-5 space-y-4">
-          <LinkRow
-            icon={<LinkIcon className="h-5 w-5" />}
-            label="Реферальная ссылка"
-            value={webRefLink || 'Ссылка появится после загрузки профиля.'}
-            buttonLabel="Скопировать ссылку"
-            primary
-            disabled={!webRefLink}
-            onCopy={() => webRefLink && copyLink(webRefLink, 'Ссылка на ЛК')}
-          />
-          <LinkRow
-            icon={<TelegramIcon className="h-5 w-5" />}
-            label="Telegram Deeplink"
-            value={tgRefLink || 'Ссылка появится после загрузки профиля и конфигурации бота.'}
-            buttonLabel="Скопировать Deeplink"
-            disabled={!tgRefLink}
-            onCopy={() => tgRefLink && copyLink(tgRefLink, 'Telegram ссылка')}
-          />
+        <div className="flex flex-col gap-1">
+          <h2 className="text-xl font-semibold text-white">Ваша реферальная ссылка</h2>
+          <p className="text-sm text-slate-400">Делитесь ссылкой и приглашайте друзей</p>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <div className="min-w-0 flex-1 truncate text-sm text-white">
+              {webRefLink || 'Ссылка появится после загрузки профиля'}
+            </div>
+            <button
+              onClick={() => copyLink(webRefLink, 'Ссылка')}
+              disabled={!webRefLink}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-slate-200 transition-colors hover:bg-white/20 disabled:opacity-40"
+              aria-label="Скопировать ссылку"
+            >
+              <CopyIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 lg:flex lg:shrink-0">
+            <ActionButton
+              variant="primary"
+              icon={<CopyIcon className="h-4 w-4" />}
+              label="Скопировать ссылку"
+              disabled={!webRefLink}
+              onClick={() => copyLink(webRefLink, 'Ссылка')}
+            />
+            <ActionButton
+              variant="telegram"
+              icon={<TelegramIcon className="h-4 w-4" />}
+              label="Telegram DeepLink"
+              disabled={!tgRefLink}
+              onClick={() => copyLink(tgRefLink, 'Telegram-ссылка')}
+            />
+            <ActionButton
+              variant="ghost"
+              icon={<QrIcon className="h-4 w-4" />}
+              label="QR-код"
+              disabled={!webRefLink}
+              onClick={() => setQrOpen(true)}
+            />
+          </div>
         </div>
       </section>
 
-      {/* Детализированный список рефералов */}
+      {/* Три буллета */}
+      <section className="grid gap-4 sm:grid-cols-3">
+        <FeatureCard
+          tone="emerald"
+          icon={<ShieldIcon className="h-5 w-5" />}
+          title="Стабильный доход"
+          text={`Получайте ${commission}% с каждого платежа ваших друзей`}
+        />
+        <FeatureCard
+          tone="brand"
+          icon={<BoltIcon className="h-5 w-5" />}
+          title="Быстрые выплаты"
+          text="Средства начисляются автоматически"
+        />
+        <FeatureCard
+          tone="cyan"
+          icon={<ShieldIcon className="h-5 w-5" />}
+          title="Без ограничений"
+          text="Приглашайте сколько угодно пользователей"
+        />
+      </section>
+
+      {/* Таблица рефералов */}
       <section className="glass rounded-[2rem] overflow-hidden">
-        <div className="flex items-center justify-between gap-4 px-5 py-5 sm:px-6">
-          <h2 className="text-xl font-semibold text-white">Ваши рефералы</h2>
-          {!loading && totalReferrals > 0 && (
-            <span className="rounded-full bg-brand-500/20 px-3 py-1 text-sm font-semibold text-fuchsia-100">
-              {totalReferrals}
-            </span>
-          )}
+        <div className="flex flex-col gap-1 px-5 py-5 sm:px-6">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-white">Ваши рефералы</h2>
+            {!loading && totalReferrals > 0 && (
+              <span className="rounded-full bg-white/10 px-3 py-0.5 text-sm font-semibold text-slate-200">
+                {totalReferrals}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-400">
+            Список пользователей, зарегистрированных по вашей ссылке
+          </p>
         </div>
 
         {loading ? (
@@ -157,43 +239,50 @@ export default function ReferralsPage() {
           </div>
         ) : (
           <div className="border-t border-white/10">
+            {/* Шапка таблицы — только на десктопе */}
+            <div className="hidden grid-cols-[1fr_auto_auto] gap-6 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-wider text-slate-400 sm:grid sm:px-6">
+              <span>Пользователь</span>
+              <span className="text-right">Дата регистрации</span>
+              <span className="text-right">Ваш бонус</span>
+            </div>
+
             {pageItems.map((ref, idx) => {
               const name = ref.name?.trim() || (ref.user_id ? `Реферал #${ref.user_id}` : 'Реферал')
               const dateStr = ref.created
                 ? format(parseISO(ref.created.replace(' ', 'T')), 'd MMM yyyy', { locale: ru })
                 : null
-              // login (@username / email) показываем подзаголовком, если он
-              // отличается от имени — иначе дублируется (например когда имя
-              // пустое и в name уехал login).
               const showLogin = ref.login && ref.login !== name
-              const subtitleParts = [
-                showLogin ? ref.login : null,
-                dateStr ? dateStr : null,
-              ].filter(Boolean)
               return (
                 <div
                   key={ref.user_id ?? start + idx}
-                  className="flex items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0 sm:px-6"
+                  className="grid grid-cols-[1fr_auto] gap-3 border-b border-white/5 px-5 py-3 last:border-0 sm:grid-cols-[1fr_auto_auto] sm:gap-6 sm:px-6"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/15 text-fuchsia-200">
-                    <UserPlusIcon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-white">{name}</div>
-                    <div className="mt-0.5 truncate text-xs text-slate-400">
-                      {subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Без данных о регистрации'}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-300">
+                      <UserIcon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-white">{name}</div>
+                      {showLogin && (
+                        <div className="mt-0.5 truncate text-xs text-slate-400">{ref.login}</div>
+                      )}
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-sm font-semibold text-emerald-300">+{ref.income.toFixed(2)} ₽</div>
-                    <div className="mt-0.5 text-xs text-slate-400">оплачено {ref.paid.toFixed(2)} ₽</div>
+                  <div className="hidden self-center text-right text-sm text-slate-300 sm:block">
+                    {dateStr ?? '—'}
+                  </div>
+                  <div className="self-center text-right">
+                    <div className="text-sm font-semibold text-emerald-300">+{formatMoney(ref.income)} ₽</div>
+                    {dateStr && (
+                      <div className="mt-0.5 text-xs text-slate-500 sm:hidden">{dateStr}</div>
+                    )}
                   </div>
                 </div>
               )
             })}
 
             {pages > 1 && (
-              <div className="flex items-center justify-between gap-3 px-5 py-3 text-xs text-slate-400 sm:px-6">
+              <div className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-3 text-xs text-slate-400 sm:px-6">
                 <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">{REFERRALS_PAGE_SIZE}/стр</span>
                 <div className="flex items-center gap-3">
                   <span>{start + 1}–{start + pageItems.length} / {sortedReferrals.length}</span>
@@ -222,187 +311,255 @@ export default function ReferralsPage() {
                 </div>
               </div>
             )}
-
-            {/* Итог по программе — повторяет блок Telegram-шаблона */}
-            <div className="flex flex-col gap-1 border-t border-white/10 bg-white/[0.03] px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <span className="text-slate-300">
-                Всего оплачено рефералами: <span className="font-semibold text-white">{totalPaid.toFixed(2)} ₽</span>
-              </span>
-              <span className="text-slate-300">
-                Ваш доход ({commission}%): <span className="font-semibold text-emerald-300">{totalIncome.toFixed(2)} ₽</span>
-              </span>
-            </div>
           </div>
         )}
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="glass rounded-[2rem] p-5 sm:p-6">
-          <h2 className="text-xl font-semibold text-white">Как это работает</h2>
-          <div className="mt-6 space-y-5">
-            {[
-              {
-                icon: <ShareIcon className="h-5 w-5" />,
-                title: 'Поделитесь ссылкой',
-                text: 'Отправьте ссылку другу любым удобным способом.',
-              },
-              {
-                icon: <UserPlusIcon className="h-5 w-5" />,
-                title: 'Пользователь регистрируется',
-                text: 'Друг проходит регистрацию и становится пользователем.',
-              },
-              {
-                icon: <PercentIcon className="h-5 w-5" />,
-                title: `Получайте ${commission}%`,
-                text: `Вы получаете ${commission}% с каждого пополнения баланса друга.`,
-              },
-            ].map((step, index) => (
-              <div key={step.title} className="flex items-start gap-4">
-                <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-fuchsia-100">
-                  {step.icon}
-                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
-                    {index + 1}
-                  </span>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-white">{step.title}</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-300">{step.text}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="glass rounded-[2rem] p-5 sm:p-6">
-          <h2 className="text-xl font-semibold text-white">Условия программы</h2>
-          <div className="mt-6 space-y-4">
-            {[
-              `${commission}% от каждого пополнения баланса реферала`,
-              'Начисление происходит автоматически',
-              'Бонусы зачисляются на баланс аккаунта',
-              'Ограничений по количеству рефералов нет',
-            ].map(item => (
-              <div key={item} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
-                  <CheckIcon className="h-4 w-4" />
-                </span>
-                <span className="text-sm leading-6 text-slate-200">{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="glass flex flex-col gap-3 rounded-[2rem] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-fuchsia-100">
-            <InfoIcon className="h-4 w-4" />
-          </span>
-          <p className="text-sm leading-6 text-slate-300">
-            Бонусы можно использовать для оплаты подписки или вывести на баланс.
-          </p>
-        </div>
-        <a
-          href={SUPPORT_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 self-start text-sm font-medium text-fuchsia-200 hover:text-white sm:self-auto"
-        >
-          Подробнее <span aria-hidden>→</span>
-        </a>
-      </section>
+      {qrOpen && webRefLink && (
+        <QrModal url={webRefLink} onClose={() => setQrOpen(false)} />
+      )}
     </div>
   )
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
+// ────── Подкомпоненты ──────
+
+function LevelCard({
+  level,
+  totalReferrals,
+  loading,
+}: {
+  level: ReturnType<typeof computeLevel>
+  totalReferrals: number
+  loading: boolean
+}) {
+  const { current, next, progressTo, needForNext } = level
+  return (
+    <div className="glass flex flex-col gap-5 rounded-[2rem] p-6 sm:p-7">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300">
+          <StarIcon className="h-5 w-5" />
+        </div>
+        <div className="text-base font-medium text-white">
+          Ваш уровень: <span className="font-semibold">{current.name}</span>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="relative h-2.5 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-brand-500 to-fuchsia-400 transition-all duration-500"
+            style={{ width: `${Math.round(progressTo * 100)}%` }}
+          />
+        </div>
+        <div className="mt-2 flex items-center justify-end text-xs text-slate-400">
+          <span>
+            {loading ? '…' : totalReferrals}{next ? ` / ${next.threshold}` : ''}
+          </span>
+        </div>
+      </div>
+
+      {next ? (
+        <>
+          <div className="flex items-start gap-3 text-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/5 text-slate-300">
+              <RefreshIcon className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-slate-300">До следующего уровня</div>
+              <div className="text-white">
+                ещё <span className="font-semibold">{needForNext}</span> приглашённых
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 text-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300">
+              <TrendUpIcon className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-slate-300">Следующий бонус</div>
+              <div className="text-emerald-300 font-semibold">
+                {next.commission}% <span className="text-slate-400 font-normal">вместо {current.commission}%</span>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-start gap-3 text-sm">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300">
+            <StarIcon className="h-4 w-4" />
+          </div>
+          <div className="text-slate-300">
+            Вы достигли максимального уровня — <span className="text-white font-semibold">{current.commission}%</span> с каждого пополнения.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MetricCard({
+  icon, tone, label, value, delta,
 }: {
   icon: React.ReactNode
+  tone: 'emerald' | 'brand' | 'amber'
   label: string
   value: string | null
-  hint: string
+  delta: { value: number; kind: 'money' | 'count' } | null
 }) {
+  const toneClasses: Record<typeof tone, string> = {
+    emerald: 'bg-emerald-500/15 text-emerald-300',
+    brand:   'bg-brand-500/20  text-fuchsia-200',
+    amber:   'bg-amber-500/15  text-amber-300',
+  }
+  const deltaToneClasses: Record<typeof tone, string> = {
+    emerald: 'text-emerald-300',
+    brand:   'text-fuchsia-300',
+    amber:   'text-amber-300',
+  }
   return (
-    <div className="glass flex items-center gap-4 rounded-[2rem] p-5 sm:p-6">
-      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-500/20 text-fuchsia-100">
+    <div className="glass rounded-[2rem] p-5 sm:p-6">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${toneClasses[tone]}`}>
+          {icon}
+        </div>
+        <span className="text-sm text-slate-300">{label}</span>
+      </div>
+      <div className="mt-3">
+        {value === null ? (
+          <div className="h-9 w-32 animate-pulse rounded-lg bg-white/10" />
+        ) : (
+          <div className="text-3xl font-bold text-white sm:text-4xl">{value}</div>
+        )}
+      </div>
+      {delta && (
+        <div className={`mt-2 text-sm font-medium ${deltaToneClasses[tone]}`}>
+          {delta.kind === 'money' ? `+${formatMoney(delta.value)} ₽` : `+${delta.value}`} за последние 30 дней
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FeatureCard({
+  tone, icon, title, text,
+}: {
+  tone: 'emerald' | 'brand' | 'cyan'
+  icon: React.ReactNode
+  title: string
+  text: string
+}) {
+  const toneClasses: Record<typeof tone, string> = {
+    emerald: 'bg-emerald-500/15 text-emerald-300',
+    brand:   'bg-brand-500/20  text-fuchsia-200',
+    cyan:    'bg-cyan-500/15   text-cyan-300',
+  }
+  return (
+    <div className="glass flex items-start gap-3 rounded-[2rem] p-5 sm:p-6">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${toneClasses[tone]}`}>
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-sm text-slate-300">{label}</div>
-        {value === null ? (
-          <div className="mt-1.5 h-7 w-28 animate-pulse rounded-lg bg-white/10" />
-        ) : (
-          <div className="text-2xl font-bold text-white">{value}</div>
-        )}
-        <div className="mt-0.5 text-xs text-slate-400">{hint}</div>
+        <div className="text-sm font-semibold text-white">{title}</div>
+        <p className="mt-1 text-sm leading-6 text-slate-300">{text}</p>
       </div>
     </div>
   )
 }
 
-function LinkRow({
-  icon,
-  label,
-  value,
-  buttonLabel,
-  onCopy,
-  primary = false,
-  disabled = false,
+function ActionButton({
+  variant, icon, label, onClick, disabled,
 }: {
+  variant: 'primary' | 'telegram' | 'ghost'
   icon: React.ReactNode
   label: string
-  value: string
-  buttonLabel: string
-  onCopy: () => void
-  primary?: boolean
+  onClick: () => void
   disabled?: boolean
 }) {
+  const cls: Record<typeof variant, string> = {
+    primary:  'bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-brand hover:brightness-110',
+    telegram: 'bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:brightness-110',
+    ghost:    'border border-white/15 bg-white/5 text-white hover:bg-white/10',
+  }
   return (
-    <div className="flex flex-col gap-4 rounded-[1.5rem] border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-brand-500/20 text-fuchsia-100">
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <div className="text-xs uppercase tracking-[0.18em] text-slate-300">{label}</div>
-          <div className="mt-1 break-all text-sm leading-6 text-white">{value}</div>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-3 py-3 text-[11px] font-semibold leading-tight transition-all disabled:opacity-40 sm:flex-row sm:gap-2 sm:px-4 sm:text-xs ${cls[variant]}`}
+    >
+      <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/15 sm:h-5 sm:w-5 sm:bg-transparent">
+        {icon}
+      </span>
+      <span className="text-center sm:text-left">{label}</span>
+    </button>
+  )
+}
+
+function QrModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [dataUrl, setDataUrl] = useState<string>('')
+  useEffect(() => {
+    QRCode.toDataURL(url, {
+      margin: 1,
+      width: 320,
+      color: { dark: '#0f0a18', light: '#ffffff' },
+    })
+      .then(setDataUrl)
+      .catch(() => setDataUrl(''))
+  }, [url])
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-sm rounded-[2rem] bg-surface-1 p-6 shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-slate-300 hover:bg-white/10"
+          aria-label="Закрыть"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <h3 className="text-lg font-semibold text-white">QR-код вашей ссылки</h3>
+        <p className="mt-1 text-sm text-slate-400">Покажите код другу — он сразу попадёт на регистрацию.</p>
+        <div className="mt-5 flex items-center justify-center rounded-2xl bg-white p-4">
+          {dataUrl ? (
+            <img src={dataUrl} alt="QR-код реферальной ссылки" className="h-64 w-64" />
+          ) : (
+            <div className="flex h-64 w-64 items-center justify-center text-slate-400 text-sm">Генерация…</div>
+          )}
+        </div>
+        <div className="mt-4 break-all rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-center text-xs text-slate-300">
+          {url}
         </div>
       </div>
-      <button
-        onClick={onCopy}
-        disabled={disabled}
-        className={
-          primary
-            ? 'flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3 text-sm font-semibold text-white shadow-brand transition-all hover:brightness-110 disabled:opacity-40'
-            : 'flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-40'
-        }
-      >
-        <CopyIcon className="h-4 w-4" />
-        {buttonLabel}
-      </button>
     </div>
   )
 }
+
+// ────── Утилиты ──────
+
+// Форматирование с пробелами-разделителями тысяч: «5 460.98».
+function formatMoney(n: number): string {
+  const fixed = n.toFixed(2)
+  const [intPart, decPart] = fixed.split('.')
+  return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '.' + decPart
+}
+
+// ────── SVG-иконки ──────
 
 function WalletIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <rect x="3" y="6" width="18" height="13" rx="2.5" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 12h3" />
-    </svg>
-  )
-}
-
-function CoinsIcon({ className = 'h-5 w-5' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <ellipse cx="9" cy="7" rx="6" ry="3" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v5c0 1.66 2.69 3 6 3s6-1.34 6-3V7" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 15v2c0 1.66 2.69 3 6 3s6-1.34 6-3v-5c0-1.66-2.69-3-6-3" />
     </svg>
   )
 }
@@ -417,20 +574,12 @@ function UsersIcon({ className = 'h-5 w-5' }: { className?: string }) {
   )
 }
 
-function LinkIcon({ className = 'h-5 w-5' }: { className?: string }) {
+function CoinsIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1.5 1.5" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.5-1.5" />
-    </svg>
-  )
-}
-
-function TelegramIcon({ className = 'h-5 w-5' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-7 20-4-9-9-4 20-7Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-11 11" />
+      <ellipse cx="9" cy="7" rx="6" ry="3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v5c0 1.66 2.69 3 6 3s6-1.34 6-3V7" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 15v2c0 1.66 2.69 3 6 3s6-1.34 6-3v-5c0-1.66-2.69-3-6-3" />
     </svg>
   )
 }
@@ -444,50 +593,111 @@ function CopyIcon({ className = 'h-5 w-5' }: { className?: string }) {
   )
 }
 
-function ShareIcon({ className = 'h-5 w-5' }: { className?: string }) {
+function TelegramIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <circle cx="6" cy="12" r="2.5" />
-      <circle cx="18" cy="6" r="2.5" />
-      <circle cx="18" cy="18" r="2.5" />
-      <path strokeLinecap="round" d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-7 20-4-9-9-4 20-7Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-11 11" />
     </svg>
   )
 }
 
-function UserPlusIcon({ className = 'h-5 w-5' }: { className?: string }) {
+function QrIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 20c0-3.3 3.1-6 8-6" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18 14v6M15 17h6" />
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path strokeLinecap="round" d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
     </svg>
   )
 }
 
-function PercentIcon({ className = 'h-5 w-5' }: { className?: string }) {
+function StarIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" d="m6 18 12-12" />
-      <circle cx="7.5" cy="7.5" r="1.5" />
-      <circle cx="16.5" cy="16.5" r="1.5" />
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2l2.9 6.7L22 9.6l-5.3 4.7L18.2 22 12 18.4 5.8 22l1.5-7.7L2 9.6l7.1-.9L12 2z" />
     </svg>
   )
 }
 
-function CheckIcon({ className = 'h-5 w-5' }: { className?: string }) {
+function RefreshIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v6h6M20 20v-6h-6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20 8a8 8 0 0 0-14.93-1M4 16a8 8 0 0 0 14.93 1" />
     </svg>
   )
 }
 
-function InfoIcon({ className = 'h-5 w-5' }: { className?: string }) {
+function TrendUpIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <circle cx="12" cy="12" r="9" />
-      <path strokeLinecap="round" d="M12 11v5M12 8h.01" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 17l6-6 4 4 8-8" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 7h7v7" />
+    </svg>
+  )
+}
+
+function ShieldIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m9 12 2 2 4-4" />
+    </svg>
+  )
+}
+
+function BoltIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
+    </svg>
+  )
+}
+
+function UserIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="8" r="4" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  )
+}
+
+function GiftIllustration({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 200 200" fill="none">
+      <defs>
+        <linearGradient id="g-box" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#a855f7" />
+          <stop offset="1" stopColor="#6b21a8" />
+        </linearGradient>
+        <linearGradient id="g-ribbon" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#f0abfc" />
+          <stop offset="1" stopColor="#c026d3" />
+        </linearGradient>
+        <linearGradient id="g-coin" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#f0abfc" />
+          <stop offset="1" stopColor="#9333ea" />
+        </linearGradient>
+      </defs>
+      {/* Подарок */}
+      <rect x="50" y="80" width="100" height="80" rx="8" fill="url(#g-box)" />
+      <rect x="50" y="80" width="100" height="14" fill="url(#g-ribbon)" opacity="0.85" />
+      <rect x="94" y="80" width="14" height="80" fill="url(#g-ribbon)" opacity="0.85" />
+      <path d="M100 80c-12-22-40-14-40 4 0 12 20 16 40 4z" fill="url(#g-ribbon)" />
+      <path d="M100 80c12-22 40-14 40 4 0 12-20 16-40 4z" fill="url(#g-ribbon)" />
+      {/* Монеты */}
+      <circle cx="155" cy="140" r="16" fill="url(#g-coin)" />
+      <text x="155" y="145" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">₽</text>
+      <circle cx="170" cy="120" r="11" fill="url(#g-coin)" opacity="0.85" />
+      <text x="170" y="124" textAnchor="middle" fill="#fff" fontSize="10" fontWeight="700">₽</text>
+      <circle cx="40" cy="155" r="9" fill="url(#g-coin)" opacity="0.75" />
+      {/* Звёздочки */}
+      <circle cx="30" cy="55" r="2" fill="#f0abfc" />
+      <circle cx="170" cy="40" r="2.5" fill="#fff" opacity="0.7" />
+      <circle cx="60" cy="35" r="1.5" fill="#fff" opacity="0.5" />
     </svg>
   )
 }

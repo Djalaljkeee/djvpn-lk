@@ -25,6 +25,20 @@ export function captureRefIdFromUrl(): number | null {
   }
 }
 
+/** Сохранить partner_id явно (для короткого роута /r/:id, где id уже
+ *  выделен из path). Принимает строку — внутри валидирует через parseId. */
+export function saveRefId(raw: string | number | null | undefined): number | null {
+  if (typeof window === 'undefined') return null
+  const id = parseId(typeof raw === 'number' ? String(raw) : raw)
+  if (!id) return null
+  try {
+    window.localStorage.setItem(STORAGE_KEY, String(id))
+    return id
+  } catch {
+    return null
+  }
+}
+
 export function getRefId(): number | null {
   if (typeof window === 'undefined') return null
   try {

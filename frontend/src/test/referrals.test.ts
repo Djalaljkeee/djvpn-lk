@@ -143,7 +143,59 @@ describe('normalizeReferralStats', () => {
       total_paid: 0,
       total_income: 0,
       referrals: [],
+      referrals_30d: 0,
+      paid_30d: null,
+      income_30d: null,
     })
     warn.mockRestore()
+  })
+
+  it('referrals_30d считается из created, опираясь на текущую дату', () => {
+    const now = new Date('2026-06-10T12:00:00Z')
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    try {
+      const stats = normalizeReferralStats({
+        commission: 20,
+        count: 3,
+        total_paid: 0,
+        total_income: 0,
+        referrals: [
+          { user_id: 1, full_name: 'recent', created: '2026-05-31 19:45:00', paid: 0, income: 0 },
+          { user_id: 2, full_name: 'edge', created: '2026-05-12 00:00:00', paid: 0, income: 0 },
+          { user_id: 3, full_name: 'old', created: '2025-01-01 00:00:00', paid: 0, income: 0 },
+        ],
+      })
+      // 31 мая и 12 мая — внутри 30-дневного окна от 10 июня; 1 января 2025 — нет.
+      expect(stats.referrals_30d).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('paid_30d и income_30d пробрасываются из ответа SHM как числа', () => {
+    const stats = normalizeReferralStats({
+      commission: 20,
+      count: 50,
+      total_paid: 27304.88,
+      total_income: 5460.976,
+      paid_30d: 3860.22,
+      income_30d: 716.45,
+      referrals: [],
+    })
+    expect(stats.paid_30d).toBeCloseTo(3860.22)
+    expect(stats.income_30d).toBeCloseTo(716.45)
+  })
+
+  it('paid_30d отсутствует → null (UI не рисует дельту)', () => {
+    const stats = normalizeReferralStats({
+      commission: 20,
+      count: 0,
+      total_paid: 0,
+      total_income: 0,
+      referrals: [],
+    })
+    expect(stats.paid_30d).toBeNull()
+    expect(stats.income_30d).toBeNull()
   })
 })
