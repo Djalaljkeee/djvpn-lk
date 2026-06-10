@@ -1,10 +1,10 @@
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { useDashboardStore } from './store/dashboardStore'
 import { ToastProvider } from './components/Toast'
 import { useEffect, useState } from 'react'
 import { loginWithWebApp } from './api/auth'
-import { captureRefIdFromUrl, clearRefId, getRefId } from './utils/referral'
+import { captureRefIdFromUrl, clearRefId, getRefId, saveRefId } from './utils/referral'
 import { getPhotoUrlFromInitData } from './utils/telegram'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -32,6 +32,20 @@ declare global {
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated())
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
+}
+
+/** Короткая реферальная ссылка: /r/:id или /r/ref-:id → захват + редирект на /.
+ *  Принимаем оба формата (с префиксом ref- и без) — заказчик в макете
+ *  использовал «ref-2», но цифровой id короче и работает так же. */
+function ShortRefRedirect() {
+  const { id } = useParams<{ id: string }>()
+  useEffect(() => {
+    if (id) {
+      const raw = id.startsWith('ref-') ? id.slice(4) : id
+      saveRefId(raw)
+    }
+  }, [id])
+  return <Navigate to="/" replace />
 }
 
 /** Автоматическая авторизация через Telegram Mini App */
@@ -117,6 +131,7 @@ export default function App() {
       <TelegramWebAppGate>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/r/:id" element={<ShortRefRedirect />} />
           <Route
             path="/change-password"
             element={<PrivateRoute><ChangePasswordPage /></PrivateRoute>}

@@ -104,6 +104,24 @@ export function normalizeReferralStats(body: unknown): ReferralStats {
       ? totalRaw
       : referrals.length
 
+  // Дельты «за последние 30 дней»:
+  //  • количество рефералов считаем на фронте из created — это надёжно;
+  //  • доход/оборот ждём от SHM (paid_30d/income_30d). Из списка рефералов
+  //    их корректно не вытянуть: реферал мог зарегистрироваться давно, а
+  //    платежи — недавно. Пока SHM не пришлёт — оставляем null, UI не
+  //    отрисует строку с дельтой.
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const referrals_30d = referrals.filter(r => {
+    if (!r.created) return false
+    const ts = Date.parse(r.created.replace(' ', 'T'))
+    return Number.isFinite(ts) && ts >= cutoff
+  }).length
+  const parseOptionalNumber = (raw: unknown): number | null => {
+    if (raw == null) return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }
+
   return {
     user_id: obj.user_id != null ? Number(obj.user_id) || undefined : undefined,
     commission,
@@ -111,6 +129,9 @@ export function normalizeReferralStats(body: unknown): ReferralStats {
     total_paid: Number(obj.total_paid) || 0,
     total_income: Number(obj.total_income) || 0,
     referrals,
+    referrals_30d,
+    paid_30d: parseOptionalNumber(obj.paid_30d),
+    income_30d: parseOptionalNumber(obj.income_30d),
   }
 }
 
