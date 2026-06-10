@@ -66,18 +66,19 @@ export interface Payment {
 
 export interface Referral {
   user_id?: number
-  login?: string
   name?: string
   created?: string
-  income?: number
-  total?: number
+  paid: number
+  income: number
 }
 
 export interface ReferralStats {
+  user_id?: number
+  commission: number
   total_referrals: number
+  total_paid: number
   total_income: number
-  items: number
-  referrals?: Referral[]
+  referrals: Referral[]
 }
 
 export interface PromoApplyResult {
