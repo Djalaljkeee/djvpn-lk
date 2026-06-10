@@ -38,52 +38,78 @@ export const fetchPayments = async (): Promise<Payment[]> => {
   return unwrap<Record<string, unknown>>(resp).map(normalizePayment)
 }
 
+// Комиссия по умолчанию, если SHM-шаблон не прислал поле commission.
+// Исторический процент реферальной программы — 15%. Расхождение с реальным
+// коэффициентом (SHM может считать иначе, см. ниже) логируем в console.warn.
+const DEFAULT_COMMISSION = 15
+
 export const fetchReferrals = async (): Promise<ReferralStats> => {
-  const resp = await shm.get('/user/referrals', { params: { limit: 25, offset: 0 } })
-  const body = resp.data
-  // SHM может вернуть либо плоский summary, либо стандартный wrapper
-  // {data:[{user_id, login, income, ...}, ..., {total: N}], items, status}.
-  // Раньше summary считал бэкенд (см. get_referrals в backend/routers/user.py
-  // до commit 0ea83d1). При переходе фронта на прямой SHM нормализатор
-  // забыли портировать — unwrapOne брал data[0] (один реферал) и читал с
-  // него total_income/total_referrals → undefined, виджет «Заработано»
-  // навсегда показывал 0 ₽.
-  if (body && typeof body === 'object' && 'total_referrals' in body) {
-    return body as ReferralStats
-  }
-  return aggregateReferrals(unwrap<Record<string, unknown>>(resp))
+  // SHM-шаблон template/refferalslist?format=json считает оплаты каждого
+  // реферала и доход с них. Авторизация по session_id (cookie приходит сама
+  // через shm-клиент). user_id шаблон берёт из сессии — query-параметр не
+  // нужен, и нельзя подделать чужой id. Опечатка `refferalslist` (двойное f)
+  // — на стороне SHM, не переименовываем.
+  const resp = await shm.get('/template/refferalslist', {
+    params: { format: 'json' },
+  })
+  return normalizeReferralStats(resp.data)
 }
 
-export function aggregateReferrals(rawItems: Record<string, unknown>[]): ReferralStats {
-  let total_referrals = 0
-  let total_income = 0
-  const referrals: Referral[] = []
+export function normalizeReferralStats(body: unknown): ReferralStats {
+  const obj = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
 
-  for (const item of rawItems) {
-    if (!item || typeof item !== 'object') continue
-    // SHM добавляет в data «маркер total»: {total: N} без user_id —
-    // это общее число рефералов с учётом limit/offset, а не отдельный реферал.
-    if (item.total != null && item.user_id == null) {
-      total_referrals = Number(item.total) || 0
-      continue
-    }
-    const income = Number(item.income ?? 0) || 0
-    total_income += income
-    referrals.push({
-      user_id: item.user_id != null ? Number(item.user_id) : undefined,
-      login: item.login as string | undefined,
-      name: item.name as string | undefined,
-      created: item.created as string | undefined,
-      income,
-    })
+  // commission — источник истины из ответа SHM (исторически 15%, сейчас 20%
+  // по настройкам SHM). Если поле отсутствует/невалидно — fallback на 15%
+  // + warn, чтобы рассинхрон с реальной комиссией не прошёл молча.
+  let commission = Number(obj.commission)
+  if (!Number.isFinite(commission) || commission < 0) {
+    console.warn('[referrals] SHM не прислал валидный commission, fallback на', DEFAULT_COMMISSION)
+    commission = DEFAULT_COMMISSION
   }
 
-  if (!total_referrals) total_referrals = referrals.length
+  // SHM именует список `referrals` (текущий шаблон), но на всякий случай
+  // принимаем и `items` (если шаблон когда-нибудь переименуют).
+  const rawItems = Array.isArray(obj.referrals)
+    ? obj.referrals
+    : (Array.isArray(obj.items) ? obj.items : [])
+
+  const referrals: Referral[] = rawItems
+    .filter((it): it is Record<string, unknown> => Boolean(it) && typeof it === 'object')
+    .map(it => {
+      // full_name — основное поле в SHM. Если пусто (бывает у юзеров
+      // зарегистрированных через email) — fallback на login (@username или
+      // email). Поле name тоже поддерживаем — на случай переименования шаблона.
+      const fullName = typeof it.full_name === 'string' ? it.full_name.trim() : ''
+      const altName = typeof it.name === 'string' ? it.name.trim() : ''
+      const login = typeof it.login === 'string' ? it.login.trim() : ''
+      const name = fullName || altName || login || undefined
+      return {
+        user_id: it.user_id != null ? Number(it.user_id) || undefined : undefined,
+        name,
+        login: login || undefined,
+        created: typeof it.created === 'string' ? it.created : undefined,
+        paid: Number(it.paid) || 0,
+        income: Number(it.income) || 0,
+      }
+    })
+
+  // SHM считает количество как `count`, на случай legacy-шаблона —
+  // принимаем и `total_referrals`. Fallback на длину списка, если ни то ни
+  // другое не прислали.
+  const countRaw = Number(obj.count)
+  const totalRaw = Number(obj.total_referrals)
+  const total_referrals = Number.isFinite(countRaw) && countRaw > 0
+    ? countRaw
+    : Number.isFinite(totalRaw) && totalRaw > 0
+      ? totalRaw
+      : referrals.length
 
   return {
+    user_id: obj.user_id != null ? Number(obj.user_id) || undefined : undefined,
+    commission,
     total_referrals,
-    total_income,
-    items: referrals.length,
+    total_paid: Number(obj.total_paid) || 0,
+    total_income: Number(obj.total_income) || 0,
     referrals,
   }
 }

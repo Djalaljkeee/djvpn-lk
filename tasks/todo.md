@@ -1,3 +1,168 @@
+# Переход на чистый JSON-шаблон SHM /template/refferalslist?format=json
+
+## Контекст
+
+После предыдущей итерации (парсинг Telegram-`text`) заказчик завёл на SHM
+чистый JSON-шаблон — `/template/refferalslist?format=json`, авторизация
+по cookie session_id (берётся из сессии, не из query — `user_id` подделать
+больше нельзя).
+
+Контракт ответа (50 рефералов влезли целиком, payload ~14 КБ):
+```jsonc
+{
+  "user_id": 2, "commission": 20, "count": 50,
+  "total_paid": 27304.88, "total_income": 5460.976,
+  "referrals": [
+    { "user_id": 178, "full_name": "Sergey", "login": "@1037681877",
+      "created": "2024-11-09 12:55:39", "paid": 3606.45, "income": 721.29 },
+    { "user_id": 1145, "full_name": "", "login": "jalal.abdullazade@yandex.ru",
+      "created": "2026-05-03 10:10:43", "paid": 0, "income": 0 }
+  ]
+}
+```
+
+## План
+
+### Frontend
+- [x] `api/user.ts::fetchReferrals()` — без аргументов. URL
+      `/template/refferalslist?format=json`, идёт через тот же shm-прокси,
+      cookie session_id уходит сама (withCredentials). user_id шаблон
+      достаёт из сессии.
+- [x] `api/user.ts::normalizeReferralStats` — структурный мапинг:
+      - `count` (новое) → `total_referrals`, fallback на legacy
+        `total_referrals`, дальше на `referrals.length`.
+      - `full_name` → `name`. Пустое `full_name` → fallback на `login`
+        (важно для email-юзеров: `jalal.abdullazade@yandex.ru` у которого
+        `full_name=""`).
+      - `login` сохраняем отдельно — пригодится в UI как подзаголовок.
+      - Удалён `parseReferralText` — мёртвый код после миграции на JSON.
+- [x] `types/index.ts::Referral` — добавлено поле `login?: string`.
+- [x] `pages/ReferralsPage.tsx` — `fetchReferrals()` без user_id; в строке
+      списка подзаголовок «`@login` · `дата регистрации`» (без login —
+      просто дата; если login совпадает с name — не дублируем).
+- [x] `test/referrals.test.ts` — 10 кейсов под новый контракт:
+      реальный JSON из примера заказчика; full_name fallback на login;
+      `{"error":"unauthorized"}` → дефолтная пустая статистика; строковые
+      числа; legacy items/name/total_referrals (на случай возврата к
+      старому ключу).
+
+## Решения / трейд-офы
+
+- **Авторизованный путь вместо публичного**: SHM перенёс шаблон с
+  `/public/*` на `/template/*` и берёт user_id из session — это убирает
+  риск «подсмотреть чужой доход через `?user_id=`», который я ранее
+  отмечал в плане. Чище.
+- **shm-клиент `withCredentials: true`** уже шлёт cookie session_id на
+  shm-прокси, прокси форвардит её в SHM (см. `shm_proxy.py:80-82`).
+  Отдельных правок auth-флоу не нужно.
+- **Поле `login` отдельно от `name`**: SHM-логин — это `@telegram_username`
+  или email, информативный для пользователя (кто именно реферал).
+  Показывается подзаголовком, рядом с датой. Если `full_name` пустое
+  (email-юзер) — name = login и подзаголовок не дублируется.
+- **Удалил parseReferralText**: после миграции на JSON это мёртвый код.
+  Если когда-нибудь шаблон откатится к Telegram-формату — заведём заново.
+  В нормализаторе оставлены fallback'и на legacy-ключи (`items`/`name`/
+  `total_referrals`) — чтобы переименование на стороне SHM не уронило фронт.
+
+## Риски
+
+- **Эндпоинт на admin.djvpn.ru vs bill.djvpn.ru**: заказчик прислал URL
+  `https://bill.djvpn.ru/shm/v1/template/refferalslist`, но наш shm-прокси
+  идёт в `SHM_BASE_URL=https://admin.djvpn.ru`. Шаблоны SHM обычно общие
+  для всей системы, но если admin.djvpn.ru не отдаёт `/template/*` —
+  фронт получит 404, и понадобится либо настройка на стороне SHM, либо
+  отдельный backend-роут на BILL. Проверится сразу после деплоя.
+
+## Проверки
+
+- `npx vitest run` — 16/16 зелёные (10 referrals + 6 прежних).
+- `npm run build` (`tsc && vite build`) — без ошибок типов.
+- Браузерная проверка на проде (за заказчиком):
+  - DevTools → запрос `/api/shm/v1/template/refferalslist?format=json`
+    отдаёт 200 + JSON по контракту.
+  - У Sergey: `+721.29 ₽` справа, `оплачено 3606.45 ₽` мелким, имя
+    «Sergey», подзаголовок `@1037681877 · 9 ноя 2024`.
+  - У `jalal.abdullazade@yandex.ru`: имя = email, подзаголовок только дата.
+  - Hero «Получайте 20%…», три метрики совпадают с footer'ом.
+
+---
+
+# Редизайн страницы рефералов под публичный SHM-шаблон
+
+## Контекст
+
+После hot-fix агрегации (ниже) выяснилось, что приватный SHM `/user/referrals`
+не считает оплаты приглашённых. Заказчик собрал на SHM публичный шаблон
+`/public/refferalslist?format=html&user_id={id}`, который для каждого реферала
+поднимает его платежи и считает доход (commission %). Шаблон отдаёт
+Telegram-сообщение: `{chat_id, parse_mode, text: "...HTML..."}` — все данные
+(список, итоги, комиссия) внутри строки `text`.
+
+Задача — собрать корректную страницу `/referrals`: реальные «Заработано» и
+«Оплачено рефералами», детализированный список приглашённых, динамический
+процент комиссии (из ответа, а не захардкоженные 15%).
+
+## План
+
+### Frontend
+- [x] `types/index.ts`: `Referral` → `{user_id?, name?, created?, paid, income}`;
+      `ReferralStats` → `{user_id?, commission, total_referrals, total_paid,
+      total_income, referrals}`. Удалены legacy-поля `login`/`total`/`items`.
+- [x] `api/user.ts`: `fetchReferrals(userId)` зовёт публичный шаблон через
+      существующий `shm`-клиент (прокси форвардит `/public/*` без session_id).
+      `normalizeReferralStats(body)` — устойчив к ДВУМ форматам:
+      - **Telegram-message** (текущий): парсит `text` (`parseReferralText`) —
+        regex по строкам «N. Имя — оплачено: P₽ · ваш доход: I₽», итоги и
+        commission из footer'а, срез HTML-тегов.
+      - **чистый JSON** (если заказчик заведёт `items`/`total_*`): structured-
+        ветка, без изменений в UI.
+      Удалён мёртвый `aggregateReferrals` (от прошлого hot-fix).
+- [x] `pages/ReferralsPage.tsx`: карточка «Заработано» (`total_income`), две
+      метрики «Оплачено рефералами» (`total_paid`) и «Приглашено»
+      (`total_referrals`), блок реф-ссылок (без изменений), НОВЫЙ список
+      рефералов с пагинацией (25/стр, паттерн из `PaymentsPage`), сортировка
+      по доходу убыв., footer-итог «Всего оплачено … · Ваш доход (X%) …»,
+      пустое состояние. Commission подставлен в hero / шаг 3 / условия.
+- [x] `test/referrals.test.ts`: 10 кейсов — structured JSON (4) + парсинг
+      реального `text`-ответа, HTML-теги, пустой text, приоритет JSON над
+      text (6).
+
+## Решения / трейд-офы
+
+- **Двойной формат в нормализаторе** — отступление от плана (там был только
+  чистый JSON). Причина: реальный эндпоинт у заказчика уже отдаёт
+  Telegram-`text`, и ждать будущий JSON-шаблон смысла нет. Парсер `text`
+  изолирован, structured-ветка подхватит чистый JSON автоматически — миграция
+  бесшовная, без правок UI.
+- **Итоги и commission берём из footer-строк**, не из суммы по строкам: SHM
+  печатает доход с 3 знаками (`663.196`), поэлементная сумма разошлась бы на
+  копейки. Footer авторитетен.
+- **Имя реферала** ограничено устойчивым делимитером « — оплачено:», поэтому
+  не-жадный regex не ломается на эмодзи (`🌚`), email, цифрах, «·» в имени.
+- **format=html** в запросе — проверенный заказчиком URL; шаблон всё равно
+  `toJson(...)`, формат влияет лишь на content-type.
+- **Пагинация 25/стр** (как в истории платежей) — у заказчика 50 рефералов
+  → 2 страницы; виртуализацию/серверную пагинацию не вводим (overkill).
+
+## Риски / на будущее
+
+- **Публичный эндпоинт** — `user_id` в query можно подделать и посмотреть
+  чужих рефералов и доход. Риск шаблона заказчика, не фронта; фронт всегда
+  шлёт свой `user.user_id`. Если критично — заказчику нужна подпись/токен.
+- Если SHM сменит формат строки в `text` (например уберёт «·» или «—») —
+  сломается `parseReferralText`. Лечится переходом на чистый JSON-шаблон
+  (`items`) — нормализатор к нему уже готов.
+
+## Проверки
+
+- `npx vitest run` — 16/16 зелёные (10 referrals + 6 прежних).
+- `npm run build` (`tsc && vite build`) — успешно, без ошибок типов.
+- Браузерная проверка на проде (за заказчиком, `user_id=2`): hero «20%»,
+  три метрики совпадают с footer'ом, у Sergey `paid=3606.45 ₽ income=721.29 ₽`,
+  50 рефералов → 2 страницы.
+
+---
+
 # Фикс «Заработано: 0.00 ₽» в реферальной программе
 
 ## Контекст

@@ -1,36 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { fetchReferrals } from '../api/user'
 import { fetchConfig } from '../api/services'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
 import type { ReferralStats } from '../types'
+import { format, parseISO } from 'date-fns'
+import { ru } from 'date-fns/locale'
 
 const SUPPORT_URL = 'https://t.me/help_djvpn'
-
-const steps = [
-  {
-    icon: <ShareIcon className="h-5 w-5" />,
-    title: 'Поделитесь ссылкой',
-    text: 'Отправьте ссылку другу любым удобным способом.',
-  },
-  {
-    icon: <UserPlusIcon className="h-5 w-5" />,
-    title: 'Пользователь регистрируется',
-    text: 'Друг проходит регистрацию и становится пользователем.',
-  },
-  {
-    icon: <PercentIcon className="h-5 w-5" />,
-    title: 'Получайте 15%',
-    text: 'Вы получаете 15% с каждого пополнения баланса друга.',
-  },
-]
-
-const conditions = [
-  '15% от каждого пополнения баланса реферала',
-  'Начисление происходит автоматически',
-  'Бонусы зачисляются на баланс аккаунта',
-  'Ограничений по количеству рефералов нет',
-]
+const REFERRALS_PAGE_SIZE = 25
 
 export default function ReferralsPage() {
   const { user } = useAuthStore()
@@ -38,21 +16,43 @@ export default function ReferralsPage() {
   const [stats, setStats] = useState<ReferralStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [botUsername, setBotUsername] = useState('')
+  const [page, setPage] = useState(0)
 
   useEffect(() => {
     fetchConfig().then(cfg => setBotUsername(cfg.telegram_bot_username)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    setLoading(true)
     fetchReferrals()
       .then(setStats)
       .catch(() => show('Ошибка загрузки реферальной статистики', 'error'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [user?.user_id])
 
   const tgRefLink = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
   const webRefLink = user && typeof window !== 'undefined'
     ? `${window.location.origin}/?ref=${user.user_id}`
     : ''
+
+  const commission = stats?.commission ?? 15
   const totalReferrals = stats?.total_referrals ?? 0
   const totalIncome = stats?.total_income ?? 0
+  const totalPaid = stats?.total_paid ?? 0
+
+  // Сортируем по доходу убыванию (топ-плательщики наверху); вторичный ключ —
+  // user_id desc для стабильного порядка среди нулевых income.
+  const sortedReferrals = useMemo(() => {
+    const list = [...(stats?.referrals ?? [])]
+    list.sort((a, b) => (b.income - a.income) || ((b.user_id ?? 0) - (a.user_id ?? 0)))
+    return list
+  }, [stats?.referrals])
+
+  const pages = Math.max(1, Math.ceil(sortedReferrals.length / REFERRALS_PAGE_SIZE))
+  const pageSafe = Math.min(page, pages - 1)
+  const start = pageSafe * REFERRALS_PAGE_SIZE
+  const pageItems = sortedReferrals.slice(start, start + REFERRALS_PAGE_SIZE)
 
   const copyLink = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -68,7 +68,7 @@ export default function ReferralsPage() {
             <span className="gradient-text">программа</span>
           </h1>
           <p className="mt-4 max-w-md text-base font-medium leading-7 text-white">
-            Получайте 15% с каждого пополнения приглашённых пользователей.
+            Получайте {commission}% с каждого пополнения приглашённых пользователей.
           </p>
           <p className="mt-3 max-w-md text-sm leading-6 text-slate-300">
             Поделитесь своей ссылкой и бонусы будут автоматически начисляться на ваш баланс.
@@ -91,11 +91,24 @@ export default function ReferralsPage() {
           </div>
           <p className="mt-4 text-sm text-slate-300">
             Всего бонусов по реферальной программе
-            {totalReferrals > 0 && (
-              <> · приглашено: <span className="font-semibold text-white">{totalReferrals}</span></>
-            )}
           </p>
         </div>
+      </section>
+
+      {/* Метрики: оплачено рефералами + количество приглашённых */}
+      <section className="grid gap-4 sm:grid-cols-2">
+        <StatCard
+          icon={<CoinsIcon className="h-6 w-6" />}
+          label="Оплачено рефералами"
+          value={loading ? null : `${totalPaid.toFixed(2)} ₽`}
+          hint="Суммарный оборот приглашённых"
+        />
+        <StatCard
+          icon={<UsersIcon className="h-6 w-6" />}
+          label="Приглашено"
+          value={loading ? null : String(totalReferrals)}
+          hint="Всего рефералов по вашей ссылке"
+        />
       </section>
 
       <section className="glass rounded-[2rem] p-5 sm:p-6">
@@ -121,11 +134,129 @@ export default function ReferralsPage() {
         </div>
       </section>
 
+      {/* Детализированный список рефералов */}
+      <section className="glass rounded-[2rem] overflow-hidden">
+        <div className="flex items-center justify-between gap-4 px-5 py-5 sm:px-6">
+          <h2 className="text-xl font-semibold text-white">Ваши рефералы</h2>
+          {!loading && totalReferrals > 0 && (
+            <span className="rounded-full bg-brand-500/20 px-3 py-1 text-sm font-semibold text-fuchsia-100">
+              {totalReferrals}
+            </span>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="space-y-2 px-5 pb-5 sm:px-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-14 animate-pulse rounded-2xl bg-white/5" />
+            ))}
+          </div>
+        ) : sortedReferrals.length === 0 ? (
+          <div className="border-t border-white/10 px-5 py-10 text-center text-sm text-slate-400">
+            У вас пока нет рефералов. Поделитесь ссылкой выше — и доход появится здесь.
+          </div>
+        ) : (
+          <div className="border-t border-white/10">
+            {pageItems.map((ref, idx) => {
+              const name = ref.name?.trim() || (ref.user_id ? `Реферал #${ref.user_id}` : 'Реферал')
+              const dateStr = ref.created
+                ? format(parseISO(ref.created.replace(' ', 'T')), 'd MMM yyyy', { locale: ru })
+                : null
+              // login (@username / email) показываем подзаголовком, если он
+              // отличается от имени — иначе дублируется (например когда имя
+              // пустое и в name уехал login).
+              const showLogin = ref.login && ref.login !== name
+              const subtitleParts = [
+                showLogin ? ref.login : null,
+                dateStr ? dateStr : null,
+              ].filter(Boolean)
+              return (
+                <div
+                  key={ref.user_id ?? start + idx}
+                  className="flex items-center gap-3 border-b border-white/5 px-5 py-3 last:border-0 sm:px-6"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/15 text-fuchsia-200">
+                    <UserPlusIcon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-white">{name}</div>
+                    <div className="mt-0.5 truncate text-xs text-slate-400">
+                      {subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Без данных о регистрации'}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-semibold text-emerald-300">+{ref.income.toFixed(2)} ₽</div>
+                    <div className="mt-0.5 text-xs text-slate-400">оплачено {ref.paid.toFixed(2)} ₽</div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {pages > 1 && (
+              <div className="flex items-center justify-between gap-3 px-5 py-3 text-xs text-slate-400 sm:px-6">
+                <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">{REFERRALS_PAGE_SIZE}/стр</span>
+                <div className="flex items-center gap-3">
+                  <span>{start + 1}–{start + pageItems.length} / {sortedReferrals.length}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage(p => Math.max(0, p - 1))}
+                      disabled={pageSafe <= 0}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 disabled:opacity-40"
+                      aria-label="Предыдущая страница"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setPage(p => Math.min(pages - 1, p + 1))}
+                      disabled={pageSafe >= pages - 1}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 disabled:opacity-40"
+                      aria-label="Следующая страница"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Итог по программе — повторяет блок Telegram-шаблона */}
+            <div className="flex flex-col gap-1 border-t border-white/10 bg-white/[0.03] px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <span className="text-slate-300">
+                Всего оплачено рефералами: <span className="font-semibold text-white">{totalPaid.toFixed(2)} ₽</span>
+              </span>
+              <span className="text-slate-300">
+                Ваш доход ({commission}%): <span className="font-semibold text-emerald-300">{totalIncome.toFixed(2)} ₽</span>
+              </span>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="glass rounded-[2rem] p-5 sm:p-6">
           <h2 className="text-xl font-semibold text-white">Как это работает</h2>
           <div className="mt-6 space-y-5">
-            {steps.map((step, index) => (
+            {[
+              {
+                icon: <ShareIcon className="h-5 w-5" />,
+                title: 'Поделитесь ссылкой',
+                text: 'Отправьте ссылку другу любым удобным способом.',
+              },
+              {
+                icon: <UserPlusIcon className="h-5 w-5" />,
+                title: 'Пользователь регистрируется',
+                text: 'Друг проходит регистрацию и становится пользователем.',
+              },
+              {
+                icon: <PercentIcon className="h-5 w-5" />,
+                title: `Получайте ${commission}%`,
+                text: `Вы получаете ${commission}% с каждого пополнения баланса друга.`,
+              },
+            ].map((step, index) => (
               <div key={step.title} className="flex items-start gap-4">
                 <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-fuchsia-100">
                   {step.icon}
@@ -145,7 +276,12 @@ export default function ReferralsPage() {
         <div className="glass rounded-[2rem] p-5 sm:p-6">
           <h2 className="text-xl font-semibold text-white">Условия программы</h2>
           <div className="mt-6 space-y-4">
-            {conditions.map(item => (
+            {[
+              `${commission}% от каждого пополнения баланса реферала`,
+              'Начисление происходит автоматически',
+              'Бонусы зачисляются на баланс аккаунта',
+              'Ограничений по количеству рефералов нет',
+            ].map(item => (
               <div key={item} className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
                   <CheckIcon className="h-4 w-4" />
@@ -175,6 +311,35 @@ export default function ReferralsPage() {
           Подробнее <span aria-hidden>→</span>
         </a>
       </section>
+    </div>
+  )
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string | null
+  hint: string
+}) {
+  return (
+    <div className="glass flex items-center gap-4 rounded-[2rem] p-5 sm:p-6">
+      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-500/20 text-fuchsia-100">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm text-slate-300">{label}</div>
+        {value === null ? (
+          <div className="mt-1.5 h-7 w-28 animate-pulse rounded-lg bg-white/10" />
+        ) : (
+          <div className="text-2xl font-bold text-white">{value}</div>
+        )}
+        <div className="mt-0.5 text-xs text-slate-400">{hint}</div>
+      </div>
     </div>
   )
 }
@@ -228,6 +393,26 @@ function WalletIcon({ className = 'h-5 w-5' }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <rect x="3" y="6" width="18" height="13" rx="2.5" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 12h3" />
+    </svg>
+  )
+}
+
+function CoinsIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <ellipse cx="9" cy="7" rx="6" ry="3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v5c0 1.66 2.69 3 6 3s6-1.34 6-3V7" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 15v2c0 1.66 2.69 3 6 3s6-1.34 6-3v-5c0-1.66-2.69-3-6-3" />
+    </svg>
+  )
+}
+
+function UsersIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14c2.5.5 4 2.6 4 5.5" />
     </svg>
   )
 }
