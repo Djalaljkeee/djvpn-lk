@@ -43,15 +43,14 @@ export const fetchPayments = async (): Promise<Payment[]> => {
 // коэффициентом (SHM может считать иначе, см. ниже) логируем в console.warn.
 const DEFAULT_COMMISSION = 15
 
-export const fetchReferrals = async (userId: number): Promise<ReferralStats> => {
-  // Публичный SHM-шаблон считает оплаты каждого реферала и доход с них.
-  // Проходит через тот же /api/shm-прокси без session_id (см. shm_proxy.py),
-  // user_id передаём из профиля. Опечатка `refferalslist` (двойное f) — на
-  // стороне SHM, не переименовываем. format=html — это проверенный заказчиком
-  // запрос; шаблон всё равно отдаёт toJson(...), формат влияет лишь на
-  // content-type, а данные приходят одинаково (см. normalizeReferralStats).
-  const resp = await shm.get('/public/refferalslist', {
-    params: { format: 'html', user_id: userId },
+export const fetchReferrals = async (): Promise<ReferralStats> => {
+  // SHM-шаблон template/refferalslist?format=json считает оплаты каждого
+  // реферала и доход с них. Авторизация по session_id (cookie приходит сама
+  // через shm-клиент). user_id шаблон берёт из сессии — query-параметр не
+  // нужен, и нельзя подделать чужой id. Опечатка `refferalslist` (двойное f)
+  // — на стороне SHM, не переименовываем.
+  const resp = await shm.get('/template/refferalslist', {
+    params: { format: 'json' },
   })
   return normalizeReferralStats(resp.data)
 }
@@ -59,86 +58,58 @@ export const fetchReferrals = async (userId: number): Promise<ReferralStats> => 
 export function normalizeReferralStats(body: unknown): ReferralStats {
   const obj = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
 
-  // Текущий SHM-шаблон отдаёт Telegram-сообщение: {chat_id, parse_mode, text}.
-  // Полезные данные (рефералы, суммы, комиссия) лежат внутри HTML-строки text.
-  // Если когда-нибудь появится «чистый» JSON-шаблон с полем items — ветка
-  // structured ниже разберёт его без изменений. text парсим только когда
-  // структурированных items нет (иначе чистый JSON приоритетнее).
-  if (typeof obj.text === 'string' && !Array.isArray(obj.items)) {
-    return parseReferralText(obj.text)
-  }
-
-  // commission — источник истины из ответа SHM (шаблон может считать не 15%).
-  // Если поле отсутствует/невалидно — fallback на исторические 15% + warn,
-  // чтобы заказчик заметил рассинхрон в DevTools.
+  // commission — источник истины из ответа SHM (исторически 15%, сейчас 20%
+  // по настройкам SHM). Если поле отсутствует/невалидно — fallback на 15%
+  // + warn, чтобы рассинхрон с реальной комиссией не прошёл молча.
   let commission = Number(obj.commission)
   if (!Number.isFinite(commission) || commission < 0) {
     console.warn('[referrals] SHM не прислал валидный commission, fallback на', DEFAULT_COMMISSION)
     commission = DEFAULT_COMMISSION
   }
 
-  const rawItems = Array.isArray(obj.items) ? obj.items : []
+  // SHM именует список `referrals` (текущий шаблон), но на всякий случай
+  // принимаем и `items` (если шаблон когда-нибудь переименуют).
+  const rawItems = Array.isArray(obj.referrals)
+    ? obj.referrals
+    : (Array.isArray(obj.items) ? obj.items : [])
+
   const referrals: Referral[] = rawItems
     .filter((it): it is Record<string, unknown> => Boolean(it) && typeof it === 'object')
-    .map(it => ({
-      user_id: it.user_id != null ? Number(it.user_id) || undefined : undefined,
-      name: typeof it.name === 'string' ? it.name : undefined,
-      created: typeof it.created === 'string' ? it.created : undefined,
-      paid: Number(it.paid) || 0,
-      income: Number(it.income) || 0,
-    }))
+    .map(it => {
+      // full_name — основное поле в SHM. Если пусто (бывает у юзеров
+      // зарегистрированных через email) — fallback на login (@username или
+      // email). Поле name тоже поддерживаем — на случай переименования шаблона.
+      const fullName = typeof it.full_name === 'string' ? it.full_name.trim() : ''
+      const altName = typeof it.name === 'string' ? it.name.trim() : ''
+      const login = typeof it.login === 'string' ? it.login.trim() : ''
+      const name = fullName || altName || login || undefined
+      return {
+        user_id: it.user_id != null ? Number(it.user_id) || undefined : undefined,
+        name,
+        login: login || undefined,
+        created: typeof it.created === 'string' ? it.created : undefined,
+        paid: Number(it.paid) || 0,
+        income: Number(it.income) || 0,
+      }
+    })
+
+  // SHM считает количество как `count`, на случай legacy-шаблона —
+  // принимаем и `total_referrals`. Fallback на длину списка, если ни то ни
+  // другое не прислали.
+  const countRaw = Number(obj.count)
+  const totalRaw = Number(obj.total_referrals)
+  const total_referrals = Number.isFinite(countRaw) && countRaw > 0
+    ? countRaw
+    : Number.isFinite(totalRaw) && totalRaw > 0
+      ? totalRaw
+      : referrals.length
 
   return {
     user_id: obj.user_id != null ? Number(obj.user_id) || undefined : undefined,
     commission,
-    total_referrals: Number(obj.total_referrals) || referrals.length,
+    total_referrals,
     total_paid: Number(obj.total_paid) || 0,
     total_income: Number(obj.total_income) || 0,
-    referrals,
-  }
-}
-
-// Разбор Telegram-сообщения из SHM-шаблона. Формат строки реферала стабилен:
-//   «N. Имя — оплачено: P₽ · ваш доход: I₽» (записи идут подряд без разделителя).
-// Имя ограничено устойчивой последовательностью « — оплачено:», поэтому
-// безопасно матчим не-жадным шаблоном даже при эмодзи/цифрах/«·» в имени.
-// Итоги и комиссию берём из строк-footer'а (они авторитетнее суммы по строкам:
-// SHM печатает доход с 3 знаками, поэлементная сумма может разойтись на копейки).
-function parseReferralText(text: string): ReferralStats {
-  // parse_mode=HTML → срезаем теги (<b> и т.п.), чтобы не мешали regex.
-  const plain = text.replace(/<[^>]+>/g, '')
-
-  const referrals: Referral[] = []
-  const rowRe = /\d+\.\s+(.+?)\s+—\s+оплачено:\s*([\d.]+)\s*₽\s*·\s*ваш доход:\s*([\d.]+)\s*₽/gu
-  let m: RegExpExecArray | null
-  while ((m = rowRe.exec(plain)) !== null) {
-    referrals.push({
-      name: m[1].trim(),
-      paid: Number(m[2]) || 0,
-      income: Number(m[3]) || 0,
-    })
-  }
-
-  // «🎁 Ваш доход (20%): 5460.976₽» — комиссия в скобках + итоговый доход.
-  const commissionMatch = plain.match(/ваш доход\s*\(\s*([\d.]+)\s*%\s*\)/i)
-  const totalPaidMatch = plain.match(/всего оплачено рефералами:\s*([\d.]+)\s*₽/i)
-  const totalIncomeMatch = plain.match(/ваш доход\s*\([^)]*\)\s*:\s*([\d.]+)\s*₽/i)
-
-  let commission = commissionMatch ? Number(commissionMatch[1]) : NaN
-  if (!Number.isFinite(commission) || commission < 0) commission = DEFAULT_COMMISSION
-
-  const total_paid = totalPaidMatch
-    ? Number(totalPaidMatch[1]) || 0
-    : referrals.reduce((s, r) => s + r.paid, 0)
-  const total_income = totalIncomeMatch
-    ? Number(totalIncomeMatch[1]) || 0
-    : referrals.reduce((s, r) => s + r.income, 0)
-
-  return {
-    commission,
-    total_referrals: referrals.length,
-    total_paid,
-    total_income,
     referrals,
   }
 }

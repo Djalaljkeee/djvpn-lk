@@ -1,3 +1,92 @@
+# Переход на чистый JSON-шаблон SHM /template/refferalslist?format=json
+
+## Контекст
+
+После предыдущей итерации (парсинг Telegram-`text`) заказчик завёл на SHM
+чистый JSON-шаблон — `/template/refferalslist?format=json`, авторизация
+по cookie session_id (берётся из сессии, не из query — `user_id` подделать
+больше нельзя).
+
+Контракт ответа (50 рефералов влезли целиком, payload ~14 КБ):
+```jsonc
+{
+  "user_id": 2, "commission": 20, "count": 50,
+  "total_paid": 27304.88, "total_income": 5460.976,
+  "referrals": [
+    { "user_id": 178, "full_name": "Sergey", "login": "@1037681877",
+      "created": "2024-11-09 12:55:39", "paid": 3606.45, "income": 721.29 },
+    { "user_id": 1145, "full_name": "", "login": "jalal.abdullazade@yandex.ru",
+      "created": "2026-05-03 10:10:43", "paid": 0, "income": 0 }
+  ]
+}
+```
+
+## План
+
+### Frontend
+- [x] `api/user.ts::fetchReferrals()` — без аргументов. URL
+      `/template/refferalslist?format=json`, идёт через тот же shm-прокси,
+      cookie session_id уходит сама (withCredentials). user_id шаблон
+      достаёт из сессии.
+- [x] `api/user.ts::normalizeReferralStats` — структурный мапинг:
+      - `count` (новое) → `total_referrals`, fallback на legacy
+        `total_referrals`, дальше на `referrals.length`.
+      - `full_name` → `name`. Пустое `full_name` → fallback на `login`
+        (важно для email-юзеров: `jalal.abdullazade@yandex.ru` у которого
+        `full_name=""`).
+      - `login` сохраняем отдельно — пригодится в UI как подзаголовок.
+      - Удалён `parseReferralText` — мёртвый код после миграции на JSON.
+- [x] `types/index.ts::Referral` — добавлено поле `login?: string`.
+- [x] `pages/ReferralsPage.tsx` — `fetchReferrals()` без user_id; в строке
+      списка подзаголовок «`@login` · `дата регистрации`» (без login —
+      просто дата; если login совпадает с name — не дублируем).
+- [x] `test/referrals.test.ts` — 10 кейсов под новый контракт:
+      реальный JSON из примера заказчика; full_name fallback на login;
+      `{"error":"unauthorized"}` → дефолтная пустая статистика; строковые
+      числа; legacy items/name/total_referrals (на случай возврата к
+      старому ключу).
+
+## Решения / трейд-офы
+
+- **Авторизованный путь вместо публичного**: SHM перенёс шаблон с
+  `/public/*` на `/template/*` и берёт user_id из session — это убирает
+  риск «подсмотреть чужой доход через `?user_id=`», который я ранее
+  отмечал в плане. Чище.
+- **shm-клиент `withCredentials: true`** уже шлёт cookie session_id на
+  shm-прокси, прокси форвардит её в SHM (см. `shm_proxy.py:80-82`).
+  Отдельных правок auth-флоу не нужно.
+- **Поле `login` отдельно от `name`**: SHM-логин — это `@telegram_username`
+  или email, информативный для пользователя (кто именно реферал).
+  Показывается подзаголовком, рядом с датой. Если `full_name` пустое
+  (email-юзер) — name = login и подзаголовок не дублируется.
+- **Удалил parseReferralText**: после миграции на JSON это мёртвый код.
+  Если когда-нибудь шаблон откатится к Telegram-формату — заведём заново.
+  В нормализаторе оставлены fallback'и на legacy-ключи (`items`/`name`/
+  `total_referrals`) — чтобы переименование на стороне SHM не уронило фронт.
+
+## Риски
+
+- **Эндпоинт на admin.djvpn.ru vs bill.djvpn.ru**: заказчик прислал URL
+  `https://bill.djvpn.ru/shm/v1/template/refferalslist`, но наш shm-прокси
+  идёт в `SHM_BASE_URL=https://admin.djvpn.ru`. Шаблоны SHM обычно общие
+  для всей системы, но если admin.djvpn.ru не отдаёт `/template/*` —
+  фронт получит 404, и понадобится либо настройка на стороне SHM, либо
+  отдельный backend-роут на BILL. Проверится сразу после деплоя.
+
+## Проверки
+
+- `npx vitest run` — 16/16 зелёные (10 referrals + 6 прежних).
+- `npm run build` (`tsc && vite build`) — без ошибок типов.
+- Браузерная проверка на проде (за заказчиком):
+  - DevTools → запрос `/api/shm/v1/template/refferalslist?format=json`
+    отдаёт 200 + JSON по контракту.
+  - У Sergey: `+721.29 ₽` справа, `оплачено 3606.45 ₽` мелким, имя
+    «Sergey», подзаголовок `@1037681877 · 9 ноя 2024`.
+  - У `jalal.abdullazade@yandex.ru`: имя = email, подзаголовок только дата.
+  - Hero «Получайте 20%…», три метрики совпадают с footer'ом.
+
+---
+
 # Редизайн страницы рефералов под публичный SHM-шаблон
 
 ## Контекст

@@ -25,7 +25,7 @@ export default function ReferralsPage() {
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    fetchReferrals(user.user_id)
+    fetchReferrals()
       .then(setStats)
       .catch(() => show('Ошибка загрузки реферальной статистики', 'error'))
       .finally(() => setLoading(false))
@@ -162,6 +162,14 @@ export default function ReferralsPage() {
               const dateStr = ref.created
                 ? format(parseISO(ref.created.replace(' ', 'T')), 'd MMM yyyy', { locale: ru })
                 : null
+              // login (@username / email) показываем подзаголовком, если он
+              // отличается от имени — иначе дублируется (например когда имя
+              // пустое и в name уехал login).
+              const showLogin = ref.login && ref.login !== name
+              const subtitleParts = [
+                showLogin ? ref.login : null,
+                dateStr ? dateStr : null,
+              ].filter(Boolean)
               return (
                 <div
                   key={ref.user_id ?? start + idx}
@@ -172,8 +180,8 @@ export default function ReferralsPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-white">{name}</div>
-                    <div className="mt-0.5 text-xs text-slate-400">
-                      {dateStr ? `Регистрация: ${dateStr}` : 'Дата регистрации неизвестна'}
+                    <div className="mt-0.5 truncate text-xs text-slate-400">
+                      {subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Без данных о регистрации'}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">

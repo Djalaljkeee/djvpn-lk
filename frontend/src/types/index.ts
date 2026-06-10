@@ -67,6 +67,10 @@ export interface Payment {
 export interface Referral {
   user_id?: number
   name?: string
+  // SHM-логин реферала: «@telegram_username» или email. Полезен в UI как
+  // подзаголовок строки, когда имя пустое — отдельно от name, чтобы UI мог
+  // показывать оба, даже если name === login.
+  login?: string
   created?: string
   paid: number
   income: number
