@@ -1,6 +1,6 @@
 import api, { shm, unwrap, unwrapOne } from './client'
 import type {
-  User, UserService, Payment, PromoApplyResult, ReferralStats,
+  User, UserService, Payment, PromoApplyResult, Referral, ReferralStats,
   ServiceDevices, StatusData, ForecastEntry, RemnaUserInfo, ServiceActionResult,
 } from '../types'
 import {
@@ -39,14 +39,53 @@ export const fetchPayments = async (): Promise<Payment[]> => {
 }
 
 export const fetchReferrals = async (): Promise<ReferralStats> => {
-  const resp = await shm.get('/user/referrals')
+  const resp = await shm.get('/user/referrals', { params: { limit: 25, offset: 0 } })
   const body = resp.data
-  // SHM может вернуть либо обёртку {data:[...]}, либо плоский объект.
+  // SHM может вернуть либо плоский summary, либо стандартный wrapper
+  // {data:[{user_id, login, income, ...}, ..., {total: N}], items, status}.
+  // Раньше summary считал бэкенд (см. get_referrals в backend/routers/user.py
+  // до commit 0ea83d1). При переходе фронта на прямой SHM нормализатор
+  // забыли портировать — unwrapOne брал data[0] (один реферал) и читал с
+  // него total_income/total_referrals → undefined, виджет «Заработано»
+  // навсегда показывал 0 ₽.
   if (body && typeof body === 'object' && 'total_referrals' in body) {
     return body as ReferralStats
   }
-  const first = unwrapOne<ReferralStats>(resp)
-  return first ?? { total_referrals: 0, total_income: 0, items: 0, referrals: [] }
+  return aggregateReferrals(unwrap<Record<string, unknown>>(resp))
+}
+
+export function aggregateReferrals(rawItems: Record<string, unknown>[]): ReferralStats {
+  let total_referrals = 0
+  let total_income = 0
+  const referrals: Referral[] = []
+
+  for (const item of rawItems) {
+    if (!item || typeof item !== 'object') continue
+    // SHM добавляет в data «маркер total»: {total: N} без user_id —
+    // это общее число рефералов с учётом limit/offset, а не отдельный реферал.
+    if (item.total != null && item.user_id == null) {
+      total_referrals = Number(item.total) || 0
+      continue
+    }
+    const income = Number(item.income ?? 0) || 0
+    total_income += income
+    referrals.push({
+      user_id: item.user_id != null ? Number(item.user_id) : undefined,
+      login: item.login as string | undefined,
+      name: item.name as string | undefined,
+      created: item.created as string | undefined,
+      income,
+    })
+  }
+
+  if (!total_referrals) total_referrals = referrals.length
+
+  return {
+    total_referrals,
+    total_income,
+    items: referrals.length,
+    referrals,
+  }
 }
 
 export const changeService = async (
