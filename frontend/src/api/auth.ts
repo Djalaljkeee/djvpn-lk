@@ -15,6 +15,8 @@ export interface RegisterPayload {
   captcha_token?: string
   captcha_code?: string
   partner_id?: number
+  agree_personal_data?: boolean
+  agree_terms?: boolean
 }
 
 // Резервный канал для session_id: достаём из тела auth-ответа и пишем в
@@ -100,6 +102,10 @@ export const registerWithPassword = async (payload: RegisterPayload): Promise<Au
   if (payload.name) body.name = payload.name
   if (payload.email) body.email = payload.email
   if (payload.partner_id) body.partner_id = payload.partner_id
+  // 152-ФЗ: фиксируем факт согласия на стороне биллинга. SHM игнорирует
+  // неизвестные поля, поэтому передача безопасна и при отсутствии поддержки.
+  if (payload.agree_personal_data) body.agree_personal_data = payload.agree_personal_data
+  if (payload.agree_terms) body.agree_terms = payload.agree_terms
   if (payload.captcha_code) {
     body.captcha = payload.captcha_code
     body.captcha_code = payload.captcha_code
