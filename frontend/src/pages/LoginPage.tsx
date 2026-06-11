@@ -33,6 +33,10 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [showPw, setShowPw] = useState(false)
+  // 152-ФЗ: согласия на обработку ПД и на договор оказания услуг — обе
+  // галочки обязательны для регистрации.
+  const [agreePersonalData, setAgreePersonalData] = useState(false)
+  const [agreeTerms, setAgreeTerms] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [botUsername, setBotUsername] = useState('')
@@ -153,6 +157,8 @@ export default function LoginPage() {
       setConfirmPw('')
       setVerifyEmail('')
       setVerifyCode('')
+      setAgreePersonalData(false)
+      setAgreeTerms(false)
     }
     if (nextMode !== 'forgot') {
       setResetValue('')
@@ -182,6 +188,10 @@ export default function LoginPage() {
         setError('Введите текст с картинки')
         return
       }
+      if (!agreePersonalData || !agreeTerms) {
+        setError('Необходимо согласиться с обработкой персональных данных и условиями оказания услуг')
+        return
+      }
     }
     setLoading(true)
     setError('')
@@ -201,6 +211,8 @@ export default function LoginPage() {
           email: trimmedEmail,
           captcha_code: captchaAvailable ? captchaCode : undefined,
           partner_id: getRefId() ?? undefined,
+          agree_personal_data: agreePersonalData,
+          agree_terms: agreeTerms,
         })
         setAuth(result.user)
         clearRefId()
@@ -599,6 +611,49 @@ export default function LoginPage() {
                           />
                         </div>
                       </Field>
+                    )}
+
+                    {mode === 'register' && (
+                      <div className="space-y-2.5 pt-1">
+                        <label className="flex items-start gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={agreePersonalData}
+                            onChange={e => setAgreePersonalData(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-white/20 bg-white/5 accent-brand-500"
+                          />
+                          <span className="text-xs leading-relaxed text-slate-300">
+                            Я даю согласие на обработку моих персональных данных в соответствии с{' '}
+                            <a
+                              href="/setup.html#privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-300 hover:text-white underline"
+                            >
+                              Политикой конфиденциальности
+                            </a>{' '}и Федеральным законом № 152-ФЗ.
+                          </span>
+                        </label>
+                        <label className="flex items-start gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={agreeTerms}
+                            onChange={e => setAgreeTerms(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-white/20 bg-white/5 accent-brand-500"
+                          />
+                          <span className="text-xs leading-relaxed text-slate-300">
+                            Я принимаю условия{' '}
+                            <a
+                              href="/setup.html#terms"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-300 hover:text-white underline"
+                            >
+                              договора оказания услуг
+                            </a>.
+                          </span>
+                        </label>
+                      </div>
                     )}
 
                     <button
