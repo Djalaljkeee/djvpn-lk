@@ -31,7 +31,23 @@ declare global {
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated())
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
+  return isAuthenticated ? <>{children}</> : <Navigate to={loginPath()} replace />
+}
+
+/** Путь на страницу входа с сохранением токена сброса пароля.
+ *  Ссылка из письма может вести на любой путь (корень, /reset и т.п.);
+ *  редиректы PrivateRoute/catch-all иначе «съели» бы ?token=, и форма
+ *  нового пароля на /login не открылась бы. Пробрасываем токен дальше —
+ *  тогда не важно, какой именно URL ЛК захардкожен в письме. */
+function hasResetToken(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).has('token')
+}
+
+function loginPath(): string {
+  if (typeof window === 'undefined') return '/login'
+  const token = new URLSearchParams(window.location.search).get('token')
+  return token ? `/login?token=${encodeURIComponent(token)}` : '/login'
 }
 
 /** Короткая реферальная ссылка: /r/:id или /r/ref-:id → захват + редирект на /.
@@ -143,7 +159,10 @@ export default function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="referrals" element={<ReferralsPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="*"
+            element={<Navigate to={hasResetToken() ? loginPath() : '/'} replace />}
+          />
         </Routes>
       </TelegramWebAppGate>
     </ToastProvider>
