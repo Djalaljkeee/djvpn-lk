@@ -60,6 +60,53 @@ describe('normalizeReferralStats', () => {
     warn.mockRestore()
   })
 
+  it('active_referrals считается по paid > 0 (хотя бы один платёж)', () => {
+    // В realResponse платёж есть только у Sergey (paid 3606.45) — 1 активный.
+    const stats = normalizeReferralStats(realResponse)
+    expect(stats.active_referrals).toBe(1)
+  })
+
+  it('active_referrals: SHM-поле active_count имеет приоритет над списком', () => {
+    const stats = normalizeReferralStats({
+      commission: 20,
+      count: 50,
+      active_count: 37,
+      total_paid: 0,
+      total_income: 0,
+      referrals: [
+        { user_id: 1, full_name: 'A', paid: 100, income: 20 },
+        { user_id: 2, full_name: 'B', paid: 0, income: 0 },
+      ],
+    })
+    expect(stats.active_referrals).toBe(37)
+  })
+
+  it('active_referrals_30d: активный (paid>0) И created в окне 30 дней', () => {
+    const now = new Date('2026-06-10T12:00:00Z')
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    try {
+      const stats = normalizeReferralStats({
+        commission: 20,
+        count: 3,
+        total_paid: 0,
+        total_income: 0,
+        referrals: [
+          // активный и свежий — считается
+          { user_id: 1, full_name: 'fresh-active', created: '2026-05-31 19:45:00', paid: 500, income: 100 },
+          // свежий, но без платежа — не считается
+          { user_id: 2, full_name: 'fresh-noactive', created: '2026-06-01 00:00:00', paid: 0, income: 0 },
+          // активный, но старый — не считается
+          { user_id: 3, full_name: 'old-active', created: '2025-01-01 00:00:00', paid: 700, income: 140 },
+        ],
+      })
+      expect(stats.active_referrals).toBe(2)
+      expect(stats.active_referrals_30d).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('count=0 и пустой массив → total_referrals=0, не падает', () => {
     const stats = normalizeReferralStats({
       user_id: 5,
@@ -140,10 +187,12 @@ describe('normalizeReferralStats', () => {
       user_id: undefined,
       commission: 15,
       total_referrals: 0,
+      active_referrals: 0,
       total_paid: 0,
       total_income: 0,
       referrals: [],
       referrals_30d: 0,
+      active_referrals_30d: 0,
       paid_30d: null,
       income_30d: null,
     })
