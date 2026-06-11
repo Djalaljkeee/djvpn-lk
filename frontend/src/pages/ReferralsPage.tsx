@@ -10,29 +10,42 @@ import { ru } from 'date-fns/locale'
 
 const REFERRALS_PAGE_SIZE = 25
 
-// Реферальные уровни. Пока живут на фронте — заказчик переориентирует на
-// серверную логику, когда заведёт поля level/next_level в SHM-шаблоне.
-// Порядок: от младшего к старшему, последний элемент — потолок (next нет).
+// Реферальные уровни. Уровень зависит от количества АКТИВНЫХ рефералов
+// (те, у кого есть хотя бы один платёж). Пока ladder живёт на фронте —
+// заказчик переориентирует на серверную логику, когда заведёт поля
+// level/next_level в SHM-шаблоне. Порядок: от младшего к старшему,
+// последний элемент — потолок (next нет).
 type Level = { name: string; threshold: number; commission: number }
 const LEVELS: Level[] = [
-  { name: 'Партнер', threshold: 0,    commission: 20 },
-  { name: 'Эксперт', threshold: 100,  commission: 25 },
-  { name: 'Мастер',  threshold: 500,  commission: 30 },
+  { name: 'Новичок',    threshold: 0,   commission: 15 },
+  { name: 'Старт',      threshold: 10,  commission: 17 },
+  { name: 'Эксперт',    threshold: 25,  commission: 20 },
+  { name: 'Партнер',    threshold: 50,  commission: 22 },
+  { name: 'Амбассадор', threshold: 100, commission: 25 },
 ]
 
-function computeLevel(totalReferrals: number, commissionFromSHM: number) {
+// Текстовый диапазон активных рефералов для карточки уровня: «50 – 99»
+// или «100+» для последнего.
+function levelRange(idx: number): string {
+  const lo = LEVELS[idx].threshold
+  const next = LEVELS[idx + 1]
+  return next ? `${lo} – ${next.threshold - 1}` : `${lo}+`
+}
+
+function computeLevel(activeReferrals: number) {
   // Бежим от старшего к младшему — первый подходящий по порогу = текущий.
   let currentIdx = 0
   for (let i = LEVELS.length - 1; i >= 0; i--) {
-    if (totalReferrals >= LEVELS[i].threshold) { currentIdx = i; break }
+    if (activeReferrals >= LEVELS[i].threshold) { currentIdx = i; break }
   }
   const current = LEVELS[currentIdx]
   const next = LEVELS[currentIdx + 1] ?? null
   return {
-    current: { ...current, commission: commissionFromSHM || current.commission },
+    current,
+    currentIdx,
     next,
-    progressTo: next ? Math.min(1, totalReferrals / next.threshold) : 1,
-    needForNext: next ? Math.max(0, next.threshold - totalReferrals) : 0,
+    progressTo: next ? Math.min(1, activeReferrals / next.threshold) : 1,
+    needForNext: next ? Math.max(0, next.threshold - activeReferrals) : 0,
   }
 }
 
@@ -65,15 +78,17 @@ export default function ReferralsPage() {
     : ''
   const tgRefLink = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
 
-  const commission = stats?.commission ?? 20
   const totalReferrals = stats?.total_referrals ?? 0
+  const activeReferrals = stats?.active_referrals ?? 0
   const totalIncome = stats?.total_income ?? 0
   const totalPaid = stats?.total_paid ?? 0
-  const refs30 = stats?.referrals_30d ?? 0
+  const activeRefs30 = stats?.active_referrals_30d ?? 0
   const paid30 = stats?.paid_30d
   const income30 = stats?.income_30d
 
-  const level = computeLevel(totalReferrals, commission)
+  // Уровень и комиссия считаются от числа АКТИВНЫХ рефералов (paid > 0).
+  const level = computeLevel(activeReferrals)
+  const commission = level.current.commission
 
   // Сортируем по доходу убыв., вторичный ключ — user_id desc (стабильно
   // для рефералов с нулевым income).
@@ -115,8 +130,11 @@ export default function ReferralsPage() {
           <GiftIllustration className="pointer-events-none absolute -right-4 bottom-0 hidden h-44 w-44 opacity-90 sm:block" />
         </div>
 
-        <LevelCard level={level} totalReferrals={totalReferrals} loading={loading} />
+        <LevelCard level={level} activeReferrals={activeReferrals} loading={loading} />
       </section>
+
+      {/* Как растёт ваш процент — лестница уровней по активным рефералам */}
+      <LevelLadder currentIdx={level.currentIdx} loading={loading} />
 
       {/* Три метрики */}
       <section className="grid gap-4 sm:grid-cols-3">
@@ -130,9 +148,9 @@ export default function ReferralsPage() {
         <MetricCard
           icon={<UsersIcon className="h-5 w-5" />}
           tone="brand"
-          label="Рефералов"
-          value={loading ? null : String(totalReferrals)}
-          delta={loading ? null : { value: refs30, kind: 'count' }}
+          label="Активных рефералов"
+          value={loading ? null : String(activeReferrals)}
+          delta={loading ? null : { value: activeRefs30, kind: 'count' }}
         />
         <MetricCard
           icon={<CoinsIcon className="h-5 w-5" />}
@@ -252,17 +270,32 @@ export default function ReferralsPage() {
                 ? format(parseISO(ref.created.replace(' ', 'T')), 'd MMM yyyy', { locale: ru })
                 : null
               const showLogin = ref.login && ref.login !== name
+              // Активный реферал — тот, у кого есть хотя бы один платёж.
+              const isActive = ref.paid > 0
               return (
                 <div
                   key={ref.user_id ?? start + idx}
                   className="grid grid-cols-[1fr_auto] gap-3 border-b border-white/5 px-5 py-3 last:border-0 sm:grid-cols-[1fr_auto_auto] sm:gap-6 sm:px-6"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-300">
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-300">
                       <UserIcon className="h-5 w-5" />
+                      {isActive && (
+                        <span
+                          className="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-surface-1 bg-emerald-400"
+                          title="Активный реферал (есть платёж)"
+                        />
+                      )}
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-white">{name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-white">{name}</span>
+                        {isActive && (
+                          <span className="hidden shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 sm:inline">
+                            активен
+                          </span>
+                        )}
+                      </div>
                       {showLogin && (
                         <div className="mt-0.5 truncate text-xs text-slate-400">{ref.login}</div>
                       )}
@@ -326,11 +359,11 @@ export default function ReferralsPage() {
 
 function LevelCard({
   level,
-  totalReferrals,
+  activeReferrals,
   loading,
 }: {
   level: ReturnType<typeof computeLevel>
-  totalReferrals: number
+  activeReferrals: number
   loading: boolean
 }) {
   const { current, next, progressTo, needForNext } = level
@@ -355,7 +388,7 @@ function LevelCard({
         </div>
         <div className="mt-2 flex items-center justify-end text-xs text-slate-400">
           <span>
-            {loading ? '…' : totalReferrals}{next ? ` / ${next.threshold}` : ''}
+            {loading ? '…' : activeReferrals}{next ? ` / ${next.threshold}` : ''}
           </span>
         </div>
       </div>
@@ -369,7 +402,7 @@ function LevelCard({
             <div>
               <div className="text-slate-300">До следующего уровня</div>
               <div className="text-white">
-                ещё <span className="font-semibold">{needForNext}</span> приглашённых
+                ещё <span className="font-semibold">{needForNext}</span> активных рефералов
               </div>
             </div>
           </div>
@@ -379,9 +412,9 @@ function LevelCard({
               <TrendUpIcon className="h-4 w-4" />
             </div>
             <div>
-              <div className="text-slate-300">Следующий бонус</div>
+              <div className="text-slate-300">Следующий уровень: <span className="text-emerald-300 font-semibold">{next.commission}%</span></div>
               <div className="text-emerald-300 font-semibold">
-                {next.commission}% <span className="text-slate-400 font-normal">вместо {current.commission}%</span>
+                +{next.commission - current.commission}% <span className="text-slate-400 font-normal">к текущей ставке</span>
               </div>
             </div>
           </div>
@@ -397,6 +430,60 @@ function LevelCard({
         </div>
       )}
     </div>
+  )
+}
+
+// «Как растёт ваш процент» — наглядная лестница уровней. Текущий уровень
+// (по числу активных рефералов) подсвечивается и помечается бейджем.
+function LevelLadder({ currentIdx, loading }: { currentIdx: number; loading: boolean }) {
+  return (
+    <section className="glass rounded-[2rem] p-5 sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-xl font-semibold text-white">Как растёт ваш процент</h2>
+        <p className="text-sm text-slate-400">
+          Процент начисляется с каждого пополнения ваших активных рефералов
+        </p>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {LEVELS.map((lvl, idx) => {
+          const isCurrent = !loading && idx === currentIdx
+          return (
+            <div
+              key={lvl.name}
+              className={`relative flex flex-col items-center rounded-2xl border px-3 py-4 text-center transition-colors ${
+                isCurrent
+                  ? 'border-brand-400/60 bg-brand-500/10 shadow-brand'
+                  : 'border-white/10 bg-white/5'
+              }`}
+            >
+              {isCurrent && (
+                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-brand-500 to-fuchsia-500 px-2.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                  Ваш текущий уровень
+                </span>
+              )}
+              <div className={`text-base font-semibold ${isCurrent ? 'text-white' : 'text-slate-200'}`}>
+                {levelRange(idx)}
+              </div>
+              <div className="mt-0.5 text-[11px] leading-tight text-slate-400">
+                активных рефералов
+              </div>
+              <div className={`mt-3 text-2xl font-bold ${isCurrent ? 'gradient-text' : 'text-slate-300'}`}>
+                {lvl.commission}%
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs leading-5 text-slate-400">
+        <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+        <span>
+          Уровень зависит от количества активных рефералов и обновляется автоматически.
+          Активный реферал — тот, у кого есть хотя бы один платёж.
+        </span>
+      </div>
+    </section>
   )
 }
 
@@ -661,6 +748,15 @@ function UserIcon({ className = 'h-5 w-5' }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <circle cx="12" cy="8" r="4" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  )
+}
+
+function InfoIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5M12 8h.01" />
     </svg>
   )
 }

@@ -111,11 +111,26 @@ export function normalizeReferralStats(body: unknown): ReferralStats {
   //    платежи — недавно. Пока SHM не пришлёт — оставляем null, UI не
   //    отрисует строку с дельтой.
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-  const referrals_30d = referrals.filter(r => {
-    if (!r.created) return false
-    const ts = Date.parse(r.created.replace(' ', 'T'))
+  const isWithin30d = (created?: string): boolean => {
+    if (!created) return false
+    const ts = Date.parse(created.replace(' ', 'T'))
     return Number.isFinite(ts) && ts >= cutoff
-  }).length
+  }
+  const referrals_30d = referrals.filter(r => isWithin30d(r.created)).length
+
+  // Активный реферал — тот, у кого есть хотя бы один платёж (paid > 0).
+  // Считаем по списку рефералов (SHM отдаёт paid в каждой записи). Если
+  // SHM когда-нибудь начнёт присылать готовое поле — уважаем его.
+  const isActive = (r: Referral) => r.paid > 0
+  const activeFromList = referrals.filter(isActive).length
+  const activeRaw = Number(obj.active_count ?? obj.active_referrals)
+  const active_referrals = Number.isFinite(activeRaw) && activeRaw >= 0
+    ? activeRaw
+    : activeFromList
+  const active_referrals_30d = referrals
+    .filter(r => isActive(r) && isWithin30d(r.created))
+    .length
+
   const parseOptionalNumber = (raw: unknown): number | null => {
     if (raw == null) return null
     const n = Number(raw)
@@ -126,10 +141,12 @@ export function normalizeReferralStats(body: unknown): ReferralStats {
     user_id: obj.user_id != null ? Number(obj.user_id) || undefined : undefined,
     commission,
     total_referrals,
+    active_referrals,
     total_paid: Number(obj.total_paid) || 0,
     total_income: Number(obj.total_income) || 0,
     referrals,
     referrals_30d,
+    active_referrals_30d,
     paid_30d: parseOptionalNumber(obj.paid_30d),
     income_30d: parseOptionalNumber(obj.income_30d),
   }
