@@ -164,6 +164,27 @@
   `session_id, id`, иначе один из путей ломается тихо: 200 OK, кука
   пустая, следующий `/user` → 401.
 
+## SHM password reset: ошибки прилетают со статусом 200 в поле `msg`
+
+- Флоу сброса пароля в SHM (`danuk/shm`, `app/public_html/shm/v1.cgi` +
+  `app/lib/Core/User.pm`):
+  - `POST /shm/v1/user/passwd/reset` — `{email}` **или** `{login}`,
+    `skip_check_auth`. Шлёт письмо со ссылкой `…?token=<35-симв>` (либо
+    событие `USER_PASSWORD_RESET`, если `cli.use_for_reset_password`
+    выключен). **Всегда 200**, даже «User not found» / «User is blocked»
+    — удобно для anti-enumeration, на фронте показываем нейтральное
+    «если аккаунт есть — письмо отправлено».
+  - `GET /shm/v1/user/passwd/reset/verify?token=` — проверка токена.
+  - `POST /shm/v1/user/passwd/reset/verify` — `{token, password}` — смена.
+- **Грабли**: verify/reset возвращают «Invalid token» / «Token expired»
+  с тем же HTTP 200 — статус НЕ индикатор. Признак успеха/ошибки лежит
+  в `data[0].msg` (`'Password reset successful'` vs тексты ошибок). Если
+  полагаться на `try/catch` по HTTP-коду, ошибка пройдёт молча (тот же
+  класс багов, что в уроке про нормализаторы ниже). Парси `msg`.
+- Эндпоинт принимает и email, и login: на фронте шлём по одному ключу
+  (email-подобную строку → `{email}`, иначе `{login}`) — SHM ищет и по
+  логину, и по email в профиле, попадание полное.
+
 ## SHM напрямую с фронта: не забывай нормализаторы
 
 - При переводе фронта с backend-аггрегатора (`/api/dashboard`) на прямой

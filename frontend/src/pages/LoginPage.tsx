@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import {
   loginWithPassword,
   loginWithTelegram,
   registerWithPassword,
+  requestPasswordReset,
+  resetPassword,
   fetchCaptcha,
   type CaptchaData,
 } from '../api/auth'
@@ -18,10 +20,11 @@ declare global {
   interface Window { onTelegramAuth?: (user: object) => void }
 }
 
-type Mode = 'login' | 'register' | 'verify-email'
+type Mode = 'login' | 'register' | 'verify-email' | 'forgot' | 'reset-password'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { setAuth, setUser, setTgPhotoUrl, isAuthenticated } = useAuthStore()
   const [mode, setMode] = useState<Mode>('login')
   const [login, setLogin] = useState('')
@@ -46,6 +49,14 @@ export default function LoginPage() {
   const [verifyResending, setVerifyResending] = useState(false)
   const [verifySuccess, setVerifySuccess] = useState('')
 
+  // Password reset state
+  const [resetValue, setResetValue] = useState('')   // email/login для запроса
+  const [resetSent, setResetSent] = useState(false)
+  const [resetToken, setResetToken] = useState('')   // токен из ссылки в письме
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [resetSuccess, setResetSuccess] = useState('')
+
   const tgRef = useRef<HTMLDivElement>(null)
   // Внутри Telegram WebApp авторизация идёт по initData (TelegramWebAppGate),
   // а Telegram Login Widget iframe-ит oauth.telegram.org, у которого CSP
@@ -55,7 +66,16 @@ export default function LoginPage() {
   const isInTelegramWebApp = Boolean(window.Telegram?.WebApp?.initData)
 
   useEffect(() => {
-    if (isAuthenticated()) navigate('/', { replace: true })
+    // Ссылка для сброса пароля из письма ведёт на /login?token=… — ловим
+    // токен и сразу показываем форму нового пароля. Авторедирект на «/»
+    // в этом случае пропускаем (юзер мог быть авторизован в другой вкладке).
+    const token = searchParams.get('token')
+    if (token) {
+      setResetToken(token)
+      setMode('reset-password')
+    } else if (isAuthenticated()) {
+      navigate('/', { replace: true })
+    }
     fetchConfig().then(cfg => setBotUsername(cfg.telegram_bot_username)).catch(() => {})
   }, [])
 
@@ -123,6 +143,8 @@ export default function LoginPage() {
     setMode(nextMode)
     setError('')
     setVerifySuccess('')
+    setResetSent(false)
+    setResetSuccess('')
     if (nextMode !== 'verify-email') {
       setLogin('')
       setPassword('')
@@ -131,6 +153,16 @@ export default function LoginPage() {
       setConfirmPw('')
       setVerifyEmail('')
       setVerifyCode('')
+    }
+    if (nextMode !== 'forgot') {
+      setResetValue('')
+    }
+    if (nextMode !== 'reset-password') {
+      setResetToken('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      // Убираем ?token из URL, чтобы он не «прилипал» при возврате ко входу.
+      if (searchParams.get('token')) navigate('/login', { replace: true })
     }
   }
 
@@ -232,6 +264,49 @@ export default function LoginPage() {
     navigate('/')
   }
 
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const value = resetValue.trim()
+    if (!value) {
+      setError('Введите email или логин')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await requestPasswordReset(value)
+      // Нейтральное подтверждение: не раскрываем, существует ли аккаунт.
+      setResetSent(true)
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Не удалось отправить ссылку. Попробуйте позже.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPassword) {
+      setError('Введите новый пароль')
+      return
+    }
+    if (newPassword !== confirmNewPassword) {
+      setError('Пароли не совпадают')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await resetPassword(resetToken, newPassword)
+      setResetSuccess('Пароль обновлён. Сейчас откроем форму входа.')
+      setTimeout(() => switchMode('login'), 1500)
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось изменить пароль')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const features = [
     {
       icon: <BoltIcon className="h-5 w-5" />,
@@ -295,7 +370,7 @@ export default function LoginPage() {
 
           <section className="mx-auto w-full max-w-md animate-slide-up">
             <div className="glass rounded-[2rem] p-5 sm:p-7">
-              {mode !== 'verify-email' && (
+              {(mode === 'login' || mode === 'register') && (
                 <div className="mb-6 flex items-center justify-between gap-3">
                   <BrandLogo size={64} />
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-1">
@@ -329,6 +404,30 @@ export default function LoginPage() {
                   resending={verifyResending}
                   error={error}
                   success={verifySuccess}
+                />
+              ) : mode === 'forgot' ? (
+                <ForgotPasswordBlock
+                  value={resetValue}
+                  setValue={setResetValue}
+                  onSubmit={handleForgotSubmit}
+                  onBack={() => switchMode('login')}
+                  loading={loading}
+                  error={error}
+                  sent={resetSent}
+                />
+              ) : mode === 'reset-password' ? (
+                <ResetPasswordBlock
+                  password={newPassword}
+                  setPassword={setNewPassword}
+                  confirm={confirmNewPassword}
+                  setConfirm={setConfirmNewPassword}
+                  showPw={showPw}
+                  setShowPw={setShowPw}
+                  onSubmit={handleResetSubmit}
+                  onBack={() => switchMode('login')}
+                  loading={loading}
+                  error={error}
+                  success={resetSuccess}
                 />
               ) : (
                 <>
@@ -435,6 +534,18 @@ export default function LoginPage() {
                         </button>
                       </div>
                     </Field>
+
+                    {mode === 'login' && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => switchMode('forgot')}
+                          className="text-xs font-medium text-slate-300 hover:text-white"
+                        >
+                          Забыли пароль?
+                        </button>
+                      </div>
+                    )}
 
                     {mode === 'register' && (
                       <Field label="Повтор пароля">
@@ -629,6 +740,184 @@ function EmailVerifyBlock({
           className="text-xs text-slate-400 hover:text-white"
         >
           Пропустить (подтвердить позже в профиле)
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ForgotPasswordBlock({
+  value,
+  setValue,
+  onSubmit,
+  onBack,
+  loading,
+  error,
+  sent,
+}: {
+  value: string
+  setValue: (v: string) => void
+  onSubmit: (e: React.FormEvent) => void
+  onBack: () => void
+  loading: boolean
+  error: string
+  sent: boolean
+}) {
+  return (
+    <div>
+      <div className="mb-5">
+        <h2 className="text-2xl font-bold text-white">Восстановление пароля</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-300">
+          {sent
+            ? 'Если аккаунт с такими данными существует, мы отправили на привязанную почту ссылку для сброса пароля. Проверьте входящие и папку «Спам».'
+            : 'Укажите email или логин — пришлём ссылку для сброса пароля на привязанную почту.'}
+        </p>
+      </div>
+
+      {!sent && (
+        <form onSubmit={onSubmit} className="space-y-3">
+          <Field label="Email или логин">
+            <div className="relative">
+              <MailIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                placeholder="you@example.com или логин"
+                autoFocus
+                required
+                className={`${fieldClass} pl-11`}
+              />
+            </div>
+          </Field>
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand transition-all hover:brightness-110 disabled:opacity-60"
+          >
+            {loading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+            Отправить ссылку
+          </button>
+        </form>
+      )}
+
+      {sent && (
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          Письмо отправлено. Перейдите по ссылке из него, чтобы задать новый пароль.
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 text-center text-sm text-slate-300">
+        <button type="button" onClick={onBack} className="font-medium text-fuchsia-200 hover:text-white">
+          Вернуться ко входу
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ResetPasswordBlock({
+  password,
+  setPassword,
+  confirm,
+  setConfirm,
+  showPw,
+  setShowPw,
+  onSubmit,
+  onBack,
+  loading,
+  error,
+  success,
+}: {
+  password: string
+  setPassword: (v: string) => void
+  confirm: string
+  setConfirm: (v: string) => void
+  showPw: boolean
+  setShowPw: (fn: (v: boolean) => boolean) => void
+  onSubmit: (e: React.FormEvent) => void
+  onBack: () => void
+  loading: boolean
+  error: string
+  success: string
+}) {
+  return (
+    <div>
+      <div className="mb-5">
+        <h2 className="text-2xl font-bold text-white">Новый пароль</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-300">
+          Придумайте новый пароль для входа в личный кабинет.
+        </p>
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-3">
+        <Field label="Новый пароль">
+          <div className="relative">
+            <LockIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Введите новый пароль"
+              autoComplete="new-password"
+              autoFocus
+              required
+              className={`${fieldClass} pl-11 pr-24`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-300 hover:text-white"
+            >
+              {showPw ? 'Скрыть' : 'Показать'}
+            </button>
+          </div>
+        </Field>
+
+        <Field label="Повтор пароля">
+          <div className="relative">
+            <LockIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type={showPw ? 'text' : 'password'}
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              placeholder="Повторите новый пароль"
+              autoComplete="new-password"
+              required
+              className={`${fieldClass} pl-11`}
+            />
+          </div>
+        </Field>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand transition-all hover:brightness-110 disabled:opacity-60"
+        >
+          {loading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+          Сохранить пароль
+        </button>
+      </form>
+
+      {success && (
+        <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          {success}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 text-center text-sm text-slate-300">
+        <button type="button" onClick={onBack} className="font-medium text-fuchsia-200 hover:text-white">
+          Вернуться ко входу
         </button>
       </div>
     </div>

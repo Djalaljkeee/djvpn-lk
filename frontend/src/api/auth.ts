@@ -123,6 +123,40 @@ export const registerWithPassword = async (payload: RegisterPayload): Promise<Au
   return { user, email_verification_sent }
 }
 
+// Извлекает поле `msg` из стандартного SHM-конверта {data:[{msg:...}]}.
+// SHM в password-reset флоу отвечает 200 даже на ошибки (Invalid/Expired
+// token), а статус ошибки кладёт в текст msg — HTTP-код тут не индикатор.
+function extractMsg(resp: AxiosResponse): string {
+  const item = unwrapOne<{ msg?: string }>(resp)
+  return item?.msg ?? ''
+}
+
+export const requestPasswordReset = async (loginOrEmail: string): Promise<void> => {
+  // POST /user/passwd/reset — SHM шлёт на привязанную почту письмо со
+  // ссылкой для сброса. Эндпоинт принимает либо email, либо login.
+  // Если строка похожа на email — шлём как email (SHM ищет и по профилю),
+  // иначе как login. SHM всегда отвечает 200, даже если юзера нет или он
+  // заблокирован — наружу не раскрываем существование аккаунта.
+  const value = loginOrEmail.trim()
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  await shm.post('/user/passwd/reset', isEmail ? { email: value } : { login: value })
+}
+
+export const resetPassword = async (token: string, password: string): Promise<void> => {
+  // POST /user/passwd/reset/verify {token, password} — смена пароля по
+  // токену из письма. Успех — msg 'Password reset successful'. Невалидный
+  // или просроченный токен SHM возвращает с тем же 200 в поле msg —
+  // превращаем в ошибку с понятным русским текстом.
+  const resp = await shm.post('/user/passwd/reset/verify', { token, password })
+  const msg = extractMsg(resp)
+  if (msg === 'Invalid token') {
+    throw new Error('Ссылка недействительна. Запросите сброс пароля заново.')
+  }
+  if (msg === 'Token expired') {
+    throw new Error('Срок действия ссылки истёк. Запросите сброс пароля заново.')
+  }
+}
+
 export interface CaptchaData {
   // data: URL с распакованной SVG-картинкой. SHM `/user/captcha` отдаёт
   // НЕ raw image, а JSON вида `{TZ, data: [{image: "<base64-svg>"}]}`,
