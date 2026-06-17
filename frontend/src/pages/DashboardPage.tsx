@@ -5,6 +5,9 @@ import { useDashboard, useDashboardSlice, useInvalidateDashboard } from '../hook
 import SubscriptionHero from '../components/dashboard/SubscriptionHero'
 import ServerStatus from '../components/dashboard/ServerStatus'
 import CompactSubscriptionCard from '../components/dashboard/CompactSubscriptionCard'
+import TrafficMiniCard from '../components/dashboard/TrafficMiniCard'
+import DevicesMiniCard from '../components/dashboard/DevicesMiniCard'
+import RenewalCard from '../components/dashboard/RenewalCard'
 import TrialOfferCard from '../components/dashboard/TrialOfferCard'
 import CartBanner from '../components/CartBanner'
 import { useCart } from '../hooks/useCart'
@@ -71,14 +74,28 @@ export default function DashboardPage() {
       )}
       {activeServices.length > 0 ? (
         <>
-          {activeServices.map(svc => (
-            <CompactSubscriptionCard
-              key={svc.id}
-              svc={svc}
-              remna={remnaMap[svc.id] ?? null}
-              devicesCount={devicesMap[svc.id] ?? 0}
-            />
-          ))}
+          {activeServices.map(svc => {
+            const remna = remnaMap[svc.id] ?? null
+            const devicesCount = devicesMap[svc.id] ?? 0
+            const limitIp = remna?.hwid_device_limit ?? remna?.limit_ip ?? 5
+            return (
+              <div key={svc.id} className="space-y-3">
+                <CompactSubscriptionCard
+                  svc={svc}
+                  remna={remna}
+                  devicesCount={devicesCount}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <TrafficMiniCard
+                    usedBytes={remna?.used_traffic_bytes ?? null}
+                    limitBytes={remna?.traffic_limit_bytes ?? null}
+                  />
+                  <DevicesMiniCard used={devicesCount} limit={limitIp} />
+                </div>
+                <RenewalCard serviceId={svc.id} />
+              </div>
+            )
+          })}
         </>
       ) : trialAvailable ? (
         <TrialOfferCard onActivate={handleActivateTrial} loading={activating} />
