@@ -16,6 +16,7 @@ import CountdownBlock from '../components/dashboard/CountdownBlock'
 import LocationsSection from '../components/dashboard/LocationsSection'
 import CtaBanner from '../components/dashboard/CtaBanner'
 import DeviceList from '../components/dashboard/DeviceList'
+import { resolveDeviceLimit } from '../utils/deviceLimit'
 
 function periodLabel(period: number, type: string) {
   if (type === 'month') return period === 1 ? 'в месяц' : `за ${period} мес`
@@ -565,7 +566,7 @@ export default function ServicesPage() {
 
           <DeviceConnectionCard
             connectedCount={activeDevices.length}
-            limitIp={activeRemna?.hwid_device_limit ?? activeRemna?.limit_ip ?? null}
+            limitIp={resolveDeviceLimit(activeRemna)}
           />
 
           <CountdownBlock expiredAt={expiredAt} />
@@ -582,7 +583,7 @@ export default function ServicesPage() {
             <DeviceList
               devices={activeDevices}
               user_service_id={activeSvc.id}
-              totalLimit={activeRemna?.hwid_device_limit ?? activeRemna?.limit_ip ?? undefined}
+              totalLimit={resolveDeviceLimit(activeRemna)}
               onDeleted={() => { void invalidate() }}
               onDeleteAll={async () => {
                 await deleteAllDevices(activeSvc.id)
