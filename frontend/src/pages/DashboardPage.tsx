@@ -11,6 +11,7 @@ import RenewalCard from '../components/dashboard/RenewalCard'
 import TrialOfferCard from '../components/dashboard/TrialOfferCard'
 import CartBanner from '../components/CartBanner'
 import { useCart } from '../hooks/useCart'
+import { resolveDeviceLimit } from '../utils/deviceLimit'
 
 const TRIAL_SERVICE_ID = 4
 
@@ -77,7 +78,7 @@ export default function DashboardPage() {
           {activeServices.map(svc => {
             const remna = remnaMap[svc.id] ?? null
             const devicesCount = devicesMap[svc.id] ?? 0
-            const limitIp = remna?.hwid_device_limit ?? remna?.limit_ip ?? 5
+            const limitIp = resolveDeviceLimit(remna)
             return (
               <div key={svc.id} className="space-y-3">
                 <CompactSubscriptionCard

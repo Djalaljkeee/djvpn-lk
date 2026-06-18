@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { differenceInCalendarDays, parseISO } from 'date-fns'
 import type { UserService, RemnaUserInfo } from '../../types'
 import SetupGuide from '../SetupGuide'
+import { resolveDeviceLimit } from '../../utils/deviceLimit'
 
 function formatTraffic(bytes: number | null): string {
   if (bytes === null) return '0 МБ'
@@ -36,7 +37,7 @@ export default function CompactSubscriptionCard({ svc, remna }: Props) {
       : 30
   const progress = daysLeft !== null ? Math.min(1, Math.max(0, daysLeft / totalDays)) : 0
 
-  const limitIp = remna?.hwid_device_limit ?? remna?.limit_ip ?? 5
+  const limitIp = resolveDeviceLimit(remna)
   const trafficLimit = remna?.traffic_limit_bytes ?? null
   const trafficLabel = trafficLimit === null || trafficLimit === 0
     ? 'безлимит'

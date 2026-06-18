@@ -1,6 +1,7 @@
 import { differenceInDays, parseISO } from 'date-fns'
 import type { UserService } from '../../types'
 import type { RemnaUserInfo } from '../../types'
+import { resolveDeviceLimit } from '../../utils/deviceLimit'
 
 function formatTrafficLimit(bytes: number | null): string {
   if (bytes === null) return '-- ГБ'
@@ -22,7 +23,10 @@ export default function PlanCard({ svc, remnaInfo }: Props) {
   const trial = isTrial(svc)
   const expiredAt = svc.expired ? parseISO(svc.expired.replace(' ', 'T')) : null
   const daysLeft = expiredAt ? differenceInDays(expiredAt, new Date()) : null
-  const limitIp = remnaInfo?.hwid_device_limit ?? remnaInfo?.limit_ip ?? null
+  // Число — если хоть одно поле лимита положительное; иначе null → «--».
+  const hasLimit =
+    (remnaInfo?.hwid_device_limit ?? 0) > 0 || (remnaInfo?.limit_ip ?? 0) > 0
+  const limitIp = hasLimit ? resolveDeviceLimit(remnaInfo) : null
   const trafficLimit = remnaInfo?.traffic_limit_bytes ?? null
 
   return (
