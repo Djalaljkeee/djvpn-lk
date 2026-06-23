@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { applyPromoCode } from '../api/user'
 import { buildPaymentUrl } from '../api/services'
+import { usePaymentGuard } from '../hooks/usePaymentGuard'
 import { useToast } from '../components/Toast'
 import { useDashboard, useDashboardSlice, useInvalidateDashboard } from '../hooks/useDashboard'
 import type { PromoApplyResult } from '../types'
@@ -35,6 +36,7 @@ export default function PaymentsPage() {
   const suggestedAmounts = [199, 499, 899, 1599]
   const loading = dashLoading && !data
   const topUpRef = useRef<HTMLElement>(null)
+  const { isActive: payActive, activeKey, openPayment } = usePaymentGuard()
 
   const buildPayUrl = (ps: { shm_url?: string; paysystem?: string; name: string }) => {
     const n = Number(amount)
@@ -52,6 +54,23 @@ export default function PaymentsPage() {
       ps: ps.paysystem || ps.name,
       amount: Number.isFinite(n) && n > 0 ? n : 0,
     })
+  }
+
+  // Ключ платёжной сессии: платёжка + сумма. Повторный клик с тем же ключом в
+  // пределах кулдауна переоткрывает ту же вкладку (тот же ts), а не плодит новый
+  // платёж. Клик по другой платёжке/сумме блокируется, пока активна сессия.
+  const payKey = (ps: { paysystem?: string; name: string }) =>
+    `${ps.paysystem || ps.name}:${amount}`
+
+  const handlePay = (ps: { shm_url?: string; paysystem?: string; name: string }) => {
+    const result = openPayment(payKey(ps), () => buildPayUrl(ps))
+    if (result === 'refocus') {
+      show('Оплата уже открыта в новой вкладке', 'info')
+    } else if (result === 'locked') {
+      show('Дождитесь завершения текущей оплаты или обновите страницу', 'info')
+    } else if (result === 'blocked') {
+      show('Браузер заблокировал окно оплаты. Разрешите всплывающие окна и нажмите ещё раз', 'error')
+    }
   }
 
   const forecastEntry = forecast[0] ?? null
@@ -327,25 +346,39 @@ export default function PaymentsPage() {
           </div>
         ) : paySystems.length > 0 ? (
           <div className="space-y-2">
-            {paySystems.map(ps => (
-              <button
-                key={ps.name}
-                onClick={() => window.open(buildPayUrl(ps), '_blank')}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors"
-              >
-                <div className="font-medium text-white">{ps.name}</div>
-                {ps.paysystem && (
-                  <div className="mt-0.5 text-xs text-slate-400">Оплата через {ps.paysystem}</div>
-                )}
-                {(ps.min_sum || ps.max_sum) && (
-                  <div className="mt-0.5 text-xs text-slate-500">
-                    {ps.min_sum ? `${ps.min_sum.toFixed(0)}` : ''}
-                    {ps.min_sum && ps.max_sum ? ' – ' : ''}
-                    {ps.max_sum ? `${ps.max_sum.toFixed(0)} ₽` : '₽'}
-                  </div>
-                )}
-              </button>
-            ))}
+            {/* Активна платёжная сессия: предупреждаем, что вкладка уже открыта,
+                и блокируем остальные платёжки, чтобы не плодить дубли-charge. */}
+            {payActive && (
+              <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                Платёж открыт в новой вкладке. Завершите оплату там и вернитесь — не
+                открывайте оплату повторно, чтобы не создать дубль.
+              </div>
+            )}
+            {paySystems.map(ps => {
+              // Блокируем все платёжки, кроме активной — её оставляем кликабельной
+              // для переоткрытия той же вкладки (refocus, без нового платежа).
+              const disabled = payActive && activeKey !== payKey(ps)
+              return (
+                <button
+                  key={ps.name}
+                  onClick={() => handlePay(ps)}
+                  disabled={disabled}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors disabled:opacity-50 disabled:hover:bg-white/5"
+                >
+                  <div className="font-medium text-white">{ps.name}</div>
+                  {ps.paysystem && (
+                    <div className="mt-0.5 text-xs text-slate-400">Оплата через {ps.paysystem}</div>
+                  )}
+                  {(ps.min_sum || ps.max_sum) && (
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {ps.min_sum ? `${ps.min_sum.toFixed(0)}` : ''}
+                      {ps.min_sum && ps.max_sum ? ' – ' : ''}
+                      {ps.max_sum ? `${ps.max_sum.toFixed(0)} ₽` : '₽'}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
           </div>
         ) : (
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-400">
