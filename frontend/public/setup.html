@@ -193,6 +193,14 @@
     .step-body h4 { margin-bottom: 6px; }
     .step-body p { font-size: 14.5px; margin-bottom: 8px; }
     .step-body p:last-child { margin-bottom: 0; }
+    .step-shot {
+      margin-top: 10px;
+      max-width: 240px; width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      display: block;
+    }
 
     /* ============ BUTTONS / CALLOUTS / PILLS ============ */
     .btn {
@@ -408,6 +416,7 @@
             <li><button class="nav-item nav-leaf" data-section="routers">Роутеры (Keenetic / OpenWRT)</button></li>
             <li><button class="nav-item nav-leaf" data-section="bot">Telegram-бот</button></li>
             <li><button class="nav-item nav-leaf" data-section="cabinet">Личный кабинет</button></li>
+            <li><button class="nav-item nav-leaf" data-section="appstore-region">Смена региона App&nbsp;Store</button></li>
           </ul>
         </li>
 
@@ -510,6 +519,98 @@
         <div class="callout">
           <span class="ico">💡</span>
           <p>Не открылся Happ автоматически? Скопируйте ссылку подписки в ЛК и в Happ нажмите <strong>«+» → «Добавить подписку»</strong>.</p>
+        </div>
+        <div class="callout">
+          <span class="ico">🌍</span>
+          <p>Happ нет в вашем App&nbsp;Store? Смените регион Apple&nbsp;ID на Турцию — <button type="button" class="legal-link" data-jump="appstore-region" style="background:none;border:0;padding:0;cursor:pointer;">пошаговая инструкция</button>.</p>
+        </div>
+      </section>
+
+      <!-- =================== APP STORE REGION =================== -->
+      <section class="panel" id="panel-appstore-region">
+        <h1>Смена региона App&nbsp;Store на Турцию</h1>
+        <p class="lead">Happ Proxy Utility доступен не во всех странах. Если в вашем App&nbsp;Store приложения нет — переключите регион Apple&nbsp;ID на Турцию: после этого Happ установится как обычно, а сама подписка DJ&nbsp;VPN импортируется одной кнопкой из ЛК.</p>
+
+        <h3>Что проверить перед сменой региона</h3>
+        <p>Apple не даст сменить страну, если выполняется хотя бы одно из условий ниже. Сначала разберитесь с этим — иначе мастер просто не пустит дальше.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">!</div>
+            <div class="step-body">
+              <h4>На балансе Apple&nbsp;ID нет остатка</h4>
+              <p>Даже несколько копеек блокируют смену страны. Потратьте баланс в App&nbsp;Store или попросите поддержку Apple обнулить его.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">!</div>
+            <div class="step-body">
+              <h4>Выключен «Семейный доступ»</h4>
+              <p>Если вы — организатор семьи, временно отключите «Семейный доступ» в «Настройки → [Ваше имя] → Семейный доступ».</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">!</div>
+            <div class="step-body">
+              <h4>Нет активных подписок</h4>
+              <p>Apple&nbsp;Music, iCloud+, Apple&nbsp;TV+, любые приложения по подписке — всё нужно отменить заранее в «Настройки → [Ваше имя] → Подписки».</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <span class="ico">📞</span>
+          <p>Поддержка Apple в России: <strong>8-800-555-67-34</strong>, будни 10:00–18:00&nbsp;МСК. Скажите оператору, что хотите обнулить остаток на счёте, чтобы сменить страну — это делается быстро.</p>
+        </div>
+
+        <h3 style="margin-top: 28px;">Как поменять регион на Турцию</h3>
+        <p>Все условия выше выполнены — переходим к смене страны. Откройте «Настройки» на iPhone и следуйте шагам.</p>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h4>Откройте профиль Apple&nbsp;ID</h4>
+              <p>«Настройки» → нажмите на ваше имя сверху → раздел <strong>«Медиаматериалы и покупки»</strong> → <strong>«Просмотреть»</strong>. Откроется экран учётной записи с пунктом «Страна или регион».</p>
+              <img class="step-shot" src="/docs/appstore-region/01-account.png" alt="Экран учётной записи Apple ID с пунктом «Страна или регион»" loading="lazy" />
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h4>Убедитесь, что нет активных покупок и подписок</h4>
+              <p>Прямо в этом экране проверьте разделы <strong>«Покупки»</strong> и <strong>«Подписки»</strong> внизу. Если что-то активно — вернитесь к чеклисту выше.</p>
+              <img class="step-shot" src="/docs/appstore-region/02-account-purchases.png" alt="Разделы «Покупки» и «Подписки» в профиле Apple ID" loading="lazy" />
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h4>Зайдите в App&nbsp;Store текущего региона</h4>
+              <p>Откройте App&nbsp;Store, перейдите на вкладку <strong>«Сегодня»</strong> и тапните иконку профиля в правом верхнем углу — оттуда удобнее всего попасть в настройки аккаунта.</p>
+              <img class="step-shot" src="/docs/appstore-region/03-appstore-today.png" alt="Главная App Store «Сегодня» с иконкой профиля" loading="lazy" />
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <h4>Выберите «Страна или регион» → Турция</h4>
+              <p>Нажмите <strong>«Страна или регион»</strong> → <strong>«Сменить страну или регион»</strong> → выберите <strong>Türkiye</strong>. Заполните форму: способ оплаты (можно <strong>None</strong>, если подходит — но в ряде случаев Apple требует карту), имя, фамилию и турецкий адрес. Можно использовать публичный адрес отеля или ТРЦ в Стамбуле.</p>
+              <img class="step-shot" src="/docs/appstore-region/04-country-form.png" alt="Форма ввода адреса и способа оплаты при смене региона на Турцию" loading="lazy" />
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <h4>Примите положения и условия</h4>
+              <p>На последнем экране откроются «Положения и условия» на турецком — нажмите <strong>«Принять»</strong> в правом верхнем углу. App&nbsp;Store перезагрузится уже в турецкой версии — теперь можно ставить Happ.</p>
+              <img class="step-shot" src="/docs/appstore-region/05-terms.png" alt="Экран «Положения и условия» Apple на турецком языке" loading="lazy" />
+            </div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <span class="ico">✅</span>
+          <p>Регион переключился? Возвращайтесь к разделу <button type="button" class="legal-link" data-jump="install-ios" style="background:none;border:0;padding:0;cursor:pointer;">«Установка на&nbsp;iOS»</button> — Happ теперь доступен в App&nbsp;Store, дальше всё как обычно.</p>
         </div>
       </section>
 
