@@ -11,7 +11,7 @@ from fastapi import Request
 HAPP_DOWNLOADS = {
     "ios":     "https://apps.apple.com/ru/app/happ-proxy-utility/id6783623643",
     "android": "https://play.google.com/store/apps/details?id=com.happ.vpn",
-    "windows": "https://github.com/hiddify/hiddify-app/releases/latest",
+    "windows": "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe",
     "macos":   "https://apps.apple.com/ru/app/happ-proxy-utility/id6783623643",
 }
 
