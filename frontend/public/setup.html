@@ -433,7 +433,7 @@
       <!-- =================== HOME =================== -->
       <section class="panel is-active" id="panel-home">
         <h1>Инструкции DJ&nbsp;VPN</h1>
-        <p class="lead">Пошаговые гайды по установке Happ и Hiddify на любое устройство, советы по роутерам и ответы на частые вопросы. Выберите устройство — мы откроем инструкцию.</p>
+        <p class="lead">Пошаговые гайды по установке Happ на любое устройство, советы по роутерам и ответы на частые вопросы. Выберите устройство — мы откроем инструкцию.</p>
 
         <div class="home-grid">
           <button class="home-card" data-jump="install-ios">
@@ -454,7 +454,7 @@
           <button class="home-card" data-jump="install-windows">
             <div class="home-ico">🪟</div>
             <h4>Windows</h4>
-            <p>Hiddify-app, Tun-режим из коробки</p>
+            <p>Happ Proxy Utility, авто-импорт подписки</p>
           </button>
           <button class="home-card" data-jump="install-tv-apple">
             <div class="home-ico">📺</div>
@@ -698,15 +698,15 @@
       <!-- =================== WINDOWS =================== -->
       <section class="panel" id="panel-install-windows">
         <h1>Установка на Windows</h1>
-        <p class="lead">Под Windows DJ&nbsp;VPN использует клиент <strong>Hiddify</strong> — он понимает ту же ссылку-подписку, что и Happ на других платформах.</p>
+        <p class="lead">Под Windows DJ&nbsp;VPN использует десктопный клиент <strong>Happ Proxy Utility</strong> — тот же клиент и та же ссылка-подписка, что и на других платформах.</p>
 
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-body">
-              <h4>Скачайте Hiddify для Windows</h4>
-              <p>Откройте страницу релизов и скачайте файл <strong>Hiddify-Windows-Setup-x64.exe</strong> (для Windows&nbsp;10/11).</p>
-              <a class="btn btn-primary" href="https://github.com/hiddify/hiddify-app/releases/latest" target="_blank" rel="noopener">Скачать с GitHub</a>
+              <h4>Скачайте Happ для Windows</h4>
+              <p>Скачайте установщик <strong>setup-Happ.x64.exe</strong> (для Windows&nbsp;10/11).</p>
+              <a class="btn btn-primary" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe" target="_blank" rel="noopener">Скачать с GitHub</a>
             </div>
           </div>
           <div class="step">
@@ -720,14 +720,14 @@
             <div class="step-num">3</div>
             <div class="step-body">
               <h4>Импортируйте подписку</h4>
-              <p>В ЛК нажмите <strong>«Настроить подключение»</strong> — Hiddify откроется через системный обработчик ссылок и автоматически добавит ваш ключ. Если этого не произошло — скопируйте ссылку и в Hiddify нажмите <strong>«+ Добавить профиль» → «Из буфера обмена»</strong>.</p>
+              <p>В ЛК нажмите <strong>«Настроить подключение»</strong> — Happ откроется через системный обработчик ссылок и автоматически добавит ваш ключ. Если этого не произошло — скопируйте ссылку и в Happ нажмите <strong>«+» → «Добавить подписку»</strong>.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">4</div>
             <div class="step-body">
-              <h4>Включите Tun-режим и подключитесь</h4>
-              <p>В Hiddify включите <strong>Tun&nbsp;Mode</strong> — трафик всех приложений пойдёт через VPN без ручной настройки прокси. Нажмите большую кнопку «Connect».</p>
+              <h4>Подключитесь</h4>
+              <p>В Happ выберите сервер и нажмите большую кнопку подключения — трафик пойдёт через VPN. Иконка VPN в системном трее подтвердит, что соединение активно.</p>
             </div>
           </div>
         </div>
@@ -999,7 +999,7 @@
         </details>
         <details class="faq-item">
           <summary>Кнопка «Настроить подключение» не открывает приложение</summary>
-          <p>Скорее всего, клиент ещё не установлен — сначала поставьте Happ (мобильные/macOS) или Hiddify (Windows), потом нажимайте кнопку. На Windows проверьте, что в системе разрешён обработчик ссылок <code>hiddify://</code> — приложение предложит назначить себя при первом запуске.</p>
+          <p>Скорее всего, клиент ещё не установлен — сначала поставьте Happ (мобильные/macOS/Windows), потом нажимайте кнопку. Проверьте, что в системе разрешён обработчик ссылок <code>happ://</code> — приложение предложит назначить себя при первом запуске.</p>
         </details>
         <details class="faq-item">
           <summary>YouTube тормозит, страницы открываются медленно</summary>
@@ -1026,7 +1026,7 @@
       <!-- =================== UPDATE SUBSCRIPTION =================== -->
       <section class="panel" id="panel-update">
         <h1>Обновление подписки в клиенте</h1>
-        <p class="lead">Когда DJ&nbsp;VPN меняет список серверов (новые точки, ротация IP), ключ в Happ/Hiddify нужно обновить — это занимает 5&nbsp;секунд.</p>
+        <p class="lead">Когда DJ&nbsp;VPN меняет список серверов (новые точки, ротация IP), ключ в Happ нужно обновить — это занимает 5&nbsp;секунд.</p>
 
         <div class="steps">
           <div class="step">
@@ -1039,8 +1039,8 @@
           <div class="step">
             <div class="step-num">2</div>
             <div class="step-body">
-              <h4>Hiddify (Windows)</h4>
-              <p>В Hiddify откройте список профилей → правый клик по подписке DJ&nbsp;VPN → <strong>«Update profile»</strong>. Программа подтянет новый список серверов.</p>
+              <h4>Happ (Windows)</h4>
+              <p>В Happ откройте список подписок → правый клик по подписке DJ&nbsp;VPN → <strong>«Обновить»</strong>. Программа подтянет новый список серверов.</p>
             </div>
           </div>
           <div class="step">
