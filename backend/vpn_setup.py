@@ -9,10 +9,10 @@ from fastapi import Request
 
 
 HAPP_DOWNLOADS = {
-    "ios":     "https://apps.apple.com/app/happ/id6744897585",
+    "ios":     "https://apps.apple.com/ru/app/happ-proxy-utility/id6783623643",
     "android": "https://play.google.com/store/apps/details?id=com.happ.vpn",
     "windows": "https://github.com/hiddify/hiddify-app/releases/latest",
-    "macos":   "https://apps.apple.com/app/happ/id6744897585",
+    "macos":   "https://apps.apple.com/ru/app/happ-proxy-utility/id6783623643",
 }
 
 
