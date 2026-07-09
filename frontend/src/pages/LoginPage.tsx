@@ -40,6 +40,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [botUsername, setBotUsername] = useState('')
+  // Виджет telegram.org тоже может быть заблокирован в РФ — если он не
+  // отрисовался за таймаут, показываем подсказку вместо пустой «коробки».
+  const [widgetFailed, setWidgetFailed] = useState(false)
 
   // Captcha state
   const [captcha, setCaptcha] = useState<CaptchaData | null>(null)
@@ -112,6 +115,7 @@ export default function LoginPage() {
     if (isInTelegramWebApp) return
     if (!botUsername || !tgRef.current) return
     tgRef.current.innerHTML = ''
+    setWidgetFailed(false)
     window.onTelegramAuth = async (tgUser) => {
       setLoading(true)
       setError('')
@@ -136,8 +140,16 @@ export default function LoginPage() {
     script.setAttribute('data-onauth', 'onTelegramAuth(user)')
     script.setAttribute('data-request-access', 'write')
     script.async = true
+    script.onerror = () => setWidgetFailed(true)
     tgRef.current.appendChild(script)
+    // Скрипт грузится async, поэтому onerror при DPI-блокировке может не
+    // сработать (запрос «висит»). Страхуемся таймаутом: если за 5с в
+    // контейнере не появился iframe виджета — считаем Telegram недоступным.
+    const timeoutId = window.setTimeout(() => {
+      if (!tgRef.current?.querySelector('iframe')) setWidgetFailed(true)
+    }, 5000)
     return () => {
+      window.clearTimeout(timeoutId)
       window.onTelegramAuth = undefined
       if (tgRef.current) tgRef.current.innerHTML = ''
     }
@@ -460,7 +472,13 @@ export default function LoginPage() {
                     <>
                       {botUsername ? (
                         <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <div ref={tgRef} className="flex justify-center" />
+                          <div ref={tgRef} className={`flex justify-center ${widgetFailed ? 'hidden' : ''}`} />
+                          {widgetFailed && (
+                            <p className="px-1 py-2 text-center text-xs leading-5 text-slate-400">
+                              Вход через Telegram сейчас недоступен (возможно, он заблокирован
+                              вашим провайдером). Войдите по логину и паролю ниже.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className="h-14 rounded-2xl bg-white/5 animate-pulse" />
