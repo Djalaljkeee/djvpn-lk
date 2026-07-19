@@ -263,7 +263,7 @@ export default function LoginPage() {
       setVerifySuccess('Email успешно подтверждён')
       setTimeout(() => navigate('/'), 800)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Неверный код подтверждения')
+      setError(err?.response?.data?.detail || err?.message || 'Неверный код подтверждения')
     } finally {
       setLoading(false)
     }
@@ -273,7 +273,7 @@ export default function LoginPage() {
     setVerifyResending(true)
     setError('')
     try {
-      await requestEmailVerification()
+      await requestEmailVerification(verifyEmail)
       setVerifySuccess('Письмо с кодом отправлено повторно')
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Не удалось отправить письмо')
