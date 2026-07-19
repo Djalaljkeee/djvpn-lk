@@ -161,7 +161,7 @@ export default function ProfilePage() {
   const handleResendVerification = async () => {
     setVerifyResending(true)
     try {
-      await requestEmailVerification()
+      await requestEmailVerification(email)
       show('Письмо с кодом отправлено', 'success')
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Не удалось отправить письмо'
@@ -187,7 +187,7 @@ export default function ProfilePage() {
       // Инвалидируем дашборд, чтобы кешированные данные не перезаписали статус.
       invalidateDashboard()
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || 'Неверный код'
+      const msg = e?.response?.data?.detail || e?.message || 'Неверный код'
       show(typeof msg === 'string' ? msg : 'Неверный код', 'error')
     } finally {
       setVerifyBusy(false)

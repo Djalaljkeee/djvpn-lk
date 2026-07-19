@@ -1,3 +1,4 @@
+import type { AxiosResponse } from 'axios'
 import api, { shm, unwrap, unwrapOne } from './client'
 import type {
   User, UserService, Payment, PromoApplyResult, Referral, ReferralStats,
@@ -199,6 +200,16 @@ export const fetchForecast = async (): Promise<ForecastEntry[]> => {
   return unwrap<ForecastEntry>(resp)
 }
 
+// SHM email-эндпоинты (verify_email) отдают статус в поле `msg` стандартного
+// конверта {data:[{msg}]}. Достаём его через unwrapOne с фолбэком на верхний
+// уровень тела — HTTP-код у SHM всегда 200, ориентироваться надо на msg.
+function extractEmailMsg(resp: AxiosResponse): string {
+  const item = unwrapOne<{ msg?: string }>(resp)
+  if (item?.msg) return item.msg
+  const top = resp.data
+  return top && typeof top === 'object' && typeof top.msg === 'string' ? top.msg : ''
+}
+
 export const updateEmail = async (email: string): Promise<{ ok: boolean; email: string; verification_sent?: boolean }> => {
   await shm.put('/user/email', { email })
   let verification_sent = false
@@ -211,25 +222,39 @@ export const updateEmail = async (email: string): Promise<{ ok: boolean; email: 
   return { ok: true, email, verification_sent }
 }
 
-export const requestEmailVerification = async (): Promise<{ ok: boolean; email: string; message: string }> => {
-  // Перевыпуск кода: POST /user/email (тело пустое — email возьмётся из профиля).
-  const resp = await shm.post('/user/email', {})
-  const body = resp.data
-  return {
-    ok: true,
-    email: body?.email || '',
-    message: typeof body === 'string' ? body : (body?.message || 'Код отправлен повторно'),
+export const requestEmailVerification = async (email: string): Promise<{ ok: boolean; email: string; message: string }> => {
+  // Перевыпуск кода. SHM-метод verify_email ветвится по телу: если пришёл
+  // `email` — он (пере)генерирует 6-значный код и шлёт письмо. Пустое тело
+  // ушло бы в ветку «ничего не пришло» (msg 'Email or code required') и код
+  // НЕ отправился бы — поэтому обязательно передаём email профиля.
+  const resp = await shm.post('/user/email', { email })
+  const msg = extractEmailMsg(resp)
+  if (msg && msg !== 'Verification code sent') {
+    // 'Email mismatch...', 'is not email' и пр. — SHM отвечает 200, статус в msg.
+    throw new Error('Не удалось отправить код подтверждения')
   }
+  return { ok: true, email, message: 'Код отправлен повторно' }
 }
 
-export const verifyEmailToken = async (token: string): Promise<{ ok: boolean; verified: boolean; message: string }> => {
-  const resp = await shm.post('/user/email/verify', { token })
-  const body = resp.data
-  return {
-    ok: true,
-    verified: true,
-    message: typeof body === 'string' ? body : (body?.message || 'Email подтверждён'),
+export const verifyEmailToken = async (code: string): Promise<{ ok: boolean; verified: boolean; message: string }> => {
+  // SHM: POST /user/email/verify → метод verify_email. Ключевой момент —
+  // слать ТОЛЬКО `{code}` без `email`: при наличии `email` метод уходит в
+  // ветку отправки кода и просто перевыпускает его, а не проверяет.
+  // Как и в password-reset, SHM ВСЕГДА отвечает 200, реальный статус — в
+  // data[0].msg. Поэтому нельзя слепо возвращать verified:true — читаем msg.
+  const resp = await shm.post('/user/email/verify', { code })
+  const msg = extractEmailMsg(resp)
+  if (msg === 'Email verified successfully') {
+    return { ok: true, verified: true, message: 'Email подтверждён' }
   }
+  if (msg === 'Invalid code') {
+    throw new Error('Неверный код подтверждения')
+  }
+  if (msg === 'Code expired') {
+    throw new Error('Срок действия кода истёк. Запросите код заново.')
+  }
+  // 'Email or code required', пустой msg и прочее — код не приняли.
+  throw new Error('Не удалось подтвердить email. Проверьте код и попробуйте снова.')
 }
 
 export const changePassword = async (password: string): Promise<{ ok: boolean }> => {

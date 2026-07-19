@@ -494,3 +494,26 @@
 - Урок на будущее: прежде чем планировать дедуп «в прокси», убедись, что спорный
   запрос вообще проходит через прокси. Здесь сабагент предложил дедуп в
   `shm_proxy.py` — но платёж туда не заходит, решение было бы инертным.
+
+## SHM email-верификация: поле `code` без `email`, статус в msg
+
+- Роуты `POST /user/email` и `POST /user/email/verify` ведут в ОДИН метод
+  `verify_email` (`danuk/shm`, `app/lib/Core/User.pm`), который ветвится по телу:
+  - пришёл **`email`** → (пере)шлёт 6-значный код (TTL 10 мин),
+    `msg: 'Verification code sent'`. Ветка всегда `return` — до проверки кода не
+    доходит.
+  - пришёл **`code`** (и `email` отсутствует) → сверяет: успех
+    `msg: 'Email verified successfully'` (+ставит `email_verified=1`), иначе
+    `'Invalid code'` / `'Code expired'`.
+  - ничего → `'Email or code required'`.
+- **Грабли-1**: при верификации слать ТОЛЬКО `{code}` без `email` — иначе метод
+  уходит в email-ветку и просто перевыпускает код, а не проверяет его.
+- **Грабли-2**: поле называется `code`, НЕ `token` (в отличие от password-reset,
+  где `token`). Старый фронт слал `{token}` → SHM видел пустое тело →
+  `'Email or code required'`, но код слепо рапортовал `verified:true`. Симптом:
+  UI «подтверждён», а в биллинге email не подтверждён.
+- **Грабли-3**: как и в password-reset, SHM отвечает **200 на любой исход** —
+  статус только в `data[0].msg`. Нельзя судить по HTTP-коду; успех = точное
+  совпадение msg. Хелпер `extractEmailMsg` в `api/user.ts` разбирает конверт.
+- Resend кода (`requestEmailVerification`) обязан слать `{email}`, пустое тело
+  код не отправляет. Регресс-тест: `frontend/src/test/emailVerify.test.ts`.
