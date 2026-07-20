@@ -114,14 +114,25 @@ export const registerWithPassword = async (payload: RegisterPayload): Promise<Au
   const authResp = await shm.post('/user/auth', { login: payload.login, password: payload.password })
   captureSessionFromBody(authResp)
 
-  // Просим SHM отправить письмо с кодом верификации email.
+  // Верификация email. КРИТИЧНО: публичная регистрация (PUT /user →
+  // reg_api_safe) НЕ сохраняет email — SHM принимает только login/password/
+  // partner_id, а поле email молча игнорирует. Поэтому перед отправкой кода
+  // email надо явно привязать через PUT /user/email (set_email), иначе
+  // POST /user/email уходит в ветку с проверкой current_email, не находит
+  // его и возвращает 'Email mismatch' (HTTP 200) — код НЕ отправляется и
+  // верифицировать нечего. Это ровно та последовательность, что работает в
+  // профиле (updateEmail: PUT /user/email → POST /user/email).
   let email_verification_sent = false
   if (payload.email) {
     try {
-      await shm.post('/user/email', { email: payload.email })
-      email_verification_sent = true
+      await shm.put('/user/email', { email: payload.email })       // set_email — сохранить email
+      const resp = await shm.post('/user/email', { email: payload.email })  // отправить код
+      const msg = unwrapOne<{ msg?: string }>(resp)?.msg ?? resp.data?.msg
+      // Успех SHM отдаёт как msg 'Verification code sent' (HTTP всегда 200).
+      email_verification_sent = msg === 'Verification code sent'
     } catch {
-      // SHM может не уметь рассылать письма — это не блокирует регистрацию.
+      // Сеть/неожиданный сбой — не блокируем регистрацию, юзер сможет
+      // подтвердить email позже из профиля.
     }
   }
 

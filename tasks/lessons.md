@@ -517,3 +517,24 @@
   совпадение msg. Хелпер `extractEmailMsg` в `api/user.ts` разбирает конверт.
 - Resend кода (`requestEmailVerification`) обязан слать `{email}`, пустое тело
   код не отправляет. Регресс-тест: `frontend/src/test/emailVerify.test.ts`.
+
+## SHM регистрация НЕ сохраняет email — нужен явный set_email
+
+- Корень бага «при регистрации почта не подтверждается» (профиль при этом
+  работал): `PUT /user` ведёт в `reg_api_safe` (`app/lib/Core/User.pm`),
+  который принимает ТОЛЬКО `login`/`password`/`partner_id`/`captcha_*` и
+  **молча игнорирует `email`**. Поле `email` в теле `PUT /user` никуда не
+  сохраняется.
+- Поэтому email надо привязывать отдельным вызовом `PUT /user/email`
+  (`set_email`): он кладёт `email` и `email_verified=0` в settings и ставит
+  `login2=email`. Только после этого `POST /user/email` (send-ветка
+  `verify_email`) находит `current_email`, совпадает и шлёт код; иначе —
+  `'Email mismatch. Use the email shown in your profile.'` (HTTP 200) и код
+  НЕ уходит.
+- Профиль работал именно потому, что `updateEmail` делает правильную
+  последовательность `PUT /user/email` → `POST /user/email`. Регистрация же
+  слала только `POST /user/email` после `PUT /user` — и падала в mismatch.
+- Фикс: в `registerWithPassword` (`api/auth.ts`) перед отправкой кода звать
+  `PUT /user/email {email}`, как в профиле. `email_verification_sent` ставить
+  только на msg `'Verification code sent'`, а не слепо true.
+- Регресс-тест: `frontend/src/test/authRegister.test.ts` (порядок PUT→POST).
