@@ -25,8 +25,16 @@ import {
  */
 
 const LENGTH = 6
-const RED = '#ff5b5b'
+// Палитра под фирменный фиолет ЛК (см. tailwind.config.js: brand/surface).
+// ACCENT — неоновая магента brand-400, штатный цвет ввода и проверки;
+// DANGER — красный только для ошибки, чтобы она читалась как ошибка;
+// GREEN — успех.
+const ACCENT = '#f46ed8'
+const ACCENT_GLOW = 'rgba(244,110,216,.35)'
+const DANGER = '#ff5b5b'
+const DANGER_GLOW = 'rgba(255,91,91,.35)'
 const GREEN = '#1ED760'
+const GREEN_GLOW = 'rgba(30,215,96,.45)'
 
 const SPRING_BORDER: Transition = { type: 'spring', stiffness: 380, damping: 25 }
 const SPRING_SOFT: Transition = { type: 'spring', stiffness: 120, damping: 12 }
@@ -187,13 +195,20 @@ export default function OtpVerify({
         </AnimatePresence>
       </div>
 
-      {/* Тёмная сцена, чтобы неон читался поверх фиолетовой карточки. */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0e0d10] p-5">
-        {/* Мягкая зелёная заливка фона после успеха (не более ~10%). */}
+      {/* Утопленная панель в тон карточки: чуть темнее стекла, но того же
+          фиолетового семейства (surface-0), чтобы не выглядеть чёрной дырой. */}
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-surface-0/70 p-5">
+        {/* Мягкое зелёное свечение после успеха. Именно радиальный градиент, а
+            не сплошная заливка: плашка остаётся фиолетовой в тон карточки, а
+            зелёным «дышит» только центр вокруг токена. */}
         <motion.div
           className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(circle at 50% 45%, rgba(30,215,96,0.16), rgba(30,215,96,0.05) 45%, transparent 70%)',
+          }}
           initial={false}
-          animate={{ backgroundColor: revealed ? 'rgba(30,215,96,0.10)' : 'rgba(30,215,96,0)' }}
+          animate={{ opacity: revealed ? 1 : 0 }}
           transition={{ duration: 0.8 }}
         />
 
@@ -328,10 +343,10 @@ const Cell = ({
     >
       {/* База ячейки + очень слабое внутреннее свечение; при ошибке тон краснеет. */}
       <div
-        className={`absolute inset-0 rounded-2xl border bg-[#151315] ${
+        className={`absolute inset-0 rounded-2xl border bg-surface-2 ${
           error ? 'border-rose-500/40' : 'border-white/10'
         }`}
-        style={{ boxShadow: 'inset 0 0 18px rgba(255,255,255,0.03)' }}
+        style={{ boxShadow: 'inset 0 0 18px rgba(255,210,248,0.04)' }}
       />
       {/* Перетекающая неоновая рамка (shared layout). */}
       {active && (
@@ -339,8 +354,8 @@ const Cell = ({
           layoutId="otp-active-border"
           className="absolute inset-0 rounded-2xl border-2"
           style={{
-            borderColor: RED,
-            boxShadow: '0 0 40px rgba(255,91,91,.35)',
+            borderColor: error ? DANGER : ACCENT,
+            boxShadow: `0 0 40px ${error ? DANGER_GLOW : ACCENT_GLOW}`,
             willChange: 'transform',
           }}
           transition={SPRING_BORDER}
@@ -357,7 +372,7 @@ const Cell = ({
         autoComplete="one-time-code"
         maxLength={1}
         aria-label="Цифра кода"
-        className="absolute inset-0 h-full w-full rounded-2xl bg-transparent text-center text-2xl font-semibold text-white caret-[#ff5b5b] outline-none"
+        className="absolute inset-0 h-full w-full rounded-2xl bg-transparent text-center text-2xl font-semibold text-white caret-[#f46ed8] outline-none"
       />
       {/* Появление цифры: scale 0.6→1, fade, лёгкий bounce. */}
       <AnimatePresence>
@@ -423,7 +438,7 @@ function VerifyStage({
   }, [reduce])
 
   const verified = succeeded && stage === 'ring' && ringDrawn
-  const glowColor = verified ? 'rgba(30,215,96,.45)' : 'rgba(255,91,91,.35)'
+  const glowColor = verified ? GREEN_GLOW : ACCENT_GLOW
   const glowSize = verified ? '50px' : '40px'
 
   // Сообщаем родителю ровно в момент раскрытия — синхронно с галочкой.
@@ -471,7 +486,7 @@ function VerifyStage({
               strokeWidth="3"
               strokeLinecap="round"
               initial={{ pathLength: reduce ? 1 : 0 }}
-              animate={{ pathLength: 1, stroke: verified ? GREEN : RED }}
+              animate={{ pathLength: 1, stroke: verified ? GREEN : ACCENT }}
               transition={{
                 pathLength: { duration: reduce ? 0 : 0.7, ease: 'easeInOut' },
                 stroke: { duration: 0.6 },
@@ -492,10 +507,10 @@ function VerifyStage({
               className="pointer-events-none absolute inset-0 flex items-center justify-center"
             >
               <motion.div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 bg-[#151315] text-2xl font-semibold text-white"
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 bg-surface-2 text-2xl font-semibold text-white"
                 style={{
-                  borderColor: RED,
-                  boxShadow: '0 0 40px rgba(255,91,91,.35)',
+                  borderColor: ACCENT,
+                  boxShadow: `0 0 40px ${ACCENT_GLOW}`,
                   willChange: 'transform',
                 }}
                 initial={{ x: 0, y: 0, rotate: 0, scale: 0.9 }}
@@ -522,12 +537,12 @@ function VerifyStage({
       {showToken && (
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div
-            className="flex h-[92px] w-[92px] items-center justify-center rounded-[26px] border-2 bg-[#151315]"
+            className="flex h-[92px] w-[92px] items-center justify-center rounded-[26px] border-2 bg-surface-2"
             style={{ willChange: 'transform' }}
             initial={{ scale: reduce ? 1 : 0.85 }}
             animate={{
               scale: [0.85, 1.04, 1],
-              borderColor: verified ? GREEN : RED,
+              borderColor: verified ? GREEN : ACCENT,
               boxShadow: `0 0 ${glowSize} ${glowColor}`,
             }}
             transition={{ scale: SPRING_SOFT, borderColor: { duration: 0.6 } }}

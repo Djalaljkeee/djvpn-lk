@@ -5,6 +5,7 @@ import {
   loginWithPassword,
   loginWithTelegram,
   registerWithPassword,
+  RegisterError,
   requestPasswordReset,
   resetPassword,
   fetchCaptcha,
@@ -235,7 +236,14 @@ export default function LoginPage() {
         }
       }
     } catch (e: any) {
-      setError(e?.response?.data?.detail || (mode === 'login' ? 'Неверный логин или пароль' : 'Ошибка регистрации'))
+      // RegisterError уже несёт готовый текст для пользователя
+      // (например, «email уже зарегистрирован») — не затираем его заглушкой.
+      setError(
+        e instanceof RegisterError
+          ? e.message
+          : e?.response?.data?.detail ||
+              (mode === 'login' ? 'Неверный логин или пароль' : 'Ошибка регистрации'),
+      )
       if (mode === 'register') loadCaptcha()  // обновляем капчу после ошибки
     } finally {
       setLoading(false)

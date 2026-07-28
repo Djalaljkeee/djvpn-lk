@@ -11,7 +11,7 @@ vi.mock('../api/client', async (importOriginal) => {
   return { ...actual, shm: { ...actual.shm, put, post, get } }
 })
 
-import { registerWithPassword } from '../api/auth'
+import { registerWithPassword, RegisterError } from '../api/auth'
 
 const envelope = (obj: unknown) => ({ data: { data: [obj], status: 200 } })
 
@@ -62,5 +62,62 @@ describe('registerWithPassword — привязка email', () => {
     })
     const res = await registerWithPassword({ login: 'a@b.co', password: 'x', email: 'a@b.co' })
     expect(res.email_verification_sent).toBe(false)
+  })
+})
+
+describe('registerWithPassword — email уже занят', () => {
+  beforeEach(() => {
+    put.mockReset(); post.mockReset(); get.mockReset()
+    put.mockResolvedValue(envelope({}))
+    post.mockResolvedValue(envelope({}))
+    get.mockResolvedValue(envelope({}))
+  })
+
+  const register = () =>
+    registerWithPassword({ login: 'a@b.co', password: 'x', email: 'a@b.co' })
+
+  // SHM отдаёт отказ то исключением, то 200 с текстом в msg — покрываем оба.
+  const rejections: Array<[string, unknown]> = [
+    ['HTTP 409', { response: { status: 409, data: {} } }],
+    ['detail', { response: { status: 400, data: { detail: 'User already exists' } } }],
+    ['error', { response: { status: 400, data: { error: 'duplicate key value' } } }],
+    ['msg в конверте', { response: { status: 400, data: { data: [{ msg: 'login is not unique' }] } } }],
+    ['строкой', { response: { status: 500, data: 'Пользователь уже существует' } }],
+  ]
+
+  it.each(rejections)('кидает RegisterError про занятый email (%s)', async (_name, rejection) => {
+    put.mockImplementation((url: string) =>
+      url === '/user' ? Promise.reject(rejection) : Promise.resolve(envelope({})),
+    )
+    await expect(register()).rejects.toBeInstanceOf(RegisterError)
+    await expect(register()).rejects.toThrow('уже зарегистрирован')
+  })
+
+  it('ловит отказ, отданный как HTTP 200 с msg (обычная манера SHM)', async () => {
+    put.mockImplementation((url: string) =>
+      url === '/user'
+        ? Promise.resolve(envelope({ msg: 'User already registered' }))
+        : Promise.resolve(envelope({})),
+    )
+    await expect(register()).rejects.toThrow('уже зарегистрирован')
+    // до создания сессии дело дойти не должно
+    expect(post).not.toHaveBeenCalledWith('/user/auth', expect.anything())
+  })
+
+  it('не подменяет прочие ошибки (сеть/500) сообщением про email', async () => {
+    const boom = { response: { status: 500, data: { detail: 'Internal error' } } }
+    put.mockImplementation((url: string) =>
+      url === '/user' ? Promise.reject(boom) : Promise.resolve(envelope({})),
+    )
+    await expect(register()).rejects.not.toBeInstanceOf(RegisterError)
+  })
+
+  it('«user does not exist» не считается дублем', async () => {
+    put.mockImplementation((url: string) =>
+      url === '/user'
+        ? Promise.reject({ response: { status: 400, data: { detail: 'user does not exist' } } })
+        : Promise.resolve(envelope({})),
+    )
+    await expect(register()).rejects.not.toBeInstanceOf(RegisterError)
   })
 })

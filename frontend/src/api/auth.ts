@@ -90,6 +90,47 @@ export const loginWithWebApp = async (initData: string, partnerId?: number): Pro
   return { user }
 }
 
+/** Ошибка регистрации с готовым текстом для пользователя — показываем как есть. */
+export class RegisterError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RegisterError'
+  }
+}
+
+// Логин при регистрации в ЛК — это сам email (LoginPage шлёт login = email),
+// поэтому повторная регистрация на занятую почту отваливается уже на создании
+// пользователя. SHM сообщает об этом непредсказуемо: то HTTP 409, то текст в
+// detail/error/msg, то (по своей привычке, см. passwd/reset и verify_email)
+// HTTP 200 с описанием отказа в data[0].msg — проверяем и ответ, и исключение.
+const USER_EXISTS_MARKERS = [
+  'already exist',
+  'already registered',
+  'already in use',
+  'duplicate',
+  'unique',
+  'уже сущест',
+  'уже зарегистр',
+  'занят',
+]
+
+const EMAIL_TAKEN_MESSAGE =
+  'Пользователь с таким email уже зарегистрирован. Войдите или восстановите пароль.'
+
+function looksLikeUserExists(text: string): boolean {
+  const t = text.toLowerCase()
+  return USER_EXISTS_MARKERS.some(marker => t.includes(marker))
+}
+
+/** Достаёт текст ошибки из всех форматов, которые отдают SHM и наш прокси. */
+function errorText(err: any): string {
+  const data = err?.response?.data
+  if (typeof data === 'string') return data
+  return [data?.detail, data?.error, data?.msg, data?.message, data?.data?.[0]?.msg]
+    .filter(v => typeof v === 'string')
+    .join(' ')
+}
+
 export const registerWithPassword = async (payload: RegisterPayload): Promise<AuthResult> => {
   // Публичная регистрация: PUT /user. SHM требует cookie session_id из
   // предварительного GET /user/captcha — withCredentials прокидывает её
@@ -110,7 +151,20 @@ export const registerWithPassword = async (payload: RegisterPayload): Promise<Au
     body.captcha = payload.captcha_code
     body.captcha_code = payload.captcha_code
   }
-  await shm.put('/user', body)
+  let createResp: AxiosResponse
+  try {
+    createResp = await shm.put('/user', body)
+  } catch (err: any) {
+    if (err?.response?.status === 409 || looksLikeUserExists(errorText(err))) {
+      throw new RegisterError(EMAIL_TAKEN_MESSAGE)
+    }
+    throw err
+  }
+  // SHM умеет ответить 200 и на отказ — реальный статус лежит в msg.
+  if (looksLikeUserExists(extractMsg(createResp))) {
+    throw new RegisterError(EMAIL_TAKEN_MESSAGE)
+  }
+
   const authResp = await shm.post('/user/auth', { login: payload.login, password: payload.password })
   captureSessionFromBody(authResp)
 
