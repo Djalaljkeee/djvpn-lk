@@ -13,6 +13,7 @@ import {
 import { verifyEmailToken, requestEmailVerification, fetchProfile } from '../api/user'
 import { fetchConfig } from '../api/services'
 import { BrandLogo } from '../components/BrandLogo'
+import OtpVerify from '../components/OtpVerify'
 import { clearRefId, getRefId } from '../utils/referral'
 import { getPhotoUrlFromTelegramUser } from '../utils/telegram'
 
@@ -52,7 +53,6 @@ export default function LoginPage() {
 
   // Email verification step state
   const [verifyEmail, setVerifyEmail] = useState('')
-  const [verifyCode, setVerifyCode] = useState('')
   const [verifyResending, setVerifyResending] = useState(false)
   const [verifySuccess, setVerifySuccess] = useState('')
 
@@ -168,7 +168,6 @@ export default function LoginPage() {
       setEmail('')
       setConfirmPw('')
       setVerifyEmail('')
-      setVerifyCode('')
       setAgreePersonalData(false)
       setAgreeTerms(false)
     }
@@ -230,7 +229,6 @@ export default function LoginPage() {
         clearRefId()
         if (result.email_verification_sent) {
           setVerifyEmail(trimmedEmail)
-          setVerifyCode('')
           setMode('verify-email')
         } else {
           navigate('/')
@@ -244,24 +242,25 @@ export default function LoginPage() {
     }
   }
 
-  const handleVerifyEmail = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const code = verifyCode.trim()
-    if (!code) {
+  const handleVerifyEmail = async (code: string) => {
+    const trimmed = code.trim()
+    if (!trimmed) {
       setError('Введите код из письма')
       return
     }
     setLoading(true)
     setError('')
     try {
-      await verifyEmailToken(code)
+      await verifyEmailToken(trimmed)
       // Обновляем профиль в сторе
       try {
         const fresh = await fetchProfile()
         setUser(fresh)
       } catch {}
       setVerifySuccess('Email успешно подтверждён')
-      setTimeout(() => navigate('/'), 800)
+      // Даём премиальной анимации успеха (сборка → кольцо → галочка → ripple)
+      // доиграть до редиректа.
+      setTimeout(() => navigate('/'), 3200)
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || 'Неверный код подтверждения')
     } finally {
@@ -417,10 +416,8 @@ export default function LoginPage() {
               )}
 
               {mode === 'verify-email' ? (
-                <EmailVerifyBlock
+                <OtpVerify
                   email={verifyEmail}
-                  code={verifyCode}
-                  setCode={setVerifyCode}
                   onSubmit={handleVerifyEmail}
                   onResend={handleResendVerify}
                   onSkip={skipVerify}
@@ -724,96 +721,6 @@ export default function LoginPage() {
             <ChatIcon className="h-4 w-4" /> Поддержка в Telegram 24/7
           </span>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function EmailVerifyBlock({
-  email,
-  code,
-  setCode,
-  onSubmit,
-  onResend,
-  onSkip,
-  loading,
-  resending,
-  error,
-  success,
-}: {
-  email: string
-  code: string
-  setCode: (v: string) => void
-  onSubmit: (e: React.FormEvent) => void
-  onResend: () => void
-  onSkip: () => void
-  loading: boolean
-  resending: boolean
-  error: string
-  success: string
-}) {
-  return (
-    <div>
-      <div className="mb-5">
-        <h2 className="text-2xl font-bold text-white">Подтверждение email</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-300">
-          Мы отправили код на <span className="font-medium text-white">{email}</span>. Введите его ниже, чтобы подтвердить почту.
-        </p>
-      </div>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <Field label="Код из письма">
-          <input
-            type="text"
-            inputMode="text"
-            value={code}
-            onChange={e => setCode(e.target.value)}
-            placeholder="Например, ABC123"
-            autoFocus
-            required
-            className={fieldClass}
-          />
-        </Field>
-        <button
-          type="submit"
-          disabled={loading}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-3.5 text-sm font-semibold text-white shadow-brand transition-all hover:brightness-110 disabled:opacity-60"
-        >
-          {loading && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
-          Подтвердить
-        </button>
-      </form>
-
-      <div className="mt-3 flex items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs leading-5 text-slate-300">
-        <MailIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-fuchsia-200" />
-        <span>Не нашли письмо? Проверьте папку «Спам» — код может попасть туда.</span>
-      </div>
-
-      {success && (
-        <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-          {success}
-        </div>
-      )}
-      {error && (
-        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          {error}
-        </div>
-      )}
-      <div className="mt-5 flex flex-col gap-2 text-center text-sm text-slate-300">
-        <button
-          type="button"
-          onClick={onResend}
-          disabled={resending}
-          className="font-medium text-fuchsia-200 hover:text-white disabled:opacity-60"
-        >
-          {resending ? 'Отправка…' : 'Отправить код повторно'}
-        </button>
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-xs text-slate-400 hover:text-white"
-        >
-          Пропустить (подтвердить позже в профиле)
-        </button>
       </div>
     </div>
   )
