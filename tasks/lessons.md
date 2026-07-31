@@ -41,6 +41,15 @@
   deeplink в боте/ЛК разойдутся. У DJ VPN под Windows используется
   Hiddify (`github.com/hiddify/hiddify-app`), не Happ — частая
   ошибка при копировании инструкций «из памяти».
+- У Happ в App Store **две** карточки с разными app-id: Apple по
+  требованию РКН удаляла клиент из российской витрины, разработчик
+  перезаливал его под новым именем и новым id. Отсюда
+  `APPSTORE_HAPP_RU` (`Happ — Proxy Utility+`) и `APPSTORE_HAPP_INTL`
+  (`Happ — Proxy Utility`) в `backend/vpn_setup.py` — синхронизировать
+  надо обе, и обе продублированы в `setup.html` (iOS + macOS).
+  «Безвитринная» ссылка `apps.apple.com/app/id…` тут не выручает: это
+  разные приложения, а не одно в разных странах. RU-id исторически
+  протухает после каждой чистки — жди следующего перезалива.
 
 ## SHM API: undocumented поля
 

@@ -8,6 +8,9 @@ interface SetupData {
     title: string
     app_name: string
     download_url: string
+    /* Вторая витрина App Store (iOS/macOS) — у Happ разные app-id для РФ и остального мира */
+    download_url_alt?: string | null
+    download_alt_label?: string | null
     all_downloads: Record<string, string>
   }
   step2: {
@@ -172,6 +175,20 @@ export default function SetupGuide({
                     </svg>
                     Скачать {data.step1.app_name}
                   </a>
+
+                  {data.step1.download_url_alt && (
+                    <p className="text-xs text-slate-500 text-center leading-relaxed">
+                      Приложение недоступно в вашем App&nbsp;Store?{' '}
+                      <a
+                        href={data.step1.download_url_alt}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-400 underline underline-offset-2 hover:text-slate-200 transition-colors"
+                      >
+                        {data.step1.download_alt_label ?? 'Другая версия'}
+                      </a>
+                    </p>
+                  )}
 
                   <button onClick={() => setStep(2)}
                     className="w-full py-3 rounded-xl bg-surface-3 border border-white/10 text-sm font-medium text-slate-300 hover:text-white hover:border-white/20 transition-all">
