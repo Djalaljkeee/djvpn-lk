@@ -1,35 +1,35 @@
-# Белый экран из-за блокировки Telegram в РФ
+# Отвязка сохранённой платёжной карты в ЛК
 
 ## Контекст
 
-У части пользователей в РФ `telegram.org` режется DPI. Пока запрос к нему не
-уходил в сетевой таймаут, страница ЛК висела белым экраном.
-
-**Корневая причина** — `frontend/index.html`: WebApp SDK
-`telegram-web-app.js` подключался **блокирующим** синхронным тегом в `<head>`
-(без `async`/`defer`). Парсер HTML останавливался на нём и не доходил до
-`<script type="module" src="/src/main.tsx">` в `<body>` → React-бандл не
-исполнялся, `#root` пустой → белый экран до сетевого таймаута.
+В списке «Пополнение баланса» SHM отдаёт сохранённые способы оплаты
+(`Bank card *5777`) наравне с обычными платёжками, но в ЛК не было кнопки
+удаления — привязанную карту нельзя было отвязать. Штатный Telegram
+WebApp-шаблон SHM это умеет: рисует кнопку `X` для платёжек с
+`allow_deletion` и шлёт `DELETE /shm/v1/user/autopayment?pay_system=<id>`.
+В ЛК поле `allow_deletion` даже не было в TS-типе `PaySystemV2`, поэтому
+признак терялся ещё на уровне API-слоя.
 
 ## Задачи
 
-- [x] `frontend/index.html` — добавить `async` к `telegram-web-app.js`
-      (снятие блокировки first paint / bootstrap React).
-- [x] `frontend/src/App.tsx` (`TelegramWebAppGate`) — т.к. SDK теперь грузится
-      async, детектить Mini App по launch-параметрам (`#tgWebAppData`,
-      `TelegramWebviewProxy`) без зависимости от SDK и ждать `initData` до
-      таймаута (3с). Обычные браузерные пользователи не ждут SDK; авто-логин
-      Mini App сохранён.
-- [x] `frontend/src/pages/LoginPage.tsx` — таймаут/фолбэк Login-виджета: если
-      iframe не отрисовался за 5с (или `onerror`), показать подсказку
-      «войдите по логину/паролю» вместо пустой коробки.
+- [x] `frontend/src/api/services.ts` — добавить `allow_deletion` в
+      `PaySystemV2` и функцию `deleteAutopayment(pay_system)`
+      (`DELETE /user/autopayment?pay_system=…`).
+- [x] `frontend/src/pages/PaymentsPage.tsx` — кнопка отвязки (иконка корзины)
+      рядом со способом оплаты с `allow_deletion`, модалка подтверждения
+      (портал в `body`, как в `ServicesPage`), спиннер на время запроса,
+      `invalidate()` дашборда + тост после успеха.
+- [x] Тесты: `src/test/autopayment.test.ts` (контракт запроса к SHM),
+      `src/test/paymentsDelete.test.tsx` (UI-флоу: кнопка только у
+      `allow_deletion`, подтверждение → DELETE → refresh, ошибка → модалка
+      остаётся).
 
 ## Ревью
 
-- Сборка `npm run build` (tsc + vite) — зелёная. Тесты `npm test` — 26/26.
-- Рантайм-проверка (Playwright + предустановленный Chromium, telegram.org
-  «висит»):
-  - До фикса (блокирующий скрипт): **белый экран >15с (таймаут)**.
-  - После фикса (`async`): рендер **~130мс** даже при заблокированном
-    telegram.org.
-- Корневая причина устранена; авто-логин Mini App и обычный вход не затронуты.
+- `npm test` — 43/43 зелёные (9 файлов), `npm run build` (tsc + vite) — зелёная.
+- Прокси `/api/shm/*` уже разрешает `DELETE` и форвардит query-параметры
+  (`backend/routers/shm_proxy.py:62,98`) — правок на бэке не потребовалось.
+- Способы оплаты без `allow_deletion` рендерятся ровно как раньше (кнопки нет),
+  логика `usePaymentGuard` не тронута.
+- При ошибке SHM модалка не закрывается и дашборд не инвалидируется — юзер
+  видит тост об ошибке, а не «молчаливый успех».

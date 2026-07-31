@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { applyPromoCode } from '../api/user'
-import { buildPaymentUrl } from '../api/services'
+import { buildPaymentUrl, deleteAutopayment } from '../api/services'
+import type { PaySystemV2 } from '../api/services'
 import { usePaymentGuard } from '../hooks/usePaymentGuard'
 import { useToast } from '../components/Toast'
 import { useDashboard, useDashboardSlice, useInvalidateDashboard } from '../hooks/useDashboard'
@@ -33,6 +35,9 @@ export default function PaymentsPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(0)
   const [amount, setAmount] = useState('')
+  // Сохранённый способ оплаты, который пользователь просит отвязать.
+  const [confirmRemove, setConfirmRemove] = useState<PaySystemV2 | null>(null)
+  const [removing, setRemoving] = useState(false)
   const suggestedAmounts = [199, 499, 899, 1599]
   const loading = dashLoading && !data
   const topUpRef = useRef<HTMLElement>(null)
@@ -70,6 +75,22 @@ export default function PaymentsPage() {
       show('Дождитесь завершения текущей оплаты или обновите страницу', 'info')
     } else if (result === 'blocked') {
       show('Браузер заблокировал окно оплаты. Разрешите всплывающие окна и нажмите ещё раз', 'error')
+    }
+  }
+
+  // Отвязка сохранённой карты. SHM удаляет автоплатёж по коду платёжной
+  // системы; после успеха перезапрашиваем дашборд — способ пропадёт из списка.
+  const handleRemove = async (ps: PaySystemV2) => {
+    setRemoving(true)
+    try {
+      await deleteAutopayment(ps.paysystem || ps.name)
+      setConfirmRemove(null)
+      await invalidate()
+      show('Способ оплаты отвязан', 'success')
+    } catch {
+      show('Не удалось отвязать способ оплаты', 'error')
+    } finally {
+      setRemoving(false)
     }
   }
 
@@ -359,24 +380,39 @@ export default function PaymentsPage() {
               // для переоткрытия той же вкладки (refocus, без нового платежа).
               const disabled = payActive && activeKey !== payKey(ps)
               return (
-                <button
-                  key={ps.name}
-                  onClick={() => handlePay(ps)}
-                  disabled={disabled}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors disabled:opacity-50 disabled:hover:bg-white/5"
-                >
-                  <div className="font-medium text-white">{ps.name}</div>
-                  {ps.paysystem && (
-                    <div className="mt-0.5 text-xs text-slate-400">Оплата через {ps.paysystem}</div>
+                <div key={ps.name} className="flex items-stretch gap-2">
+                  <button
+                    onClick={() => handlePay(ps)}
+                    disabled={disabled}
+                    className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors disabled:opacity-50 disabled:hover:bg-white/5"
+                  >
+                    <div className="font-medium text-white">{ps.name}</div>
+                    {ps.paysystem && (
+                      <div className="mt-0.5 text-xs text-slate-400">Оплата через {ps.paysystem}</div>
+                    )}
+                    {(ps.min_sum || ps.max_sum) && (
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {ps.min_sum ? `${ps.min_sum.toFixed(0)}` : ''}
+                        {ps.min_sum && ps.max_sum ? ' – ' : ''}
+                        {ps.max_sum ? `${ps.max_sum.toFixed(0)} ₽` : '₽'}
+                      </div>
+                    )}
+                  </button>
+                  {/* Сохранённая карта (allow_deletion=1) — её можно отвязать. */}
+                  {Boolean(ps.allow_deletion) && (
+                    <button
+                      onClick={() => setConfirmRemove(ps)}
+                      disabled={removing}
+                      aria-label={`Отвязать «${ps.name}»`}
+                      title="Отвязать карту"
+                      className="flex w-14 shrink-0 items-center justify-center rounded-2xl border border-rose-400/25 bg-rose-500/10 text-rose-200 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    </button>
                   )}
-                  {(ps.min_sum || ps.max_sum) && (
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      {ps.min_sum ? `${ps.min_sum.toFixed(0)}` : ''}
-                      {ps.min_sum && ps.max_sum ? ' – ' : ''}
-                      {ps.max_sum ? `${ps.max_sum.toFixed(0)} ₽` : '₽'}
-                    </div>
-                  )}
-                </button>
+                </div>
               )
             })}
           </div>
@@ -473,6 +509,41 @@ export default function PaymentsPage() {
           )
         )}
       </section>
+
+      {/* Подтверждение отвязки сохранённой карты. Рендерим порталом в body:
+          <main> без z-index, но нижний навбар z-50 — портал надёжнее. */}
+      {confirmRemove && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4">
+          <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => !removing && setConfirmRemove(null)} />
+          <div className="relative w-full max-h-[90dvh] overflow-y-auto rounded-t-[2rem] bg-[rgba(32,11,44,0.96)] p-5 animate-slide-up sm:max-w-md sm:rounded-[2rem]">
+            <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15 sm:hidden" />
+            <div className="text-4xl">💳</div>
+            <h2 className="mt-3 text-xl font-bold text-white">Отвязать способ оплаты?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              <span className="text-white">«{confirmRemove.name}»</span> будет удалён, автоплатежи по нему
+              перестанут проходить. Привязать карту заново можно при следующей оплате.
+            </p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={() => setConfirmRemove(null)}
+                disabled={removing}
+                className="w-full rounded-2xl bg-white/5 px-4 py-3 text-sm text-slate-300 hover:bg-white/8 transition-colors disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => handleRemove(confirmRemove)}
+                disabled={removing}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-rose-700 px-4 py-3 text-sm font-semibold text-white hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                {removing && <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                {removing ? 'Отвязываем…' : 'Отвязать'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
