@@ -36,6 +36,10 @@ export interface PaySystemV2 {
   shm_url?: string
   paysystem?: string
   recurring?: number
+  // SHM выставляет allow_deletion=1 у сохранённых способов оплаты (привязанная
+  // карта автоплатежа, приходит в списке как «Bank card *5777»). Такой способ
+  // можно отвязать через DELETE /user/autopayment.
+  allow_deletion?: number
   min_sum?: number
   max_sum?: number
 }
@@ -43,6 +47,13 @@ export interface PaySystemV2 {
 export const fetchPaySystemsV2 = async (): Promise<PaySystemV2[]> => {
   const resp = await shm.get('/user/pay/paysystems')
   return unwrap<PaySystemV2>(resp)
+}
+
+// Отвязка сохранённого способа оплаты (рекуррентная карта). SHM ждёт код
+// платёжной системы в query-параметре: DELETE /user/autopayment?pay_system=<id>
+// — ровно так же это делает штатный Telegram WebApp-шаблон SHM.
+export const deleteAutopayment = async (pay_system: string): Promise<void> => {
+  await shm.delete('/user/autopayment', { params: { pay_system } })
 }
 
 // Платёж создаётся через redirect на bill.djvpn.ru — SHM не предоставляет
