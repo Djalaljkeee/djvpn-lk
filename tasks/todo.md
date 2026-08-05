@@ -1,80 +1,157 @@
-# iOS: новое приложение Happ + две региональные ссылки App Store
+# Передача ID агента (partner_id) по реферальной ссылке + регистрация через Telegram-виджет
 
 ## Контекст
 
-Секция установки на iOS вела на `apps.apple.com/ru/app/happ-proxy-utility/id6783623643`.
-Нужно перевести её на актуальное приложение — **Happ — Proxy Utility+** (`id6788279553`).
+Задача: проверить, доезжает ли `partner_id` (ID агента) при переходе по
+реферальной ссылке ЛК и нет ли ошибок при регистрации через Telegram Login
+Widget.
 
-Одной ссылкой не обойтись: Apple по требованию РКН удаляла Happ из российского
-App Store, и разработчик каждый раз перезаливал клиент под новым названием и
-**новым app-id**. Сейчас существуют два независимых листинга одного клиента:
+Разбор вёлся по исходникам SHM (`danuk/shm`, ветка master), потому что весь
+auth/registration-флоу ЛК ходит напрямую в SHM через прокси `/api/shm/*`.
+Ключевой факт роутера SHM (`app/public_html/shm/v1.cgi`):
 
-| Витрина | Листинг | ID |
-|---|---|---|
-| Россия | Happ — Proxy Utility+ (Flyfrog LLC) | `6788279553` |
-| Остальные страны | Happ — Proxy Utility (оригинал) | `6504287215` |
+```perl
+my %args = (
+    %{ $p->{args} || {} },   # значения по умолчанию из описания роута
+    %in,                     # ВСЁ, что прислал клиент (query + JSON-body)
+    admin => $admin_mode,
+);
+```
 
-Это **разные карточки App Store**, поэтому «безвитринная» ссылка
-`apps.apple.com/app/id…` не помогает — она лишь редиректит на витрину
-пользователя и покажет «недоступно в вашем регионе», если id чужой.
+то есть `args` в описании роута — это **дефолты, а не whitelist**: любое поле
+из тела запроса доезжает до контроллера. Значит `partner_id` технически
+проходит; ломалось другое.
 
-**Выбранный подход:** автоопределение витрины по языку выбирает основную
-кнопку, вторая ссылка видна всегда. Язык устройства ≠ страна Apple ID
-(русскоязычный пользователь с турецким Apple ID — типичный кейс проекта),
-поэтому автоопределение работает только как подсказка, а не как фильтр.
+## Найденные дефекты
+
+### 1. Регистрация через Telegram-виджет невозможна (блокер)
+
+`Core::Transport::Telegram::web_auth` создаёт пользователя только под флагом:
+
+```perl
+if ( !$user && $args{register_if_not_exists} ) {
+    $user = $self->user->reg( ..., $args{partner_id} ? (partner_id => $args{partner_id}) : () );
+}
+if ( !$args{register_if_not_exists} && !$user ) {
+    logger->error("Telegram WebApp auth error: user not found");
+    $self->set_user_fail_attempt( 'web_auth', 3600, $self->telegram_ips );
+    return undef;
+}
+```
+
+В описании роута `/telegram/web/auth` дефолт — `register_if_not_exists => 0`,
+а фронт этот флаг не слал. Итог для НОВОГО пользователя:
+
+- SHM возвращает `HTTP 200` с телом `{"data":[null],"status":200}` —
+  `report->error` не вызывается, поэтому 4xx не приходит;
+- сессии в теле нет → прокси не выставляет `session_id`;
+- следующий `GET /user` ловит 401 → интерцептор `handle401` разлогинивает,
+  пользователь видит generic «Ошибка авторизации через Telegram»;
+- каждая попытка инкрементит `set_user_fail_attempt('web_auth', 3600)` —
+  на 5-й попытке SHM отдаёт `429` на час.
+
+`partner_id` при этом не имел ни единого шанса примениться: он используется
+только внутри той ветки `reg()`, до которой поток не доходил.
+
+### 2. Капча при регистрации: неверные имена полей
+
+`Core::User::reg_api_safe` проверяет капчу так:
+
+```perl
+$self->verify_captcha( token => $args{captcha_token}, answer => $args{captcha_answer} );
+```
+
+а `verify_captcha` возвращает `0`, если **любое** из двух полей не определено.
+Фронт слал `captcha` и `captcha_code`, а подписанный `token` из ответа
+`GET /user/captcha` (`data[0].token`) вообще выбрасывал — `fetchCaptcha`
+читал только `image`. Следствия:
+
+- при `billing.allow_user_register_captcha = 1` регистрация по email
+  (в т.ч. по реферальной ссылке) падает с 403 `Invalid captcha` — всегда;
+- при выключённом флаге поле капчи в UI — бутафория.
+
+Капча в SHM stateless: `token` = `base64url(answer_hash|timestamp|sig)`,
+TTL 5 минут; cookie-сессия к ней отношения не имеет (комментарий в старом
+коде утверждал обратное).
+
+### 3. Telegram-deeplink `?start=<user_id>` не передаёт pid
+
+SHM разбирает аргумент `/start` как **base64url-строку вида `k=v&k=v`**:
+
+```perl
+for my $pair ( split /&/, decode_base64url( $args[0] ) ) {
+    my ( $key, $value ) = split ( /=/, $pair );
+    $start_args{ $key } = uri_unescape( $value ) if defined $key && defined $value;
+}
+...
+$args{partner_id} //= $start_args{pid};   # sub shmRegister
+```
+
+Голый `?start=2` декодируется в мусор, пары `key=value` нет, `pid` не
+находится — реферал теряется молча. Формат base64url в SHM с 22.01.2025,
+так что запись `/start <id>` из `tasks/lessons.md` устарела.
+
+### 4. `captureRefIdFromUrl()` перезаписывает ref после `clearRefId()`
+
+`App.tsx` вызывает `captureRefIdFromUrl()` в теле рендера, а URL намеренно не
+чистится. После успешной авторизации `clearRefId()` удаляет ключ, но любой
+следующий рендер (а `?ref=` всё ещё в адресной строке) кладёт его обратно —
+ref «прилипает» к устройству, ровно то, что запрещено в `lessons.md`.
+
+### 5. `ShortRefRedirect` сохранял ref в `useEffect`
+
+Эффекты дочернего `<Navigate>` выполняются раньше эффектов родителя, то есть
+редирект стартует до записи `partner_id`. Сейчас спасает только то, что React
+успевает дофлашить passive effects до следующего рендера — гонка на ровном месте.
+
+### 6. Сообщения об ошибках SHM не показывались
+
+Прокси отдаёт тело SHM как есть, а SHM кладёт текст в `error`
+(`{"status":400,"error":"..."}`), не в `detail`. `LoginPage` читал только
+`e?.response?.data?.detail` → пользователь всегда видел generic-текст.
+
+### Не дефекты (проверено, оставлено как есть)
+
+- `partner_id` в `loginWithWebApp` (Mini App): `webapp_auth` пользователей не
+  регистрирует вовсе (`user not found` → undef), параметр игнорируется. Внутри
+  Mini App юзер создаётся ботом по `/start`, поэтому pid приходит через deeplink.
+  Вреда нет, оставлен с комментарием.
+- `partner_id` в `PUT /user`: `reg_api_safe` → `reg()` принимает и валидирует
+  (`$self->id($partner_id)`, запрет self-referral) — работает.
+- `backend/models.py::RegisterRequest/TelegramAuthRequest` — легаси-модели
+  времён backend-агрегатора, ни одним роутером не используются.
 
 ## Задачи
 
-- [x] `backend/vpn_setup.py` — константы `APPSTORE_HAPP_RU` / `APPSTORE_HAPP_INTL`,
-      карта `HAPP_DOWNLOADS_INTL` (только iOS/macOS), подписи `STORE_REGION_LABELS`.
-- [x] `backend/vpn_setup.py::detect_store_region` — витрина по `Accept-Language`,
-      берётся **первый** language-tag (в `en-US,ru;q=0.9` витрина не российская).
-- [x] `backend/vpn_setup.py::build_setup_response` — `step1` получает
-      `download_url_alt` и `download_alt_label`; `all_downloads` остался плоским
-      `Record<str, str>`, контракт не сломан. Роутеры не трогали.
-- [x] `frontend/src/components/SetupGuide.tsx` — опциональные поля в `SetupData`
-      + вторая ссылка мелким текстом под основной кнопкой.
-- [x] `frontend/public/setup.html` — обе ссылки в секциях iOS и macOS,
-      стиль `.store-alt`, инлайновый скрипт смены приоритета по `navigator.language`.
-- [x] `frontend/public/setup.html` — раздел «Смена региона на Турцию» переписан
-      как крайний вариант, а не первый совет.
-- [x] `backend/tests/test_vpn_setup.py` — новый файл, 16 тестов.
-- [x] `tasks/lessons.md` — зафиксирован факт двух витрин с разными app-id.
-
-## Верификация
-
-- `cd backend && pytest tests/test_vpn_setup.py` → **16 passed**.
-- `cd backend && pytest` → 43 passed, 3 падения в `test_db_migrations.py`
-  **предсуществующие**: воспроизводятся на чистом дереве (`git stash`), причина —
-  не установлен `pytest-asyncio` в окружении, к правке отношения не имеют.
-- `cd frontend && npm run build` (tsc + vite) → успешно.
-- `setup.html` прогнан в headless Chromium с `navigator.language` = `ru-RU`,
-  `en-US`, `tr-TR`: для `ru-RU` основная кнопка ведёт на `id6788279553`, для
-  `en-US`/`tr-TR` — на `id6504287215`, вторая ссылка и её подпись меняются
-  местами корректно в обеих секциях (iOS и macOS).
-- `build_setup_response` проверен на настоящем `starlette.Request`
-  (не только на заглушке) — путь до `request.headers` рабочий, тест закреплён.
+- [x] `api/auth.ts::loginWithTelegram` — `register_if_not_exists: 1` + partner_id.
+- [x] `api/auth.ts` — `captureSessionFromBody` возвращает session_id;
+      `requireSession` бросает понятную ошибку на «200 без сессии» для обоих
+      Telegram-эндпоинтов.
+- [x] `api/auth.ts::fetchCaptcha` — отдаёт `token` из `data[0].token`.
+- [x] `api/auth.ts::registerWithPassword` — шлёт `captcha_token`/`captcha_answer`.
+- [x] `pages/LoginPage.tsx` — прокидывает `captcha_token`; извлечение текста
+      ошибки из `error`/`detail`/`message`.
+- [x] `pages/ReferralsPage.tsx` — deeplink `?start=<base64url("pid=<id>")>`.
+- [x] `utils/referral.ts` — захват из URL ровно один раз за загрузку страницы.
+- [x] `App.tsx::ShortRefRedirect` — запись ref до рендера `<Navigate>`.
+- [x] `frontend/src/test/referral.test.ts` — регресс-тесты на всё перечисленное.
+- [x] `tasks/lessons.md` — уроки по `register_if_not_exists`, капче и deeplink.
 
 ## Ревью
 
-Источник правды — `backend/vpn_setup.py`. `setup.html` статический, без сборки и
-без обращений к API, поэтому ссылки в нём продублированы намеренно, с
-HTML-комментарием-указателем на константы бэкенда; синхронизация зафиксирована
-в `lessons.md`.
+Все правки — на фронте: backend-прокси уже прозрачно форвардит и тело, и
+query, и `Set-Cookie`, трогать его не потребовалось.
 
-**Что отбросили:**
+Проверка: `npm test` — 10 файлов, 58 тестов, все зелёные (из них 15 новых в
+`referralCapture.test.ts`); `npx tsc --noEmit` чистый; `npm run build` собирается.
 
-- *Безвитринная ссылка* — не работает, разные app-id.
-- *Вынести URL в `.env`/`Settings`* — `setup.html` не читает конфиг бэкенда без
-  нового API-запроса. Получилось бы полурешение: половина ссылок из конфига,
-  половина из HTML. Хуже, чем один явный источник правды.
-- *Только RU-ссылка + инструкция по смене региона* — оставляет зарубежных
-  пользователей без рабочего пути, хотя международный листинг существует.
+Что осталось на стороне SHM/инфраструктуры (вне репозитория):
 
-**Принятые допущения** (вопросы задавались, ответа не было — любое легко менять):
-
-- Международная ссылка = `id6504287215`, оригинальный листинг Happ.
-  Старый `id6783623643` удалён из репозитория: это тоже RU-таргетированная
-  карточка, за границей она не откроется.
-- macOS обновлён вместе с iOS — там был буквально тот же URL.
-- URL остаются константами в коде, не уходят в `.env`.
+- `set_user_fail_attempt` считает попытки по IP. Пока Caddy на стороне SHM не
+  резолвит реальный IP из `X-Forwarded-For` (см. урок «Реальный client IP
+  теряется на upstream-Caddy»), все пользователи ЛК для SHM — один IP, и
+  5 неудачных попыток входа через виджет от кого угодно вешают 429 на час
+  на всех сразу. Фикс #1 убирает основной источник этих неудач, но правку
+  Caddyfile всё равно надо довести.
+- Уровни/комиссии реферальной программы (`LEVELS` в `ReferralsPage`) живут на
+  фронте — переносить в SHM-шаблон, когда заказчик заведёт поля.

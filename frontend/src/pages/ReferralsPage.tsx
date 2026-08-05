@@ -4,6 +4,7 @@ import { fetchReferrals } from '../api/user'
 import { fetchConfig } from '../api/services'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../components/Toast'
+import { encodeStartPayload } from '../utils/referral'
 import type { ReferralStats } from '../types'
 import { format, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -76,7 +77,9 @@ export default function ReferralsPage() {
   const webRefLink = user && typeof window !== 'undefined'
     ? `${window.location.origin}/r/ref-${user.user_id}`
     : ''
-  const tgRefLink = user && botUsername ? `https://t.me/${botUsername}?start=${user.user_id}` : ''
+  const tgRefLink = user && botUsername
+    ? `https://t.me/${botUsername}?start=${encodeStartPayload(user.user_id)}`
+    : ''
 
   const totalReferrals = stats?.total_referrals ?? 0
   const activeReferrals = stats?.active_referrals ?? 0
