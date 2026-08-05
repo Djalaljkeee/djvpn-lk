@@ -23,6 +23,15 @@ declare global {
 
 type Mode = 'login' | 'register' | 'verify-email' | 'forgot' | 'reset-password'
 
+// Текст ошибки из ответа. Прокси `/api/shm/*` отдаёт тело SHM как есть, а SHM
+// кладёт текст в поле `error` (`{"status":400,"error":"Login already in use"}`),
+// не в `detail` — читая только `detail`, мы всегда показывали generic-заглушку.
+// `message` покрывает ошибки, которые бросает сам клиент (например «200 без
+// сессии» из requireSession).
+function apiErrorMessage(e: any, fallback: string): string {
+  return e?.response?.data?.error || e?.response?.data?.detail || e?.message || fallback
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -127,7 +136,7 @@ export default function LoginPage() {
         clearRefId()
         navigate('/')
       } catch (e: any) {
-        setError(e?.response?.data?.detail || 'Ошибка авторизации через Telegram')
+        setError(apiErrorMessage(e, 'Ошибка авторизации через Telegram'))
       } finally {
         setLoading(false)
       }
@@ -220,7 +229,10 @@ export default function LoginPage() {
           password,
           name: name || undefined,
           email: trimmedEmail,
-          captcha_code: captchaAvailable ? captchaCode : undefined,
+          // Обязательно вместе: SHM сверяет ответ пользователя с подписанным
+          // токеном той же капчи (verify_captcha требует оба поля).
+          captcha_token: captchaAvailable ? captcha?.token : undefined,
+          captcha_answer: captchaAvailable ? captchaCode : undefined,
           partner_id: getRefId() ?? undefined,
           agree_personal_data: agreePersonalData,
           agree_terms: agreeTerms,
@@ -235,8 +247,8 @@ export default function LoginPage() {
         }
       }
     } catch (e: any) {
-      setError(e?.response?.data?.detail || (mode === 'login' ? 'Неверный логин или пароль' : 'Ошибка регистрации'))
-      if (mode === 'register') loadCaptcha()  // обновляем капчу после ошибки
+      setError(apiErrorMessage(e, mode === 'login' ? 'Неверный логин или пароль' : 'Ошибка регистрации'))
+      if (mode === 'register') loadCaptcha()  // обновляем капчу после ошибки (токен одноразовый, TTL 5 мин)
     } finally {
       setLoading(false)
     }

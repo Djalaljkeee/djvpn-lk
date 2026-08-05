@@ -95,12 +95,12 @@ function loginPath(): string {
  *  использовал «ref-2», но цифровой id короче и работает так же. */
 function ShortRefRedirect() {
   const { id } = useParams<{ id: string }>()
-  useEffect(() => {
-    if (id) {
-      const raw = id.startsWith('ref-') ? id.slice(4) : id
-      saveRefId(raw)
-    }
-  }, [id])
+  // Сохраняем ДО того, как вернём <Navigate>: эффекты дочернего <Navigate>
+  // выполняются раньше эффектов родителя, то есть редирект в useEffect-варианте
+  // стартовал бы прежде записи partner_id. saveRefId — идемпотентная запись в
+  // localStorage, поэтому побочный эффект в рендере здесь безопасен (в т.ч. при
+  // double-render в StrictMode).
+  if (id) saveRefId(id.startsWith('ref-') ? id.slice(4) : id)
   return <Navigate to="/" replace />
 }
 
