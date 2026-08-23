@@ -126,17 +126,38 @@ async def _remna_user_by_filter(field: str, value: str) -> dict:
     return users[0] if isinstance(users, list) and users and isinstance(users[0], dict) else {}
 
 
-def _svc_uuid(svc: dict | None) -> Optional[str]:
-    """Достать legacy-UUID из `svc.data` (в SHM он лежит строкой или объектом)."""
+def _svc_data(svc: dict | None) -> dict:
+    """Распарсить `svc.data` (в SHM оно приходит либо dict, либо JSON-строкой)."""
     if not svc:
-        return None
+        return {}
     raw_data = svc.get("data") or {}
     if isinstance(raw_data, str):
         try:
             raw_data = json.loads(raw_data)
         except Exception:
             raw_data = {}
-    return raw_data.get("uuid") if isinstance(raw_data, dict) else None
+    return raw_data if isinstance(raw_data, dict) else {}
+
+
+def _as_user_id(value) -> Optional[int]:
+    """Привести значение к числовому id (SHM хранит его и строкой)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        num = int(value.strip())
+        return num if num > 0 else None
+    return None
+
+
+async def _remna_user_by_short_uuid(short_uuid: str) -> dict:
+    """GET /api/users/by-short-uuid/<shortUuid> -> объект пользователя ({} если нет)."""
+    resp = await remnawave_request("GET", f"/api/users/by-short-uuid/{short_uuid}")
+    payload = resp.get("response") or resp
+    if isinstance(payload, list):
+        payload = payload[0] if payload else {}
+    return payload if isinstance(payload, dict) else {}
 
 
 async def resolve_remna_user_id(
@@ -144,22 +165,29 @@ async def resolve_remna_user_id(
     svc: dict | None = None,
     user_id: int = 0,
     session_id: str = "",
+    username_id: Optional[int] = None,
 ) -> Optional[int]:
     """Resolve Remnawave numeric user id.
 
     Панель 3.x убрала у пользователя колонку `uuid`: теперь он адресуется
     числовым `id` (`/api/users/{userId}`, `/api/hwid/devices/{userId}`), а
     `GET /api/users/{uuid}` отвечает 400 `expected number, received NaN`.
-    Старые UUID, которые SHM хранит в `svc.data.uuid` и в storage, после
-    апгрейда не совпадают ни с `vlessUuid`, ни с `shortUuid` — по ним
-    пользователя уже не найти.
+
+    Порядок повторяет идентификацию в самом SHM (плагин Remnawave 3.x):
+    сначала `id` из хранилища услуги, затем `shortUuid` -> `by-short-uuid`.
+    Хранилище авторитетнее имени: оно привязано к конкретной услуге, а
+    `fetch_storage_data` ходит под сессией самого пользователя, так что чужой
+    аккаунт оттуда не приедет.
 
     Lookup chain:
-    1. Remnawave /api/users/by-username/us_{shm_user_id} — единственный
-       стабильный ключ: имена в панели заводятся ровно по этой схеме,
-       по одному аккаунту на пользователя SHM.
-    2. legacy-UUID из svc.data / storage через фильтр списка по `vlessUuid`
-       и `shortUuid` — на случай, если где-то сохранён именно один из них.
+    1. `id` из `svc.data` / storage `vpn_mrzb_<user_service_id>`;
+    2. `shortUuid` оттуда же -> `GET /api/users/by-short-uuid/{shortUuid}`;
+    3. `GET /api/users/by-username/us_{shm_user_id}` — имена в панели заводятся
+       по этой схеме, по одному аккаунту на пользователя SHM (`username_id`
+       позволяет вызывающему коду переиспользовать один такой запрос на все
+       услуги);
+    4. legacy-UUID из SHM через фильтр списка по `vlessUuid` / `shortUuid` —
+       на случай, если где-то сохранён именно один из них.
     """
     # Локальный импорт, чтобы избежать циклического импорта с storage.py
     from storage import fetch_storage_data
@@ -172,20 +200,34 @@ async def resolve_remna_user_id(
         logging.debug("_resolve_remna_user_id: remnawave not configured")
         return None
 
-    if user_id:
+    data = _svc_data(svc)
+    if not data.get("id") and not data.get("shortUuid") and user_service_id:
+        data = await fetch_storage_data(user_service_id, session_id, user_id) or {}
+    logging.debug("_resolve_remna_user_id: usi=%s storage keys=%s", user_service_id, sorted(data.keys()))
+
+    remna_id = _as_user_id(data.get("id"))
+    if remna_id:
+        logging.debug("_resolve_remna_user_id: step1 storage id=%s", remna_id)
+        return remna_id
+
+    short_uuid = data.get("shortUuid") or data.get("short_uuid")
+    if short_uuid:
         try:
-            user = await _remna_user_by_username(f"us_{user_id}")
-            remna_id = user.get("id")
-            logging.debug("_resolve_remna_user_id: step1 by-username us_%s id=%s", user_id, remna_id)
-            if isinstance(remna_id, int):
+            remna_id = _as_user_id((await _remna_user_by_short_uuid(short_uuid)).get("id"))
+            logging.debug("_resolve_remna_user_id: step2 by-short-uuid %s id=%s", short_uuid, remna_id)
+            if remna_id:
                 return remna_id
         except Exception as e:
-            logging.warning("_resolve_remna_user_id step1 by-username us_%s: %r", user_id, e)
+            logging.warning("_resolve_remna_user_id step2 by-short-uuid %s: %r", short_uuid, e)
 
-    uuid_val = _svc_uuid(svc)
-    if not uuid_val and user_service_id:
-        storage = await fetch_storage_data(user_service_id, session_id, user_id)
-        uuid_val = (storage or {}).get("uuid")
+    if username_id:
+        return username_id
+    if user_id:
+        remna_id = await resolve_remna_user_id_by_username(user_id)
+        if remna_id:
+            return remna_id
+
+    uuid_val = data.get("uuid")
     if not uuid_val:
         logging.debug("_resolve_remna_user_id: usi=%s no legacy uuid to fall back on", user_service_id)
         return None
@@ -195,11 +237,24 @@ async def resolve_remna_user_id(
             user = await _remna_user_by_filter(field, uuid_val)
             if user.get(field) != uuid_val:
                 continue
-            remna_id = user.get("id")
-            logging.debug("_resolve_remna_user_id: step2 %s=%s id=%s", field, uuid_val, remna_id)
-            if isinstance(remna_id, int):
+            remna_id = _as_user_id(user.get("id"))
+            logging.debug("_resolve_remna_user_id: step4 %s=%s id=%s", field, uuid_val, remna_id)
+            if remna_id:
                 return remna_id
         except Exception as e:
-            logging.warning("_resolve_remna_user_id step2 %s=%s: %r", field, uuid_val, e)
+            logging.warning("_resolve_remna_user_id step4 %s=%s: %r", field, uuid_val, e)
 
     return None
+
+
+async def resolve_remna_user_id_by_username(user_id: int) -> Optional[int]:
+    """Найти id по имени `us_<shm_user_id>` — один запрос на весь аккаунт SHM."""
+    if not user_id or not (settings.REMNA_BASE_URL and settings.REMNA_TOKEN):
+        return None
+    try:
+        remna_id = _as_user_id((await _remna_user_by_username(f"us_{user_id}")).get("id"))
+        logging.debug("_resolve_remna_user_id: step3 by-username us_%s id=%s", user_id, remna_id)
+        return remna_id
+    except Exception as e:
+        logging.warning("_resolve_remna_user_id step3 by-username us_%s: %r", user_id, e)
+        return None
