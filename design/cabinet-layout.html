@@ -1,0 +1,1973 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>DJ VPN — макет существующего личного кабинета</title>
+<style>
+/* ─────────── Документ ─────────── */
+@page { size: A4 portrait; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #16121c;
+  background: #e9e6ee;
+  counter-reset: page;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.page {
+  position: relative;
+  width: 210mm; height: 297mm;
+  padding: 13mm 13mm 15mm;
+  background: #fff;
+  margin: 0 auto 8px;
+  overflow: hidden;
+  page-break-after: always;
+  counter-increment: page;
+}
+.page:last-child { page-break-after: auto; }
+.page::after {
+  content: counter(page);
+  position: absolute; right: 13mm; bottom: 7mm;
+  font-size: 9px; color: #9a94a6; font-variant-numeric: tabular-nums;
+}
+.page::before {
+  content: "DJ VPN · личный кабинет · слепок текущего интерфейса";
+  position: absolute; left: 13mm; bottom: 7mm;
+  font-size: 9px; color: #b6b0c0; letter-spacing: .02em;
+}
+.phead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; border-bottom: 1px solid #e4e0ea; padding-bottom: 7px; margin-bottom: 14px;
+}
+.phead h2 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+.phead .kicker { font-size: 9.5px; text-transform: uppercase; letter-spacing: .16em; color: #9b8fae; }
+.route {
+  display: inline-block; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10px; color: #7b2f74; background: #fbeefa; border: 1px solid #f0d8ee;
+  border-radius: 6px; padding: 1px 6px;
+}
+h3.sec { font-size: 12.5px; margin: 0 0 6px; letter-spacing: -.01em; }
+p.lead { font-size: 11px; line-height: 1.55; color: #4b4457; margin: 0 0 10px; }
+.cols { display: flex; gap: 11mm; align-items: flex-start; }
+.notes { font-size: 10px; line-height: 1.55; color: #40394c; }
+.notes h4 { font-size: 10.5px; margin: 12px 0 5px; color: #16121c; }
+.notes h4:first-child { margin-top: 0; }
+.notes ul { margin: 0; padding-left: 15px; }
+.notes li { margin-bottom: 3px; }
+.notes li b { font-weight: 600; }
+code, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 9.5px; }
+code { background: #f3f0f7; border-radius: 4px; padding: 0 3px; color: #513a63; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chip {
+  font-size: 8.5px; letter-spacing: .04em; text-transform: uppercase;
+  border: 1px solid #e2dcea; background: #f8f6fb; color: #6b6178;
+  border-radius: 999px; padding: 2px 7px;
+}
+.chip.on { border-color: #f0c9ec; background: #fdf1fc; color: #96348c; }
+table.t { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+table.t th, table.t td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eceaf1; vertical-align: top; }
+table.t th { font-size: 8.5px; text-transform: uppercase; letter-spacing: .1em; color: #9b93a8; border-bottom-color: #ded8e6; }
+table.t td.m { font-family: ui-monospace, Menlo, monospace; color: #5c4a6b; white-space: nowrap; }
+.callout {
+  border-left: 3px solid #dd56ca; background: #fdf3fc; padding: 7px 10px;
+  font-size: 10px; line-height: 1.5; color: #4b3a55; border-radius: 0 8px 8px 0;
+}
+.caption { font-size: 9px; color: #9b93a8; margin-top: 5px; text-align: center; }
+
+/* ─────────── Каркасы устройств ─────────── */
+.frame {
+  width: 390px; border-radius: 30px; padding: 8px;
+  background: #0d0616; border: 1px solid #2c1a3a;
+  box-shadow: 0 10px 30px rgba(25,10,35,.18);
+}
+.frame .screen {
+  border-radius: 23px; overflow: hidden; background: #14071f;
+  background-image:
+    radial-gradient(circle at top left, rgba(255,156,235,.28), transparent 28%),
+    radial-gradient(circle at top right, rgba(168,82,255,.24), transparent 26%),
+    linear-gradient(180deg, #2f0e45 0%, #14071f 42%, #12061a 100%);
+  color: #f7eefe;
+}
+.frame.wide { width: 1152px; border-radius: 16px; padding: 6px; }
+.frame.wide .screen { border-radius: 11px; }
+.frame.plain { border-radius: 18px; padding: 6px; }
+.frame.plain .screen { border-radius: 13px; }
+.zoom { transform-origin: top left; }
+
+/* ─────────── Токены приложения (из tailwind.config.js / index.css) ─────────── */
+.app { font-size: 14px; line-height: 1.4; }
+.app * { box-sizing: border-box; }
+.glass {
+  background:
+    linear-gradient(180deg, rgba(52,19,48,.82), rgba(27,12,42,.92)),
+    radial-gradient(circle at top right, rgba(255,173,235,.08), transparent 30%);
+  border: 1px solid rgba(255,210,248,.1);
+  box-shadow: 0 18px 50px rgba(13,5,18,.28);
+}
+.brand-panel {
+  background:
+    linear-gradient(145deg, rgba(240,120,228,.2), rgba(120,47,168,.18)),
+    rgba(39,15,52,.82);
+  border: 1px solid rgba(255,210,248,.12);
+}
+.gradient-text {
+  background: linear-gradient(135deg,#ffd1fb 0%,#ff95e2 45%,#e56fff 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.r28 { border-radius: 28px; } .r24 { border-radius: 24px; } .r16 { border-radius: 16px; }
+.r12 { border-radius: 12px; } .rf { border-radius: 999px; }
+.p5 { padding: 20px; } .p4 { padding: 16px; }
+.mut { color: #94a3b8; } .mut2 { color: #cbd5e1; } .w { color: #fff; }
+.fuchsia { color: #f5d0fe; } .emerald { color: #6ee7b7; } .rose { color: #fda4af; } .amber { color: #fcd34d; }
+.xs { font-size: 11px; } .xxs { font-size: 9.5px; } .sm { font-size: 12.5px; } .lg { font-size: 16px; }
+.b { font-weight: 700; } .sb { font-weight: 600; }
+.up { text-transform: uppercase; letter-spacing: .18em; }
+.mono2 { font-family: ui-monospace, Menlo, monospace; }
+.row { display: flex; align-items: center; }
+.between { justify-content: space-between; }
+.g2 { gap: 8px; } .g3 { gap: 12px; } .g1 { gap: 4px; }
+.col { display: flex; flex-direction: column; }
+.stack > * + * { margin-top: 12px; }
+.stack-sm > * + * { margin-top: 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+.tile { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); border-radius: 16px; padding: 14px; }
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 16px; padding: 13px 16px; font-size: 13px; font-weight: 600; color: #fff;
+}
+.btn-brand { background: linear-gradient(90deg,#dd56ca,#8f3184); box-shadow: 0 22px 60px rgba(221,86,202,.24); }
+.btn-ghost { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: #e2e8f0; font-weight: 500; }
+.btn-soft { background: rgba(221,86,202,.18); }
+.btn-emerald { background: rgba(16,185,129,.15); border: 1px solid rgba(110,231,183,.2); color: #d1fae5; }
+.badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 11px; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.badge-emerald { background: rgba(16,185,129,.15); color: #d1fae5; }
+.badge-amber { background: rgba(245,158,11,.15); color: #fde68a; }
+.badge-brand { background: rgba(221,86,202,.15); color: #f5d0fe; }
+.dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.dot-emerald { background: #34d399; } .dot-amber { background: #fbbf24; } .dot-brand { background: #f46ed8; }
+.bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg,#dd56ca,#f46ed8); }
+.input {
+  border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05);
+  border-radius: 16px; padding: 12px 14px; font-size: 12.5px; color: #94a3b8;
+}
+.hdr {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 62px; padding: 0 14px; border-bottom: 1px solid rgba(255,255,255,.1);
+  background: rgba(26,9,35,.72);
+}
+.logo { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg,#ff86df,#61225c); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; color:#fff; }
+.tabbar {
+  display: flex; justify-content: space-around; align-items: center;
+  border-top: 1px solid rgba(255,255,255,.1); background: rgba(24,9,34,.9); padding: 8px 6px 12px;
+}
+.tab { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: #cbd5e1; padding: 6px 12px; border-radius: 16px; }
+.tab.on { background: rgba(221,86,202,.2); color: #fff; }
+.ic { width: 18px; height: 18px; border-radius: 5px; border: 1.6px solid currentColor; opacity: .9; }
+.ic.rf { border-radius: 999px; }
+.avatar { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(135deg,#ff86df,#8f3184); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; }
+.body { padding: 16px 14px 18px; }
+.skel { background: rgba(255,255,255,.06); border-radius: 20px; }
+.modal-scrim { background: rgba(0,0,0,.65); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ 1. Обложка ══════════════ -->
+<section class="page" style="padding:0">
+  <div style="height:120mm;background:#14071f;background-image:radial-gradient(circle at 20% 0,rgba(255,156,235,.3),transparent 40%),radial-gradient(circle at 90% 20%,rgba(168,82,255,.28),transparent 40%),linear-gradient(180deg,#2f0e45,#14071f);color:#f7eefe;padding:22mm 16mm 0;position:relative">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#ff86df,#61225c);display:flex;align-items:center;justify-content:center;font-weight:800">DJ</div>
+      <div>
+        <div style="font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:rgba(255,209,251,.7)">DJ VPN</div>
+        <div style="font-size:11px;color:#cbd5e1">fast secure reliable</div>
+      </div>
+    </div>
+    <h1 style="margin:26px 0 0;font-size:40px;line-height:1.1;letter-spacing:-.02em;font-weight:800">
+      Личный кабинет:<br><span class="gradient-text">макет текущего интерфейса</span>
+    </h1>
+    <p style="margin-top:14px;max-width:120mm;font-size:12.5px;line-height:1.65;color:#e2d6ea">
+      Полный слепок существующего ЛК — экраны, состояния, модальные окна, компоненты
+      и дизайн-токены. Документ собран из исходников <code style="background:rgba(255,255,255,.1);color:#ffd1fb">frontend/src</code>
+      и предназначен как отправная точка для редизайна.
+    </p>
+  </div>
+  <div style="padding:12mm 16mm 0">
+    <table class="t" style="font-size:10.5px">
+      <tr><th style="width:38mm">Продукт</th><td>DJ VPN — личный кабинет поверх биллинга SHM (веб + Telegram Mini App)</td></tr>
+      <tr><th>Стек</th><td>React 18 · TypeScript · Vite · Tailwind CSS 3 · Zustand · react-router 6 · framer-motion · i18next (ru/en)</td></tr>
+      <tr><th>Бэкенд</th><td>FastAPI-прокси к SHM API (<code>backend/</code>), плюс Remnawave (устройства/трафик) и Uptime-статус</td></tr>
+      <tr><th>Авторизация</th><td>Telegram Login Widget · Telegram Mini App (автологин по initData) · логин/пароль</td></tr>
+      <tr><th>Тема</th><td>Только тёмная (<code>color-scheme: dark</code>), фиолетово-фуксиевый бренд, «стеклянные» карточки</td></tr>
+      <tr><th>Сетка</th><td>Мобильный-first: контент <code>max-w-6xl</code> (1152&nbsp;px), брейкпоинт навигации — <code>md</code> (768&nbsp;px)</td></tr>
+      <tr><th>Источник</th><td class="m">frontend/src/{pages,components,index.css}, frontend/tailwind.config.js</td></tr>
+    </table>
+
+    <div class="callout" style="margin-top:9mm">
+      <b>Как читать документ.</b> Слева на каждом развороте — воспроизведённый экран
+      (мобильный кадр 390&nbsp;px или десктопный 1152&nbsp;px), справа — разбор:
+      блоки сверху вниз, состояния, откуда приходят данные и в каком файле лежит вёрстка.
+      Все цвета, радиусы и отступы взяты из реального кода, а не подобраны на глаз.
+    </div>
+
+    <div style="margin-top:8mm">
+      <h3 class="sec">Содержание</h3>
+      <table class="t">
+        <tr><td style="width:10mm">2</td><td>Карта навигации и маршруты</td><td style="width:10mm">10</td><td>Подписки — активная услуга и управление</td></tr>
+        <tr><td>3–4</td><td>Дизайн-токены: цвет, типографика, эффекты</td><td>11</td><td>Подписки — каталог тарифов и модалки</td></tr>
+        <tr><td>5</td><td>Каркас Layout: хедер, таббар, дропдауны</td><td>12</td><td>Платежи — баланс, прогноз, пополнение, история</td></tr>
+        <tr><td>6–7</td><td>Вход, регистрация и режимы карточки</td><td>13</td><td>Профиль и его модальные окна</td></tr>
+        <tr><td>8–9</td><td>Главная — активная подписка и состояния</td><td>14</td><td>Реферальная программа</td></tr>
+        <tr><td></td><td></td><td>15–17</td><td>Мастер подключения, инвентарь, состояния</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 2. Карта навигации ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Карта навигации и маршруты</h2>
+    <span class="kicker">02 · структура</span>
+  </div>
+
+  <p class="lead">
+    Приложение — одностраничное. Всё, что внутри <code>PrivateRoute → Layout</code>,
+    делит общий хедер, фон с частицами и мобильный таббар. Вход, смена пароля и
+    короткая реферальная ссылка живут вне каркаса.
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6mm">
+    <div>
+      <h3 class="sec">Дерево маршрутов</h3>
+      <div style="font-size:10px;line-height:1.9;font-family:ui-monospace,Menlo,monospace;color:#4b4457;border:1px solid #e8e4ee;border-radius:10px;padding:10px 12px;background:#faf9fc">
+        <div>/login <span style="color:#9b93a8">— вход/регистрация/OTP/сброс</span></div>
+        <div>/r/:id <span style="color:#9b93a8">— реф-ссылка → захват → «/»</span></div>
+        <div>/change-password <span style="color:#9b93a8">— приват, вне Layout</span></div>
+        <div style="margin-top:6px">/ <span style="color:#9b93a8">— PrivateRoute → Layout</span></div>
+        <div>&nbsp;&nbsp;├─ index <span style="color:#9b93a8">Главная (DashboardPage)</span></div>
+        <div>&nbsp;&nbsp;├─ /services <span style="color:#9b93a8">Подписки</span></div>
+        <div>&nbsp;&nbsp;├─ /payments <span style="color:#9b93a8">Платежи</span></div>
+        <div>&nbsp;&nbsp;├─ /profile <span style="color:#9b93a8">Профиль</span></div>
+        <div>&nbsp;&nbsp;└─ /referrals <span style="color:#9b93a8">Рефералы (нет в таббаре)</span></div>
+        <div style="margin-top:6px">* <span style="color:#9b93a8">→ redirect на «/» или /login?token=</span></div>
+        <div style="margin-top:6px">/setup.html <span style="color:#9b93a8">— статическая страница инструкций</span></div>
+      </div>
+
+      <h3 class="sec" style="margin-top:7mm">Точки входа</h3>
+      <ul class="notes" style="padding-left:15px">
+        <li><b>Telegram Mini App</b> — <code>TelegramWebAppGate</code> ловит <code>initData</code>,
+            логинит молча, показывает экран-заглушку «Авторизация…» со спиннером.</li>
+        <li><b>Браузер</b> — Telegram Login Widget либо логин/пароль на <code>/login</code>.</li>
+        <li><b>Письмо со сбросом пароля</b> — любой URL с <code>?token=</code> ведёт на форму нового пароля.</li>
+        <li><b>Реферальная ссылка</b> — <code>/r/ref-42</code> или <code>?ref=42</code>, id живёт в localStorage до регистрации.</li>
+      </ul>
+    </div>
+
+    <div>
+      <h3 class="sec">Навигация в интерфейсе</h3>
+      <table class="t">
+        <tr><th>Где</th><th>Что показывает</th></tr>
+        <tr><td>Хедер (≥768&nbsp;px)</td><td>Логотип, 4 таба, баланс, «Инструкции», колокольчик, меню профиля</td></tr>
+        <tr><td>Таббар (&lt;768&nbsp;px)</td><td>Главная · Подписки · Платежи · Профиль — фиксирован снизу</td></tr>
+        <tr><td>Меню профиля</td><td>Баланс, переключатель языка, «Выйти»</td></tr>
+        <tr><td>Профиль → список</td><td>Единственный вход в «Рефералы», плюс новости, инструкции, поддержка, оферта</td></tr>
+        <tr><td>Внешние ссылки</td><td>t.me/djvpnchannel, t.me/help_djvpn, /setup.html, статус-страница</td></tr>
+      </table>
+
+      <h3 class="sec" style="margin-top:7mm">Основные пользовательские пути</h3>
+      <div class="notes">
+        <div style="border:1px solid #e8e4ee;border-radius:10px;padding:9px 11px;background:#faf9fc;line-height:1.75">
+          <b>Первая покупка:</b> Главная (нет подписки) → «Оформить подписку» → каталог →
+          «Подключить тариф» → не хватает средств → модалка → Платежи → оплата → баннер корзины.<br><br>
+          <b>Подключение устройства:</b> Главная → «Подключиться» → модалка «Настройка VPN»
+          (шаг 1 — установка приложения, шаг 2 — импорт подписки/QR).<br><br>
+          <b>Продление:</b> Платежи → «Предстоящие расходы» → пополнение, либо карточка
+          «Продление N-го» на Главной.<br><br>
+          <b>Реферальный доход:</b> Профиль → Реферальная программа → копирование ссылки/QR →
+          таблица рефералов и уровень.
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:6mm">
+        «Рефералы» — полноценный раздел, но попасть в него можно только через список в
+        профиле: в таббаре и хедере пункта нет.
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sec" style="margin-top:7mm">Данные экранов</h3>
+  <table class="t">
+    <tr><th>Экран</th><th>Источник данных</th><th>Кеш / обновление</th></tr>
+    <tr><td>Главная, Подписки, Платежи</td><td class="m">GET /api/dashboard</td><td>Общий стор <code>dashboardStore</code>, TTL 60&nbsp;с, <code>invalidate()</code> после действий</td></tr>
+    <tr><td>Каталог тарифов</td><td class="m">orders + services</td><td><code>catalogStore</code>, срез <code>useCatalog</code></td></tr>
+    <tr><td>Статус серверов</td><td class="m">GET /api/status</td><td>Собственный запрос при монтировании <code>ServerStatus</code></td></tr>
+    <tr><td>Рефералы</td><td class="m">GET /api/referrals + /api/config</td><td>Локальный стейт страницы</td></tr>
+    <tr><td>Уведомления</td><td class="m">/api/notifications</td><td>Хук <code>useNotifications</code>, счётчик непрочитанных</td></tr>
+    <tr><td>Незавершённая покупка</td><td class="m">/api/cart</td><td>Хук <code>useCart</code>, баннер на Главной</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════ 3. Дизайн-токены ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Дизайн-токены</h2>
+    <span class="kicker">03 · tailwind.config.js + index.css</span>
+  </div>
+  <p class="lead">
+    Палитра одна на весь кабинет: фуксия <code>brand</code> как акцент и глубокий фиолетовый
+    <code>surface</code> как фон. Светлой темы нет. Ниже — точные значения из конфига,
+    их же используют статические страницы (<code>public/setup.html</code>).
+  </p>
+
+  <h3 class="sec">brand — акцент</h3>
+  <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:5px">
+<div><div style="height:46px;border-radius:9px;background:#fff1fb;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">50</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#fff1fb</div></div>
+<div><div style="height:46px;border-radius:9px;background:#ffd7f4;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">100</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#ffd7f4</div></div>
+<div><div style="height:46px;border-radius:9px;background:#ffb0eb;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">200</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#ffb0eb</div></div>
+<div><div style="height:46px;border-radius:9px;background:#ff86df;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">300</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#ff86df</div></div>
+<div><div style="height:46px;border-radius:9px;background:#f46ed8;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">400</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#f46ed8</div></div>
+<div><div style="height:46px;border-radius:9px;background:#dd56ca;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">500</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#dd56ca</div></div>
+<div><div style="height:46px;border-radius:9px;background:#b641a9;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">600</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#b641a9</div></div>
+<div><div style="height:46px;border-radius:9px;background:#8f3184;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">700</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#8f3184</div></div>
+<div><div style="height:46px;border-radius:9px;background:#61225c;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">800</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#61225c</div></div>
+<div><div style="height:46px;border-radius:9px;background:#341330;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">900</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#341330</div></div>
+</div>
+<h3 class="sec" style="margin-top:6mm">surface — фон и карточки</h3>
+<div style="display:grid;grid-template-columns:repeat(10,1fr);gap:5px">
+<div><div style="height:46px;border-radius:9px;background:#14071f;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">0</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#14071f</div></div>
+<div><div style="height:46px;border-radius:9px;background:#1b0c2a;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">1</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#1b0c2a</div></div>
+<div><div style="height:46px;border-radius:9px;background:#251236;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">2</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#251236</div></div>
+<div><div style="height:46px;border-radius:9px;background:#311846;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">3</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#311846</div></div>
+<div><div style="height:46px;border-radius:9px;background:#42215c;border:1px solid rgba(0,0,0,.08)"></div><div style="font-size:8.5px;margin-top:3px;color:#6b6178;font-weight:600">4</div><div style="font-size:8px;font-family:ui-monospace,Menlo,monospace;color:#a49bb0">#42215c</div></div>
+<div style="grid-column:span 5;font-size:9.5px;line-height:1.5;color:#4b4457;padding-left:6px"><b>Фон страницы</b> — не плоский: два радиальных пятна (розовое слева-сверху, сиреневое справа-сверху) поверх вертикального градиента <code>#2f0e45 → #14071f → #12061a</code>, плюс canvas с частицами и три размытых «blob»-круга в Layout.</div>
+</div>
+<h3 class="sec" style="margin-top:6mm">Семантические цвета</h3>
+<table class="t"><tr><th style="width:32mm">Токен</th><th style="width:12mm"></th><th style="width:24mm">HEX</th><th>Где используется</th></tr>
+<tr><td>emerald-400</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#34d399;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#34d399</td><td>статус «онлайн», успех</td></tr>
+<tr><td>emerald-300</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#6ee7b7;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#6ee7b7</td><td>подтверждено, доход</td></tr>
+<tr><td>amber-400</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#fbbf24;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#fbbf24</td><td>ожидает оплаты, техработы</td></tr>
+<tr><td>rose-400</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#fb7185;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#fb7185</td><td>ошибки, удаление</td></tr>
+<tr><td>slate-300</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#cbd5e1;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#cbd5e1</td><td>вторичный текст</td></tr>
+<tr><td>slate-400</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#94a3b8;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#94a3b8</td><td>подписи, иконки</td></tr>
+<tr><td>#f7eefe</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#f7eefe;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#f7eefe</td><td>основной текст (body)</td></tr>
+<tr><td>blue-500</td><td><span style="display:inline-block;width:22px;height:11px;border-radius:3px;background:#3b82f6;border:1px solid rgba(0,0,0,.1)"></span></td><td class="m">#3b82f6</td><td>кнопка «Активировать» промокод</td></tr>
+</table>
+</section>
+
+<!-- ══════════════ 3b. Токены: поверхности и типографика ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Токены: поверхности, типографика, эффекты</h2>
+    <span class="kicker">03b · index.css</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:2mm">
+    <div>
+      <h3 class="sec">Поверхности и эффекты</h3>
+      <div class="app" style="display:grid;gap:8px">
+        <div class="glass r16" style="padding:12px">
+          <div class="xxs up mut">.glass</div>
+          <div class="xs mut2" style="margin-top:4px">двойной градиент + blur(20px) + рамка rgba(255,210,248,.1) + тень 0 18px 50px</div>
+        </div>
+        <div class="brand-panel r16" style="padding:12px">
+          <div class="xxs up mut">.brand-panel</div>
+          <div class="xs mut2" style="margin-top:4px">фирменная панель героев: фуксия→фиолет 145°, тень 0 26px 70px rgba(202,84,193,.15)</div>
+        </div>
+        <div class="r16" style="padding:12px;background:#251236;border:1px solid rgba(255,255,255,.1)">
+          <div class="xxs up mut">.gradient-text</div>
+          <div class="lg b gradient-text" style="margin-top:2px">просто работает</div>
+        </div>
+        <div class="r16" style="padding:12px;background:#251236;border:1px solid rgba(255,255,255,.1)">
+          <div class="xxs up mut" style="margin-bottom:8px">кнопки</div>
+          <div style="display:grid;gap:6px">
+            <div class="btn btn-brand">Подключить тариф</div>
+            <div class="btn btn-ghost">Позже</div>
+            <div class="btn btn-emerald">Настроить подключение</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3 class="sec">Типографика</h3>
+      <table class="t">
+        <tr><th>Роль</th><th>Размер / начертание</th><th>Пример</th></tr>
+        <tr><td>Заголовок героя</td><td class="m">36–48px / 800</td><td>«VPN, который просто работает»</td></tr>
+        <tr><td>H1 страницы</td><td class="m">30px / 700</td><td>«Баланс», «Реферальная программа»</td></tr>
+        <tr><td>H2 секции</td><td class="m">20px / 600</td><td>«Пополнение баланса»</td></tr>
+        <tr><td>Название карточки</td><td class="m">16–20px / 700</td><td>Имя тарифа</td></tr>
+        <tr><td>Основной текст</td><td class="m">14px / 400</td><td>Описания, строки списков</td></tr>
+        <tr><td>Подпись</td><td class="m">12px / 400, slate-400</td><td>Даты, счётчики</td></tr>
+        <tr><td>Микро-лейбл</td><td class="m">10–11px / 600, uppercase, tracking .18em</td><td>ТРАФИК · УСТРОЙСТВА · ЛОКАЦИИ</td></tr>
+        <tr><td>Цифры и деньги</td><td class="m">JetBrains Mono</td><td>1 250.00 ₽</td></tr>
+      </table>
+      <p class="lead" style="margin-top:6px">Шрифт интерфейса — <b>Golos Text</b> (fallback system-ui), моноширинный — <b>JetBrains Mono</b>.</p>
+
+      <h3 class="sec" style="margin-top:6mm">Радиусы, тени, анимации</h3>
+      <table class="t">
+        <tr><th>Токен</th><th>Значение</th><th>Применение</th></tr>
+        <tr><td>Крупная карточка</td><td class="m">28px (1.75rem) / 32px (2rem)</td><td>Секции страниц, hero, модалки</td></tr>
+        <tr><td>Карточка/кнопка</td><td class="m">16px (1rem) / 12px</td><td>Кнопки, поля, плитки</td></tr>
+        <tr><td>Пилюля</td><td class="m">999px</td><td>Бейджи статусов, прогресс-бары</td></tr>
+        <tr><td>shadow-brand</td><td class="m">0 22px 60px rgba(221,86,202,.24)</td><td>Главные CTA</td></tr>
+        <tr><td>fade-in / slide-up</td><td class="m">0.4–0.45s ease-out</td><td>Появление страниц и модалок</td></tr>
+        <tr><td>glow-pulse / float</td><td class="m">2.5s / 4s infinite</td><td>Акцентные элементы, частицы</td></tr>
+        <tr><td>Иконки</td><td class="m">Heroicons outline, stroke 1.6–1.8</td><td>Вся навигация и карточки</td></tr>
+      </table>
+
+      <div class="callout" style="margin-top:5mm">
+        Модалки на мобильном — <b>bottom sheet</b>: <code>rounded-t-[2rem]</code>, «ручка»
+        14×6&nbsp;px сверху, <code>max-h-90dvh</code>; на <code>sm+</code> превращаются в
+        центрированное окно. Скрим — <code>black/65</code> + blur.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 4. Каркас Layout ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Каркас: хедер, таббар, оверлеи</h2>
+    <span class="kicker">04 · components/Layout.tsx</span>
+  </div>
+
+  <h3 class="sec">Десктопный хедер — 1152&nbsp;px, липкий, высота 80&nbsp;px</h3>
+  <div style="zoom:.60">
+    <div class="frame wide"><div class="screen app">
+      <div class="hdr" style="height:80px;padding:0 16px">
+        <div class="row g3">
+          <div class="logo" style="width:48px;height:48px;border-radius:16px;font-size:14px">DJ</div>
+          <div>
+            <div class="xs up" style="color:rgba(255,209,251,.7);letter-spacing:.35em">DJ VPN</div>
+            <div class="xs mut2">fast secure reliable</div>
+          </div>
+        </div>
+        <div class="row g1" style="background:rgba(255,255,255,.05);border-radius:16px;padding:4px">
+          <div class="row g2" style="background:rgba(221,86,202,.25);border-radius:12px;padding:8px 16px;font-size:13px;font-weight:500;box-shadow:0 22px 60px rgba(221,86,202,.24)"><span class="ic" style="width:15px;height:15px"></span>Главная</div>
+          <div class="row g2 mut2" style="padding:8px 16px;font-size:13px"><span class="ic" style="width:15px;height:15px"></span>Подписки</div>
+          <div class="row g2 mut2" style="padding:8px 16px;font-size:13px"><span class="ic" style="width:15px;height:15px"></span>Платежи</div>
+          <div class="row g2 mut2" style="padding:8px 16px;font-size:13px"><span class="ic rf" style="width:15px;height:15px"></span>Профиль</div>
+        </div>
+        <div class="row g2">
+          <div class="row g2" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:16px;padding:8px 12px">
+            <span class="dot dot-emerald"></span><span class="mono2 fuchsia" style="font-size:13px">1250.00 ₽</span>
+          </div>
+          <div style="width:40px;height:40px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center"><span class="ic mut"></span></div>
+          <div style="width:40px;height:40px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;position:relative">
+            <span class="ic mut" style="border-radius:50% 50% 4px 4px"></span>
+            <span style="position:absolute;top:-4px;right:-4px;background:#f43f5e;color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 5px">3</span>
+          </div>
+          <div class="row g2" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:16px;padding:6px 10px">
+            <div class="avatar" style="width:36px;height:36px">Д</div>
+            <div><div style="font-size:13px">Djalal</div><div class="xs mut2">djalal</div></div>
+            <span class="mut" style="font-size:11px">▾</span>
+          </div>
+        </div>
+      </div>
+      <div style="height:150px;padding:20px 16px" class="app">
+        <div class="row g2" style="justify-content:center;background:rgba(245,158,11,.1);border-bottom:1px solid rgba(251,191,36,.3);margin:-20px -16px 16px;padding:8px;font-size:13px;color:#fde68a">Ведутся технические работы — часть функций может быть недоступна</div>
+        <div class="skel" style="height:36px;width:220px;margin-bottom:12px"></div>
+        <div class="skel" style="height:60px"></div>
+      </div>
+    </div></div>
+  </div>
+  <div class="caption">Хедер + баннер техработ (<code>MaintenanceBanner</code>, липнет под хедером) + область <code>&lt;main&gt;</code>: <code>max-w-6xl</code>, <code>px-4 py-6</code></div>
+
+  <div class="cols" style="margin-top:7mm">
+    <div style="width:96mm">
+      <h3 class="sec">Мобильный каркас</h3>
+      <div style="zoom:.62">
+        <div class="frame"><div class="screen app">
+          <div class="hdr">
+            <div class="row g2"><div class="logo">DJ</div><div><div class="xxs up" style="color:rgba(255,209,251,.7);letter-spacing:.3em">DJ VPN</div><div class="xxs mut2">fast secure reliable</div></div></div>
+            <div class="row g2">
+              <div style="width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+              <div style="width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);position:relative"><span style="position:absolute;top:-3px;right:-3px;background:#f43f5e;color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px">3</span></div>
+              <div class="row g1" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:12px;padding:4px 6px"><div class="avatar" style="width:28px;height:28px;font-size:11px">Д</div><span class="mut xxs">▾</span></div>
+            </div>
+          </div>
+          <div class="body" style="height:430px">
+            <div class="skel" style="height:150px"></div>
+            <div class="grid2" style="margin-top:12px"><div class="skel" style="height:80px"></div><div class="skel" style="height:80px"></div></div>
+            <div class="skel" style="height:60px;margin-top:12px"></div>
+          </div>
+          <div class="tabbar">
+            <div class="tab on"><span class="ic"></span>Главная</div>
+            <div class="tab"><span class="ic"></span>Подписки</div>
+            <div class="tab"><span class="ic"></span>Платежи</div>
+            <div class="tab"><span class="ic rf"></span>Профиль</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Баланс в хедере скрыт до <code>sm</code>; таббар — <code>fixed</code>, <code>safe-bottom</code>, <code>main</code> получает <code>pb-28</code></div>
+    </div>
+
+    <div style="flex:1">
+      <h3 class="sec">Оверлеи хедера</h3>
+      <div style="zoom:.72" class="app">
+        <div class="glass r24" style="width:224px;padding:8px">
+          <div style="background:rgba(255,255,255,.05);border-radius:12px;padding:10px 12px">
+            <div class="xs mut">Баланс</div><div class="mono2 lg w" style="margin-top:4px">1250.00 ₽</div>
+          </div>
+          <div class="row between" style="background:rgba(255,255,255,.05);border-radius:12px;padding:8px 12px;margin-top:8px">
+            <span class="xs mut">Язык</span>
+            <span class="xs w" style="border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:2px 8px">Русский ▾</span>
+          </div>
+          <div class="row g2 rose" style="padding:8px 12px;margin-top:8px;font-size:13px">↪ Выйти</div>
+        </div>
+        <div class="glass r24" style="width:320px;padding:8px;margin-top:14px">
+          <div class="row between" style="padding:6px 8px"><span class="sm sb w">Уведомления</span><span class="xs" style="color:#ff86df">Прочитать все</span></div>
+          <div style="background:rgba(255,255,255,.05);border-radius:12px;padding:8px 12px">
+            <div class="row between"><span class="sm sb w">Платёж зачислен</span><span class="dot dot-brand"></span></div>
+            <div class="xs mut2" style="margin-top:2px">Баланс пополнен на 499 ₽</div>
+            <div class="xxs mut" style="margin-top:4px">21.08.2026, 14:02</div>
+          </div>
+          <div style="padding:8px 12px">
+            <div class="sm sb w">Скоро истечёт подписка</div>
+            <div class="xs mut2" style="margin-top:2px">Осталось 3 дня</div>
+            <div class="xxs mut" style="margin-top:4px">20.08.2026, 09:15</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes" style="margin-top:5mm">
+        <h4>Что важно для редизайна</h4>
+        <ul>
+          <li>Хедер и таббар дублируют друг друга: одни и те же 4 пункта, разные брейкпоинты.</li>
+          <li>Баланс показан трижды — чип в хедере, меню профиля, страница «Платежи».</li>
+          <li>Меню профиля и колокольчик — самописные дропдауны с закрытием по клику вне.</li>
+          <li>Аватар: фото из Telegram <code>initData</code>, при ошибке загрузки — буква имени на градиенте.</li>
+          <li>Фон — <code>ParticleCanvas</code> на весь вьюпорт + 3 размытых круга; рисуется всегда, даже под модалками.</li>
+          <li><code>&lt;main&gt;</code> намеренно без <code>z-10</code>, иначе модалки уезжают под таббар.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 5. Вход ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Вход и регистрация <span class="route">/login</span></h2>
+    <span class="kicker">05 · pages/LoginPage.tsx (1001 строка)</span>
+  </div>
+  <p class="lead">
+    Единственный публичный экран. Двухколоночный на <code>lg+</code>: слева маркетинговая
+    панель (скрыта на мобильном), справа карточка с пятью режимами — вход, регистрация,
+    подтверждение email, запрос сброса, новый пароль.
+  </p>
+
+  <div style="zoom:.585">
+    <div class="frame wide"><div class="screen app" style="padding:24px;display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:stretch">
+      <div class="brand-panel r28" style="padding:32px;display:flex;flex-direction:column;justify-content:space-between">
+        <div>
+          <div class="row g3"><div class="logo" style="width:72px;height:72px;border-radius:20px;font-size:20px">DJ</div>
+            <div><div class="sm up" style="color:rgba(255,209,251,.7);letter-spacing:.35em">DJ VPN</div><div class="xs mut2">fast secure reliable</div></div></div>
+          <div class="row g2" style="margin-top:24px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:999px;padding:8px 16px;font-size:13px;color:#e2e8f0;width:max-content">⚡ Работает в РФ · Без логов · Подключение за 1 минуту</div>
+          <h1 style="margin:24px 0 0;font-size:48px;line-height:1.1;font-weight:700">VPN, который<br><span class="gradient-text">просто работает</span></h1>
+          <p style="margin-top:16px;font-size:15px;line-height:1.7;color:#e2e8f0;max-width:520px">Получите стабильный доступ к нужным сайтам и сервисам через быстрые серверы по всему миру. Управляйте подпиской, устройствами и подключениями в личном кабинете или прямо через Telegram.</p>
+        </div>
+        <div class="grid3" style="margin-top:28px">
+          <div class="tile"><div style="width:40px;height:40px;border-radius:12px;background:rgba(221,86,202,.2)"></div><div class="sm sb w" style="margin-top:12px">Мгновенное подключение</div><div class="xs mut2" style="margin-top:8px;line-height:1.5">Подписка активируется сразу после оплаты</div></div>
+          <div class="tile"><div style="width:40px;height:40px;border-radius:12px;background:rgba(221,86,202,.2)"></div><div class="sm sb w" style="margin-top:12px">Все устройства</div><div class="xs mut2" style="margin-top:8px;line-height:1.5">iOS, Android, Windows, macOS, роутеры</div></div>
+          <div class="tile"><div style="width:40px;height:40px;border-radius:12px;background:rgba(221,86,202,.2)"></div><div class="sm sb w" style="margin-top:12px">Поддержка 24/7</div><div class="xs mut2" style="margin-top:8px;line-height:1.5">Помогаем в Telegram в любое время</div></div>
+        </div>
+      </div>
+
+      <div class="glass r28" style="padding:28px;max-width:448px;width:100%;justify-self:center;align-self:center">
+        <div class="row between" style="margin-bottom:24px">
+          <div class="logo" style="width:64px;height:64px;border-radius:18px;font-size:18px">DJ</div>
+          <div class="row g1" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:16px;padding:4px">
+            <span style="background:rgba(221,86,202,.25);border-radius:12px;padding:8px 12px;font-size:13px;font-weight:500">Вход</span>
+            <span class="mut2" style="padding:8px 12px;font-size:13px">Регистрация</span>
+          </div>
+        </div>
+        <div style="font-size:24px;font-weight:700">Добро пожаловать</div>
+        <div class="sm mut2" style="margin-top:4px;line-height:1.6">Войдите по логину и паролю или используйте Telegram.</div>
+        <div style="margin-top:20px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:16px;padding:12px;display:flex;justify-content:center">
+          <div style="background:#2ea6dd;color:#fff;border-radius:999px;padding:9px 20px;font-size:14px;font-weight:600">✈ Log in with Telegram</div>
+        </div>
+        <div class="row g3" style="margin:20px 0"><div style="flex:1;height:1px;background:rgba(255,255,255,.1)"></div><span class="xxs up mut">или</span><div style="flex:1;height:1px;background:rgba(255,255,255,.1)"></div></div>
+        <div class="stack-sm">
+          <div><div class="xs mut" style="margin-bottom:6px">Логин или email</div><div class="input">Введите логин или email</div></div>
+          <div><div class="xs mut" style="margin-bottom:6px">Пароль</div><div class="input row between"><span>Введите пароль</span><span class="mut">👁</span></div></div>
+          <div style="text-align:right"><span class="xs" style="color:#f5d0fe">Забыли пароль?</span></div>
+          <div class="btn btn-brand" style="margin-top:8px">Войти</div>
+        </div>
+        <div class="sm mut2" style="text-align:center;margin-top:20px">Нет аккаунта? <span style="color:#f5d0fe;font-weight:500">Создайте его за минуту</span></div>
+      </div>
+    </div></div>
+  </div>
+  <div class="caption">Десктоп 1152&nbsp;px. Нижняя строка страницы: «Шифрование AES-256 · Без логов · Поддержка в Telegram 24/7»</div>
+
+  <div class="notes" style="margin-top:6mm;column-count:2;column-gap:8mm">
+    <h4>Логика экрана</h4>
+    <ul>
+      <li>Внутри Telegram Mini App виджет и разделитель «или» скрываются — остаётся только логин/пароль.</li>
+      <li>Если виджет Telegram не загрузился (провайдер блокирует), показывается текстовая подсказка вместо него.</li>
+      <li>Регистрация добавляет поля «Имя», Email, «Повторите пароль», капчу и два обязательных чекбокса (152-ФЗ и оферта).</li>
+      <li>После регистрации — режим <code>verify-email</code> с 6-значным OTP (<code>OtpVerify</code>, 566 строк, автофокус и вставка из буфера).</li>
+      <li>Ссылка из письма с <code>?token=</code> открывает режим «Новый пароль» с любого пути.</li>
+      <li>Реферальный <code>?ref=</code> захватывается до маршрутизации и переживает OAuth-редирект.</li>
+    </ul>
+    <h4>Компоненты</h4>
+    <ul>
+      <li><code>BrandLogo</code> — картинка 48–72&nbsp;px + вордмарк.</li>
+      <li><code>Field</code> — лейбл + «(необязательно)» + слот, иконка слева внутри поля.</li>
+      <li><code>ForgotPasswordBlock</code>, <code>ResetPasswordBlock</code> — режимы внутри той же карточки.</li>
+      <li>Ошибка — розовая плашка под формой, успех — зелёная.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════ 5b. Режимы карточки входа ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Режимы карточки авторизации</h2>
+    <span class="kicker">05b · один контейнер, пять состояний</span>
+  </div>
+  <p class="lead">Все режимы рисуются в одной «стеклянной» карточке шириной 448&nbsp;px и переключаются без перехода по маршрутам.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6mm">
+    <div>
+      <div style="zoom:.45" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen" style="padding:28px">
+          <div class="row between" style="margin-bottom:20px"><div class="logo" style="width:56px;height:56px">DJ</div>
+            <div class="row g1" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:16px;padding:4px"><span class="mut2" style="padding:8px 12px;font-size:13px">Вход</span><span style="background:rgba(221,86,202,.25);border-radius:12px;padding:8px 12px;font-size:13px">Регистрация</span></div></div>
+          <div style="font-size:24px;font-weight:700">Создать аккаунт</div>
+          <div class="sm mut2" style="margin-top:4px">Заполните форму, чтобы создать аккаунт и управлять услугами.</div>
+          <div class="stack-sm" style="margin-top:18px">
+            <div class="input">Ваше имя</div>
+            <div class="input">you@example.com</div>
+            <div class="input">Введите пароль</div>
+            <div class="input">Повторите пароль</div>
+            <div class="row g3"><div style="width:144px;height:52px;border-radius:16px;background:#fff;color:#333;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,Menlo,monospace;letter-spacing:.2em;font-size:18px">4F7K2</div>
+              <div style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+              <div class="input" style="flex:1">Код</div></div>
+            <div class="row g2" style="align-items:flex-start"><span style="width:16px;height:16px;border-radius:4px;border:1px solid rgba(255,255,255,.2);flex:none;margin-top:2px"></span><span class="xs mut2" style="line-height:1.5">Согласие на обработку персональных данных (152-ФЗ)</span></div>
+            <div class="row g2" style="align-items:flex-start"><span style="width:16px;height:16px;border-radius:4px;border:1px solid rgba(255,255,255,.2);flex:none;margin-top:2px"></span><span class="xs mut2" style="line-height:1.5">Принимаю условия договора оказания услуг</span></div>
+            <div class="btn btn-brand">Зарегистрироваться</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Регистрация — 2 обязательных чекбокса + капча</div>
+    </div>
+
+    <div>
+      <div style="zoom:.45" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen" style="padding:28px;min-height:520px">
+          <div style="width:64px;height:64px;border-radius:20px;background:rgba(221,86,202,.2);display:flex;align-items:center;justify-content:center;font-size:28px">✉</div>
+          <div style="font-size:24px;font-weight:700;margin-top:16px">Подтвердите email</div>
+          <div class="sm mut2" style="margin-top:6px;line-height:1.6">Мы отправили код на <span class="w">you@example.com</span>. Введите его ниже.</div>
+          <div class="row g2" style="margin-top:22px">
+            <div style="flex:1;height:56px;border-radius:14px;border:1px solid rgba(255,210,248,.35);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700">4</div>
+            <div style="flex:1;height:56px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700">2</div>
+            <div style="flex:1;height:56px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+            <div style="flex:1;height:56px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+            <div style="flex:1;height:56px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+            <div style="flex:1;height:56px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+          </div>
+          <div class="btn btn-brand" style="margin-top:20px">Подтвердить</div>
+          <div class="sm" style="text-align:center;margin-top:16px"><span class="mut">Не получили код? </span><span style="color:#f5d0fe">Отправить снова</span></div>
+          <div class="sm mut" style="text-align:center;margin-top:10px">Пропустить</div>
+        </div></div>
+      </div>
+      <div class="caption">OTP — 6 ячеек, вставка из буфера, таймер повтора</div>
+    </div>
+
+    <div>
+      <div style="zoom:.45" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen" style="padding:28px;min-height:250px">
+          <div style="font-size:24px;font-weight:700">Восстановление пароля</div>
+          <div class="sm mut2" style="margin-top:6px;line-height:1.6">Укажите email или логин — пришлём ссылку для сброса.</div>
+          <div class="input" style="margin-top:18px">you@example.com или логин</div>
+          <div class="btn btn-brand" style="margin-top:12px">Отправить ссылку</div>
+          <div class="sm mut" style="text-align:center;margin-top:14px">← Назад ко входу</div>
+        </div></div>
+      </div>
+      <div class="caption">Запрос сброса</div>
+      <div style="zoom:.45;margin-top:6px" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen" style="padding:28px;min-height:300px">
+          <div style="font-size:24px;font-weight:700">Новый пароль</div>
+          <div class="sm mut2" style="margin-top:6px;line-height:1.6">Придумайте новый пароль для входа в кабинет.</div>
+          <div class="input" style="margin-top:18px">Введите новый пароль</div>
+          <div class="input" style="margin-top:8px">Повторите новый пароль</div>
+          <div class="btn btn-brand" style="margin-top:12px">Сохранить пароль</div>
+        </div></div>
+      </div>
+      <div class="caption">Новый пароль (по <code>?token=</code> из письма)</div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:6mm">
+    <div style="width:74mm">
+      <h3 class="sec">Смена пароля <span class="route">/change-password</span></h3>
+      <div style="zoom:.5" class="app">
+        <div class="frame"><div class="screen" style="min-height:640px;padding:20px">
+          <div class="btn-ghost" style="width:max-content;border-radius:12px;padding:8px 12px;font-size:13px">← Назад</div>
+          <div style="text-align:center;margin-top:24px"><div class="logo" style="width:64px;height:64px;margin:0 auto;font-size:18px">DJ</div>
+            <div style="font-size:22px;font-weight:600;margin-top:16px">Смена пароля</div>
+            <div class="sm mut2" style="margin-top:8px">Задайте новый пароль для входа в личный кабинет.</div></div>
+          <div class="stack-sm" style="margin-top:32px">
+            <div class="input" style="border-radius:12px">Новый пароль</div>
+            <div class="input" style="border-radius:12px">Повторите пароль</div>
+            <div class="btn" style="background:#b641a9">Сохранить</div>
+            <div class="xs mut" style="text-align:center">Минимум 6 символов. Старый пароль не требуется.</div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+    <div style="flex:1" class="notes">
+      <h4>Особенности</h4>
+      <ul>
+        <li>Отдельный маршрут вне <code>Layout</code> — открывается как deep-link из Telegram-бота.</li>
+        <li>Старый пароль не запрашивается: доступ уже подтверждён сессией.</li>
+        <li>После успеха — зелёная плашка «Пароль изменён» и авто-закрытие Mini App через 1.2&nbsp;с
+            (<code>Telegram.WebApp.close()</code>), в браузере — возврат в профиль.</li>
+        <li>Фон копирует экран входа: три размытых круга, без частиц.</li>
+      </ul>
+      <div class="callout" style="margin-top:5mm">
+        Пять режимов в одном файле на 1001 строку — главный кандидат на декомпозицию при редизайне.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 6. Главная ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Главная — активная подписка <span class="route">/</span></h2>
+    <span class="kicker">06 · pages/DashboardPage.tsx</span>
+  </div>
+  <p class="lead">
+    Основной сценарий: у пользователя есть активная услуга. Экран собирается из четырёх
+    блоков на услугу + общий статус серверов. Если активных услуг несколько — вся связка
+    повторяется для каждой.
+  </p>
+
+  <div class="cols">
+    <div style="width:96mm">
+      <div style="zoom:.80">
+        <div class="frame"><div class="screen app">
+          <div class="hdr">
+            <div class="row g2"><div class="logo">DJ</div><div><div class="xxs up" style="color:rgba(255,209,251,.7);letter-spacing:.3em">DJ VPN</div><div class="xxs mut2">fast secure reliable</div></div></div>
+            <div class="row g2">
+              <div style="width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)"></div>
+              <div class="row g1" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:12px;padding:4px 6px"><div class="avatar" style="width:28px;height:28px;font-size:11px">Д</div><span class="mut xxs">▾</span></div>
+            </div>
+          </div>
+
+          <div class="body">
+            <!-- CompactSubscriptionCard -->
+            <div class="glass" style="border-radius:28px;padding:20px">
+              <div class="row g2" style="margin-bottom:16px"><span class="dot dot-emerald"></span><span class="badge badge-emerald">Активна</span></div>
+              <div class="row between" style="align-items:flex-start;gap:16px">
+                <div>
+                  <div style="font-size:20px;font-weight:700">DJ VPN Премиум</div>
+                  <div class="xs mut" style="margin-top:4px">5 устройств · безлимит</div>
+                </div>
+                <div style="position:relative;width:88px;height:88px;flex:none">
+                  <svg width="88" height="88" style="transform:rotate(-90deg)">
+                    <circle cx="44" cy="44" r="40.5" stroke="rgba(255,255,255,.08)" stroke-width="7" fill="none"/>
+                    <circle cx="44" cy="44" r="40.5" stroke="#dd56ca" stroke-width="7" stroke-linecap="round" fill="none" stroke-dasharray="254" stroke-dashoffset="72"/>
+                  </svg>
+                  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                    <span style="font-size:20px;font-weight:700">21</span><span class="xxs mut">день</span>
+                  </div>
+                </div>
+              </div>
+              <div class="btn btn-brand" style="margin-top:20px"><span class="dot" style="background:#fff"></span>Подключиться</div>
+            </div>
+
+            <!-- Мини-карточки -->
+            <div class="grid2" style="margin-top:12px">
+              <div class="glass r16" style="padding:16px">
+                <div class="xxs up mut">Трафик</div>
+                <div style="margin-top:8px"><span style="font-size:24px;font-weight:700">18.4</span> <span class="sm mut">ГБ</span></div>
+                <div class="bar" style="height:4px;margin-top:12px"><i style="width:100%"></i></div>
+              </div>
+              <div class="glass r16" style="padding:16px">
+                <div class="xxs up mut">Устройства</div>
+                <div style="margin-top:8px"><span style="font-size:24px;font-weight:700">3</span> <span class="sm mut">/ 5</span></div>
+                <div class="row g1" style="margin-top:12px">
+                  <span style="flex:1;height:6px;border-radius:999px;background:linear-gradient(90deg,#dd56ca,#f46ed8)"></span>
+                  <span style="flex:1;height:6px;border-radius:999px;background:linear-gradient(90deg,#dd56ca,#f46ed8)"></span>
+                  <span style="flex:1;height:6px;border-radius:999px;background:linear-gradient(90deg,#dd56ca,#f46ed8)"></span>
+                  <span style="flex:1;height:6px;border-radius:999px;background:rgba(255,255,255,.1)"></span>
+                  <span style="flex:1;height:6px;border-radius:999px;background:rgba(255,255,255,.1)"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- RenewalCard -->
+            <div class="glass r16 row g3" style="padding:12px 16px;margin-top:12px">
+              <div style="flex:1">
+                <div class="xxs up mut">Продление 12 сентября</div>
+                <div class="sm mut2" style="margin-top:4px">спишется <span class="w sb">299 ₽</span> — <span class="emerald">хватает</span></div>
+              </div>
+              <div style="width:40px;height:40px;border-radius:12px;background:rgba(244,63,94,.15);color:#fda4af;display:flex;align-items:center;justify-content:center;flex:none">⟳</div>
+            </div>
+
+            <!-- ServerStatus свернут -->
+            <div class="glass" style="border-radius:24px;padding:14px 16px;margin-top:12px;display:flex;align-items:center;gap:12px">
+              <div style="width:36px;height:36px;border-radius:12px;background:rgba(221,86,202,.2);border:1px solid rgba(221,86,202,.2);flex:none"></div>
+              <div style="flex:1">
+                <div class="sm sb w">Статус серверов</div>
+                <div style="margin-top:4px"><span class="badge badge-emerald" style="font-size:9px">Все системы работают <span style="opacity:.7">(8/8)</span></span></div>
+              </div>
+              <span class="mut">▾</span>
+            </div>
+          </div>
+
+          <div class="tabbar">
+            <div class="tab on"><span class="ic"></span>Главная</div>
+            <div class="tab"><span class="ic"></span>Подписки</div>
+            <div class="tab"><span class="ic"></span>Платежи</div>
+            <div class="tab"><span class="ic rf"></span>Профиль</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Мобильный вид, 390&nbsp;px. На десктопе те же блоки в колонке шириной 1152&nbsp;px</div>
+    </div>
+
+    <div style="flex:1" class="notes">
+      <h4>Блоки сверху вниз</h4>
+      <ul>
+        <li><b>CartBanner</b> — янтарный, только если в корзине висит неоплаченный тариф.</li>
+        <li><b>CompactSubscriptionCard</b> — статус-бейдж, имя тарифа, «N устройств · лимит трафика»,
+            кольцевой прогресс остатка дней (радиус 40.5, толщина 7, цвет <code>#dd56ca</code>),
+            CTA «Подключиться» открывает модалку настройки.</li>
+        <li><b>TrafficMiniCard / DevicesMiniCard</b> — сетка 2×1. Трафик: использовано + полоса
+            (при безлимите полоса залита на 100%). Устройства: <code>занято / лимит</code>,
+            сегментированный индикатор, красный при превышении.</li>
+        <li><b>RenewalCard</b> — дата ближайшего списания, сумма и вердикт «хватает / не хватает»
+            из прогноза биллинга; кнопка справа — принудительное обновление.</li>
+        <li><b>ServerStatus</b> — сворачиваемая секция; в открытом виде — сетка карточек
+            локаций с uptime, пингом и «палочками» качества.</li>
+      </ul>
+      <h4>Данные</h4>
+      <ul>
+        <li>Всё из одного <code>/api/dashboard</code>: <code>services</code>, <code>remna_info</code>
+            (трафик и лимиты), <code>devices</code>, <code>orders</code>, <code>forecast</code>.</li>
+        <li>Активной считается услуга со <code>status === 1</code>.</li>
+        <li>Лимит устройств: <code>hwid_device_limit</code>, иначе <code>limit_ip</code>, иначе 5.</li>
+        <li>Пробный тариф зашит константой <code>TRIAL_SERVICE_ID = 4</code>.</li>
+      </ul>
+      <div class="callout" style="margin-top:4mm">
+        Заголовка у страницы нет — экран начинается сразу с карточки. Названия «Главная»
+        нигде, кроме таббара, не встречается.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 6b. Состояния главной ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Главная — остальные состояния</h2>
+    <span class="kicker">06b · три взаимоисключающих ветки + служебные</span>
+  </div>
+  <p class="lead">
+    Верхний блок выбирается по правилу: <b>есть активные услуги</b> → карточки подписки;
+    иначе <b>доступен пробный тариф</b> → предложение триала; иначе → hero «Оформить подписку».
+  </p>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5mm">
+    <div>
+      <div style="zoom:.5" class="app">
+        <div class="frame"><div class="screen" style="padding:14px">
+          <div class="r28" style="position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.1);min-height:420px;background:linear-gradient(180deg,rgba(20,7,31,.2) 0%,rgba(20,7,31,.55) 50%,rgba(20,7,31,.92) 100%),radial-gradient(circle at 30% 20%,rgba(255,134,223,.35),transparent 55%),#1b0c2a;display:flex;flex-direction:column;justify-content:flex-end;padding:24px">
+            <div style="font-size:32px;font-weight:900;line-height:1.15">Оформить<br>новую подписку</div>
+            <div class="sm mut2" style="margin-top:16px;line-height:1.6">Испытай скорость вашего интернета на полную</div>
+            <div class="btn btn-ghost" style="margin-top:28px;border-radius:16px;padding:16px 32px;width:max-content">Оформить подписку</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption"><b>SubscriptionHero</b> — нет подписки и триал недоступен. Живые частицы + затемнение снизу</div>
+    </div>
+
+    <div>
+      <div style="zoom:.5" class="app">
+        <div class="frame"><div class="screen" style="padding:14px">
+          <div class="r28" style="position:relative;overflow:hidden;border:1px solid rgba(221,86,202,.3);background:linear-gradient(135deg,rgba(52,19,48,.6),rgba(37,18,54,.8));padding:20px">
+            <div class="row g2" style="margin-bottom:12px">
+              <div style="width:36px;height:36px;border-radius:12px;background:rgba(221,86,202,.2);display:flex;align-items:center;justify-content:center;color:#ff86df;font-size:18px">✦</div>
+              <div><div class="sm sb w">Попробуйте DJ VPN бесплатно</div><div class="xs mut">7 дней бесплатного доступа</div></div>
+            </div>
+            <div class="xs mut2" style="line-height:1.6;margin-bottom:16px">Активируйте пробный период и оцените скорость и стабильность VPN без оплаты.</div>
+            <div class="btn btn-brand">Активировать пробный период</div>
+          </div>
+          <div class="r16" style="margin-top:12px;border:1px solid rgba(251,191,36,.3);background:rgba(245,158,11,.1);padding:16px;color:#fde68a">
+            <div class="row between"><div><div class="sm sb">Незавершённая покупка</div><div class="xs" style="opacity:.9;margin-top:4px">Тариф «Премиум» · нужно пополнить <b class="mono2">150.00 ₽</b></div></div><span class="xs" style="opacity:.6">✕</span></div>
+            <div class="row g2" style="margin-top:12px">
+              <span style="background:#fbbf24;color:#451a03;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:600">Пополнить баланс</span>
+              <span style="border:1px solid rgba(251,191,36,.3);border-radius:12px;padding:8px 14px;font-size:12px">К подпискам</span>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption"><b>TrialOfferCard</b> + <b>CartBanner</b> (баннер всегда первым блоком страницы)</div>
+    </div>
+
+    <div>
+      <div style="zoom:.5" class="app">
+        <div class="frame"><div class="screen" style="padding:14px">
+          <div class="skel" style="height:32px;width:192px;border-radius:16px"></div>
+          <div class="skel" style="height:176px;border-radius:28px;margin-top:16px"></div>
+          <div class="skel" style="height:128px;border-radius:28px;margin-top:16px"></div>
+          <div class="r28" style="margin-top:24px;border:1px solid rgba(253,164,175,.3);background:rgba(244,63,94,.1);padding:24px;color:#ffe4e6;font-size:13px;line-height:1.6">
+            Не удалось загрузить данные. Обновите страницу.
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Скелетон загрузки (пульсация) и экран ошибки — розовая плашка без кнопки повтора</div>
+    </div>
+  </div>
+
+  <h3 class="sec" style="margin-top:7mm">Статус серверов — раскрытое состояние</h3>
+  <div style="zoom:.62">
+    <div class="frame wide" style="width:1120px"><div class="screen app" style="padding:16px">
+      <div class="glass" style="border-radius:24px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:12px;background:rgba(221,86,202,.2);border:1px solid rgba(221,86,202,.2);flex:none"></div>
+        <div style="flex:1"><div class="sm sb w">Статус серверов</div><div style="margin-top:4px"><span class="badge badge-amber" style="font-size:9px">Есть проблемы <span style="opacity:.7">(7/8)</span></span></div></div>
+        <span class="mut">▴</span>
+      </div>
+      <div class="grid3" style="margin-top:12px">
+<div style="border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(20,12,30,.85);padding:16px">
+  <div class="row between">
+    <div class="row g3">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">DE</div>
+      <div><div class="row g2"><span style="border-radius:4px;background:rgba(255,255,255,.1);padding:1px 6px;font-size:10px;font-weight:700;color:rgba(255,255,255,.7)">DE</span><span class="sm sb w">DE Frankfurt</span></div>
+      <div style="font-size:11px;font-weight:500;margin-top:2px;color:#4ade80">Excellent</div></div>
+    </div>
+    <div class="row g2"><span class="dot" style="background:#34d399"></span><svg width="20" height="16"><rect x="0" y="12" width="3.5" height="4" rx="0.75" fill="#4ade80"/><rect x="5" y="8" width="3.5" height="8" rx="0.75" fill="#4ade80"/><rect x="10" y="4" width="3.5" height="12" rx="0.75" fill="#4ade80"/><rect x="15" y="0" width="3.5" height="16" rx="0.75" fill="#4ade80"/></svg></div>
+  </div>
+  <div class="row between" style="margin-top:12px"><span style="display:inline-flex;border-radius:8px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.2);padding:4px 10px;font-size:11px;font-weight:600;color:#6ee7b7">99.98% uptime</span><span class="xs mut">28ms</span></div>
+</div>
+<div style="border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(20,12,30,.85);padding:16px">
+  <div class="row between">
+    <div class="row g3">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">NL</div>
+      <div><div class="row g2"><span style="border-radius:4px;background:rgba(255,255,255,.1);padding:1px 6px;font-size:10px;font-weight:700;color:rgba(255,255,255,.7)">NL</span><span class="sm sb w">NL Amsterdam</span></div>
+      <div style="font-size:11px;font-weight:500;margin-top:2px;color:#4ade80">Excellent</div></div>
+    </div>
+    <div class="row g2"><span class="dot" style="background:#34d399"></span><svg width="20" height="16"><rect x="0" y="12" width="3.5" height="4" rx="0.75" fill="#4ade80"/><rect x="5" y="8" width="3.5" height="8" rx="0.75" fill="#4ade80"/><rect x="10" y="4" width="3.5" height="12" rx="0.75" fill="#4ade80"/><rect x="15" y="0" width="3.5" height="16" rx="0.75" fill="#4ade80"/></svg></div>
+  </div>
+  <div class="row between" style="margin-top:12px"><span style="display:inline-flex;border-radius:8px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.2);padding:4px 10px;font-size:11px;font-weight:600;color:#6ee7b7">99.95% uptime</span><span class="xs mut">34ms</span></div>
+</div>
+<div style="border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(20,12,30,.85);padding:16px">
+  <div class="row between">
+    <div class="row g3">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">FI</div>
+      <div><div class="row g2"><span style="border-radius:4px;background:rgba(255,255,255,.1);padding:1px 6px;font-size:10px;font-weight:700;color:rgba(255,255,255,.7)">FI</span><span class="sm sb w">FI Helsinki</span></div>
+      <div style="font-size:11px;font-weight:500;margin-top:2px;color:#4ade80">Great</div></div>
+    </div>
+    <div class="row g2"><span class="dot" style="background:#34d399"></span><svg width="20" height="16"><rect x="0" y="12" width="3.5" height="4" rx="0.75" fill="#4ade80"/><rect x="5" y="8" width="3.5" height="8" rx="0.75" fill="#4ade80"/><rect x="10" y="4" width="3.5" height="12" rx="0.75" fill="#4ade80"/><rect x="15" y="0" width="3.5" height="16" rx="0.75" fill="rgba(255,255,255,0.15)"/></svg></div>
+  </div>
+  <div class="row between" style="margin-top:12px"><span style="display:inline-flex;border-radius:8px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.2);padding:4px 10px;font-size:11px;font-weight:600;color:#6ee7b7">99.42% uptime</span><span class="xs mut">41ms</span></div>
+</div>
+<div style="border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(20,12,30,.85);padding:16px">
+  <div class="row between">
+    <div class="row g3">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">US</div>
+      <div><div class="row g2"><span style="border-radius:4px;background:rgba(255,255,255,.1);padding:1px 6px;font-size:10px;font-weight:700;color:rgba(255,255,255,.7)">US</span><span class="sm sb w">US New York</span></div>
+      <div style="font-size:11px;font-weight:500;margin-top:2px;color:#facc15">Fair</div></div>
+    </div>
+    <div class="row g2"><span class="dot" style="background:#34d399"></span><svg width="20" height="16"><rect x="0" y="12" width="3.5" height="4" rx="0.75" fill="#4ade80"/><rect x="5" y="8" width="3.5" height="8" rx="0.75" fill="#4ade80"/><rect x="10" y="4" width="3.5" height="12" rx="0.75" fill="rgba(255,255,255,0.15)"/><rect x="15" y="0" width="3.5" height="16" rx="0.75" fill="rgba(255,255,255,0.15)"/></svg></div>
+  </div>
+  <div class="row between" style="margin-top:12px"><span style="display:inline-flex;border-radius:8px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.2);padding:4px 10px;font-size:11px;font-weight:600;color:#6ee7b7">97.10% uptime</span><span class="xs mut">112ms</span></div>
+</div>
+<div style="border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(20,12,30,.85);padding:16px">
+  <div class="row between">
+    <div class="row g3">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">TR</div>
+      <div><div class="row g2"><span style="border-radius:4px;background:rgba(255,255,255,.1);padding:1px 6px;font-size:10px;font-weight:700;color:rgba(255,255,255,.7)">TR</span><span class="sm sb w">TR Istanbul</span></div>
+      <div style="font-size:11px;font-weight:500;margin-top:2px;color:#4ade80">Great</div></div>
+    </div>
+    <div class="row g2"><span class="dot" style="background:#34d399"></span><svg width="20" height="16"><rect x="0" y="12" width="3.5" height="4" rx="0.75" fill="#4ade80"/><rect x="5" y="8" width="3.5" height="8" rx="0.75" fill="#4ade80"/><rect x="10" y="4" width="3.5" height="12" rx="0.75" fill="#4ade80"/><rect x="15" y="0" width="3.5" height="16" rx="0.75" fill="rgba(255,255,255,0.15)"/></svg></div>
+  </div>
+  <div class="row between" style="margin-top:12px"><span style="display:inline-flex;border-radius:8px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.2);padding:4px 10px;font-size:11px;font-weight:600;color:#6ee7b7">99.20% uptime</span><span class="xs mut">62ms</span></div>
+</div>
+<div style="border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(20,12,30,.85);padding:16px">
+  <div class="row between">
+    <div class="row g3">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">RU</div>
+      <div><div class="row g2"><span style="border-radius:4px;background:rgba(255,255,255,.1);padding:1px 6px;font-size:10px;font-weight:700;color:rgba(255,255,255,.7)">RU</span><span class="sm sb w">RU Moscow</span></div>
+      <div style="font-size:11px;font-weight:500;margin-top:2px;color:#f87171">Poor</div></div>
+    </div>
+    <div class="row g2"><span class="dot" style="background:#f87171"></span><svg width="20" height="16"><rect x="0" y="12" width="3.5" height="4" rx="0.75" fill="#4ade80"/><rect x="5" y="8" width="3.5" height="8" rx="0.75" fill="rgba(255,255,255,0.15)"/><rect x="10" y="4" width="3.5" height="12" rx="0.75" fill="rgba(255,255,255,0.15)"/><rect x="15" y="0" width="3.5" height="16" rx="0.75" fill="rgba(255,255,255,0.15)"/></svg></div>
+  </div>
+  <div class="row between" style="margin-top:12px"><span style="display:inline-flex;border-radius:8px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.2);padding:4px 10px;font-size:11px;font-weight:600;color:#6ee7b7">88.40% uptime</span><span class="xs mut">--ms</span></div>
+</div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px"><span class="btn-ghost" style="border-radius:16px;padding:8px 16px;font-size:11px">Открыть полностью ↗</span></div>
+    </div></div>
+  </div>
+  <div class="caption">Сетка 1 / 2 / 3 колонки по брейкпоинтам. Данные — внешний Uptime-мониторинг; при недоступности бейдж «Недоступно»</div>
+</section>
+
+<!-- ══════════════ 7. Подписки — активная ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Подписки — активная услуга <span class="route">/services</span></h2>
+    <span class="kicker">07 · pages/ServicesPage.tsx (600 строк)</span>
+  </div>
+  <p class="lead">
+    Если есть активная услуга — страница превращается в её карточку управления, а каталог
+    прячется за баннером-раскрывашкой. Если активной услуги нет — сразу показывается каталог (стр. 8).
+  </p>
+
+  <div class="cols">
+    <div style="width:72mm">
+      <div style="zoom:.485" class="app">
+        <div class="frame"><div class="screen" style="padding:16px 14px">
+          <div style="font-size:20px;font-weight:600;margin-bottom:16px">Подписка</div>
+
+          <!-- PlanCard -->
+          <div class="glass" style="border-radius:28px;padding:20px">
+            <div class="row between" style="margin-bottom:12px">
+              <div class="row g2"><span class="dot" style="background:#60a5fa"></span><span class="xs b up w">DJ VPN Премиум</span></div>
+              <span class="badge badge-brand" style="border:1px solid rgba(244,110,216,.4)">Пробный период</span>
+            </div>
+            <div class="xxs up mut" style="margin-bottom:12px">Текущий тариф</div>
+            <div class="tile">
+              <div class="row g3" style="align-items:flex-start">
+                <div style="width:36px;height:36px;border-radius:12px;background:rgba(221,86,202,.2);flex:none"></div>
+                <div><div class="sm sb w">DJ VPN Премиум</div><div class="xs mut2" style="margin-top:4px;line-height:1.5">Безлимитный трафик, 5 устройств, все локации</div></div>
+              </div>
+              <div class="row" style="gap:16px;margin-top:16px;font-size:11px;flex-wrap:wrap">
+                <div><span class="b w">21 день</span> <span class="mut">осталось</span></div>
+                <div><span class="b w">∞ ГБ</span> <span class="mut">Трафик</span></div>
+                <div><span class="b w">5</span> <span class="mut">Устройства</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid2" style="margin-top:8px">
+            <div class="btn btn-emerald" style="font-size:12px">Настроить подключение</div>
+            <div class="btn btn-soft" style="font-size:12px">Сменить тариф</div>
+          </div>
+
+          <!-- TrafficSection -->
+          <div class="glass" style="border-radius:28px;padding:20px;margin-top:8px">
+            <div class="row between" style="margin-bottom:12px">
+              <span class="xxs up mut">Трафик</span>
+              <div class="row g2"><span class="sm sb w">18.4 ГБ</span><span class="btn-ghost" style="border-radius:12px;padding:6px 12px;font-size:11px">⟳ Обновить</span></div>
+            </div>
+            <div class="bar" style="height:6px"><i style="width:8%"></i></div>
+          </div>
+
+          <!-- DeviceConnectionCard -->
+          <div class="glass" style="border-radius:28px;padding:20px;margin-top:8px">
+            <div class="row between">
+              <div class="row g3">
+                <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.08);flex:none"></div>
+                <div><div class="sm sb w">Подключить устройство</div><div class="xs mut" style="margin-top:2px">3 / 5 подключено</div></div>
+              </div>
+              <div class="row g1">
+                <span class="dot dot-brand"></span><span class="dot dot-brand"></span><span class="dot dot-brand"></span>
+                <span class="dot" style="background:rgba(255,255,255,.2)"></span><span class="dot" style="background:rgba(255,255,255,.2)"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CountdownBlock -->
+          <div class="glass" style="border-radius:28px;padding:20px;margin-top:8px">
+            <div class="row between" style="align-items:flex-start">
+              <div>
+                <div class="row g2" style="margin-bottom:8px"><span class="ic mut" style="width:14px;height:14px"></span><span class="xxs up mut">Осталось</span></div>
+                <div class="row" style="align-items:baseline;gap:6px">
+                  <span class="mono2 b" style="font-size:24px">21</span><span class="xs mut">дн.</span>
+                  <span class="mono2 sb" style="font-size:20px;color:#e2e8f0;margin-left:8px">07:42:11</span>
+                </div>
+              </div>
+              <div style="text-align:right"><div class="xs mut">Действует до:</div><div class="sm w" style="margin-top:4px">12 сент. 2026 г.</div></div>
+            </div>
+          </div>
+
+          <!-- LocationsSection -->
+          <div class="glass" style="border-radius:28px;padding:20px;margin-top:8px">
+            <div class="xxs up mut" style="margin-bottom:12px">Локации</div>
+            <div class="row g2" style="flex-wrap:wrap">
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px;font-weight:500">Germany</span>
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px;font-weight:500">Netherlands</span>
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px;font-weight:500">Finland</span>
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px;font-weight:500">Turkey</span>
+            </div>
+          </div>
+
+          <!-- CtaBanner -->
+          <div class="row g3" style="margin-top:8px;border-radius:28px;border:1px solid rgba(221,86,202,.3);background:linear-gradient(90deg,rgba(52,19,48,.6),rgba(37,18,54,.8));padding:20px">
+            <div style="width:40px;height:40px;border-radius:12px;background:rgba(221,86,202,.25);display:flex;align-items:center;justify-content:center;color:#ff86df;font-size:18px;flex:none">✦</div>
+            <div style="flex:1"><div class="sm sb w">Выберите тариф для продолжения</div><div class="xs mut" style="margin-top:2px">Больше трафика и устройств</div></div>
+            <span class="mut">›</span>
+          </div>
+
+          <!-- DeviceList -->
+          <div class="glass" style="border-radius:28px;padding:20px;margin-top:8px">
+            <div class="row between" style="margin-bottom:12px"><span class="sm sb w">Мои устройства</span><span class="xs sb" style="color:#fb7185">Удалить все</span></div>
+            <div class="xs mut" style="margin-bottom:12px"><span class="w">3</span> / 5 устройства</div>
+            <div class="stack-sm">
+              <div class="row g3 tile" style="padding:12px 16px;border-radius:16px">
+                <span style="font-size:20px">📱</span>
+                <div style="flex:1"><div class="sm sb w">iPhone 15 Pro</div><div class="xxs mut" style="margin-top:2px">ios A93F21C8</div></div>
+                <span class="mut">🗑</span>
+              </div>
+              <div class="row g3 tile" style="padding:12px 16px;border-radius:16px">
+                <span style="font-size:20px">💻</span>
+                <div style="flex:1"><div class="sm sb w">MacBook Air</div><div class="xxs mut" style="margin-top:2px">macos 4B21D0FA</div></div>
+                <span class="mut">🗑</span>
+              </div>
+              <div class="row g3 tile" style="padding:12px 16px;border-radius:16px">
+                <span style="font-size:20px">📱</span>
+                <div style="flex:1"><div class="sm sb w">Redmi Note 12</div><div class="xxs mut" style="margin-top:2px">android 77C2E110</div></div>
+                <span class="mut">🗑</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Полная высота экрана ≈ 1900&nbsp;px на мобильном</div>
+    </div>
+
+    <div style="flex:1" class="notes">
+      <h4>Порядок блоков</h4>
+      <ul>
+        <li><b>PlanCard</b> — имя тарифа, бейдж «Пробный период» (эвристика по слову «пробн»/«trial»
+            в названии или описании), три метрики: осталось дней, лимит трафика, лимит устройств.</li>
+        <li><b>Две кнопки управления</b> — «Настроить подключение» (зелёная, открывает мастер) и
+            «Сменить тариф» (фуксия, открывает bottom sheet).</li>
+        <li><b>TrafficSection</b> — использовано + кнопка «Обновить» (инвалидирует дашборд);
+            при безлимите полоса рисуется на 8&nbsp;%.</li>
+        <li><b>DeviceConnectionCard</b> — счётчик подключений точками, красный при превышении.</li>
+        <li><b>CountdownBlock</b> — таймер с обновлением раз в секунду и датой окончания.</li>
+        <li><b>LocationsSection</b> — чипы локаций из Remnawave.</li>
+        <li><b>CtaBanner</b> — раскрывает каталог тарифов прямо на странице.</li>
+        <li><b>DeviceList</b> — список устройств с иконкой по платформе, коротким HWID
+            (последние 8 символов), удалением по одному и «Удалить все», подтверждение — модалка.</li>
+      </ul>
+      <h4>Дубли и пересечения</h4>
+      <ul>
+        <li>Остаток дней показан трижды: PlanCard, CountdownBlock и кольцо на Главной.</li>
+        <li>Устройства — в трёх видах: мини-карточка, DeviceConnectionCard, DeviceList.</li>
+        <li>Трафик — мини-карточка на Главной и TrafficSection здесь.</li>
+      </ul>
+      <div class="callout" style="margin-top:4mm">
+        Страница обслуживает и «управление подпиской», и «витрину тарифов» — два разных
+        сценария в одном маршруте.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 8. Каталог и модалки ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Подписки — каталог тарифов и модалки</h2>
+    <span class="kicker">08 · фильтр · сетка · bottom sheets</span>
+  </div>
+
+  <div style="zoom:.6">
+    <div class="frame wide" style="width:1120px"><div class="screen app" style="padding:16px">
+      <div class="row g1" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:16px;padding:4px">
+        <div style="flex:1;text-align:center;border-radius:12px;padding:8px;font-size:13px;font-weight:500;background:linear-gradient(90deg,rgba(182,65,169,.3),rgba(143,49,132,.2))">Все</div>
+        <div style="flex:1;text-align:center;padding:8px;font-size:13px" class="mut2">Доступные</div>
+        <div style="flex:1;text-align:center;padding:8px;font-size:13px" class="mut2">Мои</div>
+      </div>
+
+      <div style="margin-top:16px;border-radius:28px;border:1px solid rgba(252,211,77,.25);background:rgba(245,158,11,.1);padding:20px">
+        <div class="row g3">
+          <div style="width:40px;height:40px;border-radius:16px;background:rgba(245,158,11,.2);color:#fcd34d;display:flex;align-items:center;justify-content:center;flex:none">🛒</div>
+          <div><div class="xs" style="color:rgba(253,230,138,.8);text-transform:uppercase;letter-spacing:.05em">Ожидают оплаты</div><div class="sm sb w" style="font-size:15px">Неоплаченные услуги</div></div>
+        </div>
+        <div class="row between" style="margin-top:12px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.15);padding:12px 16px">
+          <div><div class="sm sb w">DJ VPN Стандарт</div><div class="xs" style="color:rgba(253,230,138,.9);margin-top:2px">● Ожидает оплаты</div></div>
+          <div class="row g2"><span class="sm sb w">299 ₽</span>
+            <span class="btn-brand" style="border-radius:12px;padding:6px 12px;font-size:11px;font-weight:600">Оплатить</span>
+            <span style="width:32px;height:32px;border-radius:12px;border:1px solid rgba(253,164,175,.2);background:rgba(244,63,94,.1);color:#fda4af;display:flex;align-items:center;justify-content:center">🗑</span></div>
+        </div>
+      </div>
+
+      <div class="grid3" style="margin-top:16px">
+<div class="glass" style="border-radius:28px;padding:20px;position:relative;">
+  <div class="row between" style="align-items:flex-start">
+    <div><div style="font-size:17px;font-weight:600">DJ VPN Старт</div>
+      <div class="xxs up" style="color:rgba(245,208,254,.7);margin-top:4px">БАЗОВЫЙ</div></div>
+    <span class="badge badge-brand" style="letter-spacing:.02em;text-transform:none;font-weight:500;font-size:11px">Доступна</span>
+  </div>
+  <p class="sm mut2" style="margin:16px 0 0;line-height:1.6">2 устройства, 100 ГБ трафика, 4 локации</p>
+  <div class="tile" style="margin-top:20px">
+    <div class="row between" style="align-items:flex-end">
+      <div><div class="xxs up mut">Стоимость</div><div class="gradient-text" style="font-size:34px;font-weight:900;line-height:1;margin-top:4px">149 ₽</div></div>
+      <div style="text-align:right"><div class="xxs up mut">Период</div><div class="mono2 sm w" style="margin-top:4px">в месяц</div></div>
+    </div>
+  </div>
+  <div class="btn btn-brand" style="margin-top:20px">Подключить тариф</div>
+</div>
+<div class="glass" style="border-radius:28px;padding:20px;position:relative;box-shadow:inset 0 0 0 1px rgba(52,211,153,.3);"><div style="position:absolute;left:0;top:24px;bottom:24px;width:4px;border-radius:999px;background:rgba(52,211,153,.6)"></div>
+  <div class="row between" style="align-items:flex-start">
+    <div><div style="font-size:17px;font-weight:600">DJ VPN Премиум</div>
+      <div class="xxs up" style="color:rgba(245,208,254,.7);margin-top:4px">ПОПУЛЯРНЫЙ</div></div>
+    <span class="badge badge-emerald" style="letter-spacing:.02em;text-transform:none;font-weight:500;font-size:11px">Активна</span>
+  </div>
+  <p class="sm mut2" style="margin:16px 0 0;line-height:1.6">Безлимитный трафик, 5 устройств, все локации</p>
+  <div class="tile" style="margin-top:20px">
+    <div class="row between" style="align-items:flex-end">
+      <div><div class="xxs up mut">Стоимость</div><div class="gradient-text" style="font-size:34px;font-weight:900;line-height:1;margin-top:4px">299 ₽</div></div>
+      <div style="text-align:right"><div class="xxs up mut">Период</div><div class="mono2 sm w" style="margin-top:4px">в месяц</div></div>
+    </div>
+  </div>
+  <div class="btn" style="background:rgba(255,255,255,.05);color:#94a3b8;margin-top:20px">Уже подключена</div>
+</div>
+<div class="glass" style="border-radius:28px;padding:20px;position:relative;">
+  <div class="row between" style="align-items:flex-start">
+    <div><div style="font-size:17px;font-weight:600">DJ VPN Год</div>
+      <div class="xxs up" style="color:rgba(245,208,254,.7);margin-top:4px">ВЫГОДА</div></div>
+    <span class="badge badge-brand" style="letter-spacing:.02em;text-transform:none;font-weight:500;font-size:11px">Доступна</span>
+  </div>
+  <p class="sm mut2" style="margin:16px 0 0;line-height:1.6">Безлимит на год, 5 устройств, приоритетная поддержка</p>
+  <div class="tile" style="margin-top:20px">
+    <div class="row between" style="align-items:flex-end">
+      <div><div class="xxs up mut">Стоимость</div><div class="gradient-text" style="font-size:34px;font-weight:900;line-height:1;margin-top:4px">2 690 ₽</div></div>
+      <div style="text-align:right"><div class="xxs up mut">Период</div><div class="mono2 sm w" style="margin-top:4px">в год</div></div>
+    </div>
+  </div>
+  <div class="btn btn-brand" style="margin-top:20px">Подключить тариф</div>
+</div>
+      </div>
+    </div></div>
+  </div>
+  <div class="caption">Каталог: сетка 1 / 2 / 3 колонки. Свои тарифы всегда сверху, дальше — по возрастанию цены</div>
+
+  <h3 class="sec" style="margin-top:6mm">Модальные окна раздела</h3>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5mm">
+    <div>
+      <div style="zoom:.38" class="app">
+        <div class="frame plain" style="width:512px"><div class="screen" style="background:#200b2c;padding:20px">
+          <div style="width:56px;height:6px;border-radius:999px;background:rgba(255,255,255,.15);margin:0 auto 16px"></div>
+          <div class="row between" style="align-items:flex-start">
+            <div><div style="font-size:18px;font-weight:700">Сменить тариф</div><div class="sm mut2" style="margin-top:4px">Текущий тариф: <span class="w">DJ VPN Старт</span></div></div>
+            <span class="btn-ghost" style="border-radius:12px;padding:8px 12px;font-size:12px">Закрыть</span>
+          </div>
+          <div class="stack-sm" style="margin-top:20px">
+            <div style="border-radius:16px;border:1px solid rgba(255,134,223,.6);background:rgba(221,86,202,.2);padding:16px">
+              <div class="row between" style="align-items:flex-start">
+                <div><div class="sm sb w" style="font-size:15px">DJ VPN Премиум</div><div class="sm mut2" style="margin-top:4px">Безлимит, 5 устройств</div></div>
+                <div class="tile" style="padding:8px 12px;text-align:right"><div class="lg b w">299 ₽</div><div class="xs mut2">в месяц</div></div>
+              </div>
+            </div>
+            <div class="tile" style="border-radius:16px;padding:16px">
+              <div class="row between" style="align-items:flex-start">
+                <div><div class="sm sb w" style="font-size:15px">DJ VPN Год</div><div class="sm mut2" style="margin-top:4px">Безлимит на год</div></div>
+                <div class="tile" style="padding:8px 12px;text-align:right"><div class="lg b w">2 690 ₽</div><div class="xs mut2">в год</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="btn btn-brand" style="margin-top:20px">Подтвердить смену тарифа</div>
+        </div></div>
+      </div>
+      <div class="caption"><b>ChangeTariffModal</b> — выбор из каталога, ожидание ответа биллинга до 12&nbsp;с</div>
+    </div>
+
+    <div>
+      <div style="zoom:.38" class="app">
+        <div class="frame plain" style="width:512px"><div class="screen" style="background:#200b2c;padding:20px;min-height:400px">
+          <div style="width:56px;height:6px;border-radius:999px;background:rgba(255,255,255,.15);margin:0 auto 16px"></div>
+          <div style="font-size:34px">💳</div>
+          <div style="font-size:20px;font-weight:700;margin-top:12px">Недостаточно средств</div>
+          <div class="sm mut2" style="margin-top:8px;line-height:1.6">Услуга уже зарегистрирована. Для активации нужно пополнить баланс.</div>
+          <div class="tile" style="margin-top:16px;border-radius:16px">
+            <div class="row between sm mut2"><span>Текущий баланс</span><span class="mono2 w">150.00 ₽</span></div>
+            <div class="row between sm mut2" style="margin-top:8px"><span>Нужно пополнить</span><span class="mono2 fuchsia">149.00 ₽</span></div>
+          </div>
+          <div class="row g2" style="margin-top:20px"><div class="btn btn-ghost" style="flex:1">Позже</div><div class="btn btn-brand" style="flex:1">Перейти к оплате</div></div>
+        </div></div>
+      </div>
+      <div class="caption"><b>Недостаточно средств</b> — после «Подключить тариф»; параллельно пишется корзина</div>
+    </div>
+
+    <div>
+      <div style="zoom:.38" class="app">
+        <div class="frame plain" style="width:512px"><div class="screen" style="background:#200b2c;padding:20px;min-height:340px">
+          <div style="width:56px;height:6px;border-radius:999px;background:rgba(255,255,255,.15);margin:0 auto 16px"></div>
+          <div style="font-size:34px">🗑️</div>
+          <div style="font-size:20px;font-weight:700;margin-top:12px">Удалить услугу?</div>
+          <div class="sm mut2" style="margin-top:8px;line-height:1.6">Услуга <span class="w">«DJ VPN Стандарт»</span> будет удалена без возможности восстановления.</div>
+          <div class="row g2" style="margin-top:20px"><div class="btn btn-ghost" style="flex:1">Отмена</div><div class="btn" style="flex:1;background:linear-gradient(90deg,#f43f5e,#be123c)">Удалить</div></div>
+        </div></div>
+      </div>
+      <div class="caption"><b>Удаление услуги</b>. Такой же паттерн — удаление устройства и отвязка карты</div>
+    </div>
+  </div>
+
+  <div class="notes" style="margin-top:5mm;column-count:2;column-gap:8mm">
+    <h4>Правила каталога</h4>
+    <ul>
+      <li>Показываются только активные тарифы, разрешённые пользователю (<code>orders</code>), плюс уже купленные.</li>
+      <li>Тариф с неоплаченным заказом уходит из сетки в янтарный блок «Неоплаченные услуги».</li>
+      <li>Фильтр «Все / Доступные / Мои» — сегмент-контрол, состояние только в памяти страницы.</li>
+      <li>Купленный тариф: зелёная полоса слева, кольцо, кнопка «Уже подключена» задизейблена.</li>
+      <li>После успешной покупки кнопка на 3&nbsp;с превращается в «Подключено».</li>
+      <li>Пустой результат фильтра — карточка с эмодзи 🔎 и текстом.</li>
+    </ul>
+    <h4>Модалки</h4>
+    <ul>
+      <li>Все — через <code>createPortal</code> в <code>body</code>, <code>z-[100]</code>, чтобы не уходить под таббар.</li>
+      <li>Мобильный вид — bottom sheet с «ручкой», десктоп — центрированное окно <code>max-w-md/lg</code>.</li>
+      <li>Закрытие по клику на скрим, во время запроса — блокировка кнопок и спиннер в кнопке.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════ 9. Платежи ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Платежи <span class="route">/payments</span></h2>
+    <span class="kicker">09 · pages/PaymentsPage.tsx (549 строк)</span>
+  </div>
+  <p class="lead">
+    Деньги целиком: текущий баланс, что и когда спишется, промокод, пополнение и история.
+    Единственный экран с собственным заголовком <b>H1 «Баланс»</b>.
+  </p>
+
+  <div class="cols">
+    <div style="width:72mm">
+      <div style="zoom:.485" class="app">
+        <div class="frame"><div class="screen" style="padding:16px 14px">
+          <div style="font-size:28px;font-weight:700;padding:0 4px">Баланс</div>
+
+          <div class="glass" style="border-radius:32px;padding:20px;margin-top:16px">
+            <div class="sm mut">Текущий баланс</div>
+            <div style="font-size:34px;font-weight:700;margin-top:4px">1 250.00 ₽</div>
+            <div class="sm" style="color:#f0abfc;margin-top:8px">Бонусный баланс: 100.00 ₽</div>
+          </div>
+
+          <div style="border-radius:32px;border:1px solid rgba(252,211,77,.25);background:rgba(245,158,11,.1);padding:20px;margin-top:16px">
+            <div class="row between">
+              <div class="row g3">
+                <div style="width:44px;height:44px;border-radius:16px;background:rgba(245,158,11,.2);color:#fcd34d;display:flex;align-items:center;justify-content:center;flex:none">🛒</div>
+                <div><div class="xs" style="color:rgba(253,230,138,.8);text-transform:uppercase">Требует оплаты</div><div style="font-size:17px;font-weight:600">Неоплаченные услуги</div></div>
+              </div>
+              <div style="text-align:right"><div style="font-size:22px;font-weight:700">299 ₽</div><div class="xs" style="color:rgba(253,230,138,.8)">к оплате</div></div>
+            </div>
+            <div class="sm" style="color:rgba(254,243,199,.9);margin-top:8px;line-height:1.5">Добавлены в корзину, но ещё не оплачены. Пополните баланс, чтобы активировать.</div>
+            <div style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.15);padding:12px 16px;margin-top:12px">
+              <div class="row between"><div><div class="sm sb w">DJ VPN Стандарт</div><div class="xs" style="color:rgba(253,230,138,.9);margin-top:2px">● Ожидает оплаты</div></div><span class="sm sb w">299.00 ₽</span></div>
+            </div>
+            <div class="row between" style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.15);padding:12px 16px;margin-top:12px">
+              <div class="sm" style="color:#fef3c7">Недостаточно средств. Пополните на <b>149 ₽</b></div>
+              <span class="btn-brand" style="border-radius:12px;padding:8px 16px;font-size:12px;font-weight:600">Пополнить</span>
+            </div>
+          </div>
+
+          <div class="glass" style="border-radius:32px;padding:20px;margin-top:16px">
+            <div class="row between">
+              <div class="row g3">
+                <div style="width:44px;height:44px;border-radius:16px;background:rgba(245,158,11,.15);color:#fcd34d;display:flex;align-items:center;justify-content:center;flex:none">📅</div>
+                <div><div class="xs up" style="color:rgba(252,211,77,.7);letter-spacing:.05em">Списание через 12 дн.</div><div style="font-size:17px;font-weight:600">Предстоящие расходы</div></div>
+              </div>
+              <div style="font-size:22px;font-weight:700">299 ₽</div>
+            </div>
+            <div class="tile" style="border-radius:16px;padding:12px 16px;margin-top:12px">
+              <div class="row between"><span class="sm sb w">DJ VPN Премиум</span><span class="row g2"><span class="xs mut">12 сентября</span><span class="sm sb w">299.00 ₽</span></span></div>
+            </div>
+            <div class="row g2 sm" style="margin-top:12px;color:#fef3c7"><span class="dot dot-amber" style="width:6px;height:6px"></span>Будет списано при продлении: <b>299.00 ₽</b></div>
+          </div>
+
+          <div class="glass" style="border-radius:32px;padding:20px;margin-top:16px">
+            <div style="font-size:20px;font-weight:600;margin-bottom:16px">Промокод</div>
+            <div class="row g2"><div class="input" style="flex:1">Введите промокод</div><div class="btn" style="background:#3b82f6;padding:12px 20px">Активировать</div></div>
+            <div style="margin-top:12px;border-radius:16px;border:1px solid rgba(110,231,183,.2);background:rgba(16,185,129,.1);padding:12px 16px;color:#d1fae5">
+              <div class="sm sb">Промокод применен</div><div class="sm" style="margin-top:2px">На баланс зачислено 100 ₽</div>
+            </div>
+          </div>
+
+          <div class="glass" style="border-radius:32px;padding:20px;margin-top:16px">
+            <div style="font-size:20px;font-weight:600;margin-bottom:16px">Пополнение баланса</div>
+            <div class="input">Сумма пополнения, ₽</div>
+            <div class="row g2" style="margin-top:8px;flex-wrap:wrap">
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px" class="mut2">199 ₽</span>
+              <span style="border:1px solid rgba(255,134,223,.6);background:rgba(221,86,202,.2);border-radius:12px;padding:6px 12px;font-size:13px">499 ₽</span>
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px">899 ₽</span>
+              <span class="tile" style="padding:6px 12px;border-radius:12px;font-size:13px">1599 ₽</span>
+            </div>
+            <div class="stack-sm" style="margin-top:16px">
+              <div class="tile" style="border-radius:16px;padding:12px 16px"><div class="sm sb w">ЮKassa</div><div class="xs mut" style="margin-top:2px">Оплата через yookassa</div><div class="xxs" style="color:#64748b;margin-top:2px">100 – 100000 ₽</div></div>
+              <div class="row g2">
+                <div class="tile" style="border-radius:16px;padding:12px 16px;flex:1"><div class="sm sb w">Карта •••• 4242</div><div class="xs mut" style="margin-top:2px">Сохранённый способ · автоплатёж</div></div>
+                <div style="width:56px;border-radius:16px;border:1px solid rgba(251,113,133,.25);background:rgba(244,63,94,.1);color:#fda4af;display:flex;align-items:center;justify-content:center">🗑</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass" style="border-radius:32px;margin-top:16px;overflow:hidden">
+            <div class="row between" style="padding:16px 20px">
+              <div><div style="font-size:20px;font-weight:600">История операций</div><div class="sm mut" style="margin-top:2px">42 транзакции</div></div>
+              <span class="mut">▾</span>
+            </div>
+            <div style="border-top:1px solid rgba(255,255,255,.1)">
+              <div class="row g3" style="padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.05)">
+                <div style="width:36px;height:36px;border-radius:12px;background:rgba(16,185,129,.15);color:#6ee7b7;display:flex;align-items:center;justify-content:center;flex:none">↙</div>
+                <div style="flex:1"><div class="sm sb w">ЮKassa</div><div class="xxs mut" style="margin-top:2px">21 авг 2026, 14:02</div></div>
+                <div class="sm sb emerald">+499.00 ₽</div>
+              </div>
+              <div class="row g3" style="padding:12px 20px">
+                <div style="width:36px;height:36px;border-radius:12px;background:rgba(244,63,94,.15);color:#fda4af;display:flex;align-items:center;justify-content:center;flex:none">↗</div>
+                <div style="flex:1"><div class="sm sb w">Списание</div><div class="xxs mut" style="margin-top:2px">12 авг 2026, 03:00 · DJ VPN Премиум</div></div>
+                <div class="sm sb rose">-299.00 ₽</div>
+              </div>
+              <div class="row between" style="padding:12px 20px;font-size:11px" class="mut">
+                <span class="tile" style="padding:4px 8px;border-radius:8px">25/стр</span>
+                <span class="row g3 mut">1–25 / 42 <span class="row g1"><span class="tile" style="width:28px;height:28px;border-radius:8px;padding:0;display:flex;align-items:center;justify-content:center">‹</span><span class="tile" style="width:28px;height:28px;border-radius:8px;padding:0;display:flex;align-items:center;justify-content:center">›</span></span></span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div style="flex:1" class="notes">
+      <h4>Секции сверху вниз</h4>
+      <ul>
+        <li><b>Баланс</b> — крупная сумма, ниже бонусный баланс, если он больше нуля.</li>
+        <li><b>Неоплаченные услуги</b> — янтарный блок: сумма к оплате, список позиций,
+            «не хватает N ₽» с кнопкой «Пополнить» (скроллит к блоку пополнения) либо
+            зелёная плашка «Баланса достаточно».</li>
+        <li><b>Предстоящие расходы</b> — прогноз биллинга: дата, позиции, итог к списанию.
+            За 3 дня и меньше вся секция становится янтарной, заголовок — «Списание завтра» / «Оплата просрочена».</li>
+        <li><b>Промокод</b> — поле + синяя кнопка «Активировать», результат зелёной или розовой плашкой.</li>
+        <li><b>Пополнение</b> — сумма, 4 быстрых номинала (199 / 499 / 899 / 1599 ₽),
+            список платёжных систем с лимитами; сохранённая карта имеет кнопку отвязки.</li>
+        <li><b>История операций</b> — сворачиваемая, по 25 записей на страницу, приход зелёный
+            со стрелкой ↙, расход розовый ↗; нулевые операции скрываются.</li>
+      </ul>
+      <h4>Защита от двойной оплаты</h4>
+      <ul>
+        <li><code>usePaymentGuard</code>: пока платёжная вкладка открыта — предупреждение
+            и блокировка остальных платёжных систем; активная остаётся кликабельной, чтобы
+            вернуть фокус той же вкладке.</li>
+      </ul>
+      <div class="callout" style="margin-top:4mm">
+        На странице три денежных блока подряд (баланс, неоплаченные, прогноз) — они
+        визуально почти одинаковые и различаются только цветом рамки.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 10. Профиль ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Профиль <span class="route">/profile</span></h2>
+    <span class="kicker">10 · pages/ProfilePage.tsx (594 строки)</span>
+  </div>
+  <p class="lead">
+    Единственный экран, свёрстанный не «стеклом», а плоскими карточками на
+    <code>surface-1 / surface-2</code>. Работает как хаб: аккаунт, деньги и переходы наружу.
+  </p>
+
+  <div class="cols">
+    <div style="width:74mm">
+      <div style="zoom:.55" class="app">
+        <div class="frame"><div class="screen" style="padding:16px 14px">
+          <div style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px">
+            <div class="row g3" style="margin-bottom:16px">
+              <div style="width:56px;height:56px;border-radius:999px;background:linear-gradient(135deg,#f46ed8,#8f3184);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex:none">Д</div>
+              <div><div style="font-size:16px;font-weight:600">Djalal</div><div class="sm mut">djalal</div></div>
+            </div>
+            <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#251236;overflow:hidden">
+              <div class="row between" style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08)">
+                <span class="row g2 sm mut2"><span style="color:#f46ed8">✈</span>Telegram ID</span><span class="sm mono2 w">123456789</span>
+              </div>
+              <div class="row between" style="padding:12px 16px">
+                <span class="row g2 sm mut2"><span class="mut">✉</span>Email</span>
+                <span class="row g2">
+                  <span style="border:1px solid rgba(52,211,153,.3);background:rgba(16,185,129,.1);color:#6ee7b7;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:500">✓ Подтверждён</span>
+                  <span class="sm w">you@example.com</span>
+                </span>
+              </div>
+            </div>
+            <div class="stack-sm" style="margin-top:12px">
+              <div class="btn" style="border:1px solid rgba(255,255,255,.1);background:#251236;font-weight:500">🔒 Сменить пароль</div>
+            </div>
+          </div>
+
+          <div style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px;margin-top:16px">
+            <div style="font-size:15px;font-weight:600;margin-bottom:12px">Баланс и статус</div>
+            <div class="grid2">
+              <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#251236;padding:12px 16px">
+                <div class="xs mut" style="margin-bottom:4px">Баланс:</div>
+                <div style="font-size:17px;font-weight:600;color:#34d399">1 250.00 <span class="sm">₽</span></div>
+                <div class="xs" style="color:#f0abfc;margin-top:4px">+ бонусов 100.00 ₽</div>
+              </div>
+              <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#251236;padding:12px 16px">
+                <div class="xs mut" style="margin-bottom:4px">Скидка:</div>
+                <div style="font-size:17px;font-weight:600">10%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stack-sm" style="margin-top:16px">
+<div class="row between" style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px">
+  <span class="row g3"><span class="ic mut" style="width:20px;height:20px"></span><span class="sm sb w">Реферальная программа</span></span><span style="color:#64748b">›</span></div>
+<div class="row between" style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px">
+  <span class="row g3"><span class="ic mut" style="width:20px;height:20px"></span><span class="sm sb w">Новости нашего сервиса</span></span><span style="color:#64748b">›</span></div>
+<div class="row between" style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px">
+  <span class="row g3"><span class="ic mut" style="width:20px;height:20px"></span><span class="sm sb w">Инструкции</span></span><span style="color:#64748b">›</span></div>
+<div class="row between" style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px">
+  <span class="row g3"><span class="ic mut" style="width:20px;height:20px"></span><span class="sm sb w">Техническая поддержка</span></span><span style="color:#64748b">›</span></div>
+<div class="row between" style="border-radius:16px;border:1px solid rgba(255,255,255,.1);background:#1b0c2a;padding:16px">
+  <span class="row g3"><span class="ic mut" style="width:20px;height:20px"></span><span class="sm sb w">Правила и условия сервиса</span></span><span style="color:#64748b">›</span></div>
+          </div>
+          <div class="btn" style="margin-top:16px;border:1px solid rgba(244,63,94,.2);background:rgba(244,63,94,.1);color:#fb7185;font-weight:500">↪ Выйти</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div style="flex:1">
+      <div class="notes">
+        <h4>Состав экрана</h4>
+        <ul>
+          <li><b>Карточка пользователя</b> — круглый аватар (фото Telegram или буква), имя, логин;
+              строки Telegram ID и Email с бейджем «Подтверждён / Не подтверждён».</li>
+          <li><b>Действия</b> — «Указать email» (если не задан), «Подтвердить email» (если не подтверждён),
+              «Сменить пароль» → отдельный маршрут.</li>
+          <li><b>Баланс и статус</b> — две плитки: баланс (+ бонусы) и персональная скидка в процентах.</li>
+          <li><b>Список переходов</b> — 5 строк-«шевронов», единственный вход в рефералку;
+              новости и поддержка ведут в Telegram, инструкции — на <code>/setup.html</code>.</li>
+          <li><b>Выйти</b> — розовая кнопка, очищает стор и уводит на <code>/login</code>.</li>
+        </ul>
+      </div>
+
+      <h3 class="sec" style="margin-top:5mm">Модалки профиля</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4mm">
+        <div>
+          <div style="zoom:.44" class="app">
+            <div class="frame plain" style="width:448px"><div class="screen" style="background:#1b0c2a;padding:20px;min-height:300px">
+              <div class="row between" style="margin-bottom:12px"><div style="font-size:16px;font-weight:600">Привязать email</div><div style="width:32px;height:32px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center">✕</div></div>
+              <div class="sm mut" style="margin-bottom:12px;line-height:1.5">Укажите email — он будет использоваться для чеков и восстановления доступа.</div>
+              <div class="input" style="border-radius:12px;background:#251236">you@example.com</div>
+              <div class="row g2" style="margin-top:16px"><div class="btn" style="flex:1;border:1px solid rgba(255,255,255,.1);background:#251236;font-weight:500">Отмена</div><div class="btn" style="flex:1;background:#b641a9;font-weight:500">Сохранить</div></div>
+            </div></div>
+          </div>
+          <div class="caption">Привязка / изменение email</div>
+        </div>
+        <div>
+          <div style="zoom:.44" class="app">
+            <div class="frame plain" style="width:448px"><div class="screen" style="background:#1b0c2a;padding:20px;min-height:300px">
+              <div class="row between" style="margin-bottom:12px"><div style="font-size:16px;font-weight:600">Подтверждение email</div><div style="width:32px;height:32px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center">✕</div></div>
+              <div class="sm mut" style="margin-bottom:12px;line-height:1.5">На адрес <span class="w">you@example.com</span> отправлено письмо с кодом.</div>
+              <div class="input" style="border-radius:12px;background:#251236">Код из письма</div>
+              <div class="row between" style="margin-top:12px;font-size:11px" class="mut"><span>Не пришло письмо?</span><span style="color:#f5d0fe;font-weight:500">Отправить снова</span></div>
+              <div class="row g2" style="margin-top:16px"><div class="btn" style="flex:1;border:1px solid rgba(255,255,255,.1);background:#251236;font-weight:500">Позже</div><div class="btn" style="flex:1;background:#b641a9;font-weight:500">Подтвердить</div></div>
+            </div></div>
+          </div>
+          <div class="caption">Ввод кода подтверждения</div>
+        </div>
+      </div>
+
+      <div style="margin-top:4mm">
+        <div style="zoom:.44" class="app">
+          <div class="frame plain" style="width:448px"><div class="screen" style="background:#14071f;min-height:180px">
+            <div class="row between" style="padding:16px;border-bottom:1px solid rgba(255,255,255,.1)"><div style="font-size:16px;font-weight:600">Правила и условия сервиса</div><div style="width:32px;height:32px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center">✕</div></div>
+            <div style="padding:16px" class="sm mut2">Полноэкранный текст оферты, вшитый в код константой <code style="color:#ffd1fb;background:rgba(255,255,255,.08)">TOS_TEXT</code>, со скроллом.</div>
+          </div></div>
+        </div>
+        <div class="caption">Оферта — полноэкранный оверлей, а не bottom sheet</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 11. Рефералы ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Реферальная программа <span class="route">/referrals</span></h2>
+    <span class="kicker">11 · pages/ReferralsPage.tsx (802 строки)</span>
+  </div>
+  <p class="lead">
+    Самый «маркетинговый» экран кабинета и единственный с двухколоночным hero.
+    Уровни считаются на фронте: <b>0 → 15%</b>, 10 → 17%, 25 → 20%, 50 → 22%, 100+ → 25%
+    активных рефералов (активный = есть хотя бы один платёж).
+  </p>
+
+  <div style="zoom:.49">
+    <div class="frame wide" style="width:1120px"><div class="screen app" style="padding:16px">
+      <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:24px">
+        <div class="brand-panel r28" style="padding:28px;position:relative;overflow:hidden">
+          <h1 style="margin:0;font-size:44px;line-height:1.1;font-weight:700">Реферальная<br><span class="gradient-text">программа</span></h1>
+          <p style="margin-top:16px;font-size:15px;font-weight:500;line-height:1.7">Получайте <span style="color:#f0abfc">20%</span> с каждого пополнения приглашённых пользователей.</p>
+          <p class="sm mut2" style="margin-top:12px;line-height:1.6">Чем больше активных друзей — тем выше ваш доход.</p>
+          <div style="position:absolute;right:-10px;bottom:0;width:150px;height:150px;border-radius:24px;background:radial-gradient(circle,rgba(244,110,216,.35),transparent 65%);display:flex;align-items:center;justify-content:center;font-size:64px">🎁</div>
+        </div>
+        <div class="glass r28" style="padding:24px;display:flex;flex-direction:column;gap:18px">
+          <div class="row g3"><div style="width:40px;height:40px;border-radius:16px;background:rgba(245,158,11,.15);color:#fcd34d;display:flex;align-items:center;justify-content:center">★</div>
+            <div style="font-size:15px">Ваш уровень: <b>Эксперт</b></div></div>
+          <div>
+            <div class="bar" style="height:10px"><i style="width:56%;background:linear-gradient(90deg,#dd56ca,#e879f9)"></i></div>
+            <div class="xs mut" style="text-align:right;margin-top:8px">28 / 50</div>
+          </div>
+          <div class="row g3" style="align-items:flex-start"><div style="width:32px;height:32px;border-radius:12px;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center">⟳</div>
+            <div class="sm"><div class="mut2">До следующего уровня</div><div class="w">ещё <b>22</b> активных рефералов</div></div></div>
+          <div class="row g3" style="align-items:flex-start"><div style="width:32px;height:32px;border-radius:12px;background:rgba(16,185,129,.15);color:#6ee7b7;display:flex;align-items:center;justify-content:center">↗</div>
+            <div class="sm"><div class="mut2">Следующий уровень: <b class="emerald">22%</b></div><div class="emerald sb">+2% <span class="mut" style="font-weight:400">к текущей ставке</span></div></div></div>
+        </div>
+      </div>
+
+      <div class="glass r28" style="padding:24px;margin-top:24px">
+        <div style="font-size:20px;font-weight:600">Как растёт ваш процент</div>
+        <div class="sm mut" style="margin-top:4px">Процент начисляется с каждого пополнения ваших активных рефералов</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:20px">
+<div style="position:relative;border-radius:16px;padding:16px 12px;text-align:center;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)">
+  <div style="font-size:15px;font-weight:600">0 – 9</div>
+  <div style="font-size:11px;line-height:1.3;margin-top:2px" class="mut">активных рефералов</div>
+  <div class="mut2" style="font-size:24px;font-weight:700;margin-top:12px">15%</div></div>
+<div style="position:relative;border-radius:16px;padding:16px 12px;text-align:center;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)">
+  <div style="font-size:15px;font-weight:600">10 – 24</div>
+  <div style="font-size:11px;line-height:1.3;margin-top:2px" class="mut">активных рефералов</div>
+  <div class="mut2" style="font-size:24px;font-weight:700;margin-top:12px">17%</div></div>
+<div style="position:relative;border-radius:16px;padding:16px 12px;text-align:center;border:1px solid rgba(244,110,216,.6);background:rgba(221,86,202,.1);box-shadow:0 22px 60px rgba(221,86,202,.24)"><span style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;border-radius:999px;background:linear-gradient(90deg,#dd56ca,#d946ef);padding:2px 10px;font-size:10px;font-weight:600">Ваш текущий уровень</span>
+  <div style="font-size:15px;font-weight:600">25 – 49</div>
+  <div style="font-size:11px;line-height:1.3;margin-top:2px" class="mut">активных рефералов</div>
+  <div class="gradient-text" style="font-size:24px;font-weight:700;margin-top:12px">20%</div></div>
+<div style="position:relative;border-radius:16px;padding:16px 12px;text-align:center;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)">
+  <div style="font-size:15px;font-weight:600">50 – 99</div>
+  <div style="font-size:11px;line-height:1.3;margin-top:2px" class="mut">активных рефералов</div>
+  <div class="mut2" style="font-size:24px;font-weight:700;margin-top:12px">22%</div></div>
+<div style="position:relative;border-radius:16px;padding:16px 12px;text-align:center;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05)">
+  <div style="font-size:15px;font-weight:600">100+</div>
+  <div style="font-size:11px;line-height:1.3;margin-top:2px" class="mut">активных рефералов</div>
+  <div class="mut2" style="font-size:24px;font-weight:700;margin-top:12px">25%</div></div>
+        </div>
+        <div class="row g2" style="margin-top:16px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);padding:12px 16px;font-size:11px;line-height:1.6" class="mut">
+          <span>ⓘ</span><span>Уровень зависит от количества активных рефералов и обновляется автоматически. Активный реферал — тот, у кого есть хотя бы один платёж.</span>
+        </div>
+      </div>
+
+      <div class="grid3" style="margin-top:24px">
+        <div class="glass r28" style="padding:24px"><div class="row g3"><div style="width:40px;height:40px;border-radius:16px;background:rgba(16,185,129,.15);color:#6ee7b7;display:flex;align-items:center;justify-content:center">₽</div><span class="sm mut2">Заработано</span></div><div style="font-size:26px;font-weight:700;margin-top:12px">12 480 ₽</div><div class="sm emerald" style="margin-top:4px">+1 240 ₽ за 30 дней</div></div>
+        <div class="glass r28" style="padding:24px"><div class="row g3"><div style="width:40px;height:40px;border-radius:16px;background:rgba(221,86,202,.2);color:#f5d0fe;display:flex;align-items:center;justify-content:center">👥</div><span class="sm mut2">Активных рефералов</span></div><div style="font-size:26px;font-weight:700;margin-top:12px">28</div><div class="sm" style="color:#f0abfc;margin-top:4px">+4 за 30 дней</div></div>
+        <div class="glass r28" style="padding:24px"><div class="row g3"><div style="width:40px;height:40px;border-radius:16px;background:rgba(245,158,11,.15);color:#fcd34d;display:flex;align-items:center;justify-content:center">◎</div><span class="sm mut2">Оборот рефералов</span></div><div style="font-size:26px;font-weight:700;margin-top:12px">62 400 ₽</div><div class="sm amber" style="margin-top:4px">+6 200 ₽ за 30 дней</div></div>
+      </div>
+
+      <div class="glass r28" style="padding:24px;margin-top:24px">
+        <div style="font-size:20px;font-weight:600">Ваша реферальная ссылка</div>
+        <div class="sm mut" style="margin-top:4px">Делитесь ссылкой и приглашайте друзей</div>
+        <div class="row g3" style="margin-top:20px">
+          <div class="row g2 tile" style="flex:1;border-radius:16px;padding:12px 16px"><span class="sm w" style="flex:1">https://lk.djvpn.ru/r/ref-42</span><span style="width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center">⧉</span></div>
+          <div class="row g2">
+            <span class="btn btn-brand" style="padding:12px 16px;font-size:12px">⧉ Скопировать ссылку</span>
+            <span class="btn" style="background:#2ea6dd;padding:12px 16px;font-size:12px">✈ Telegram DeepLink</span>
+            <span class="btn btn-ghost" style="padding:12px 16px;font-size:12px">▦ QR-код</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass r28" style="margin-top:24px;overflow:hidden">
+        <div style="padding:20px 24px"><div class="row g3"><div style="font-size:20px;font-weight:600">Ваши рефералы</div><span style="border-radius:999px;background:rgba(255,255,255,.1);padding:1px 12px;font-size:13px;font-weight:600">36</span></div>
+          <div class="sm mut" style="margin-top:4px">Список пользователей, зарегистрированных по вашей ссылке</div></div>
+        <div style="border-top:1px solid rgba(255,255,255,.1)">
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:10px 24px;border-bottom:1px solid rgba(255,255,255,.1);font-size:11px;text-transform:uppercase;letter-spacing:.08em" class="mut"><span>Пользователь</span><span style="text-align:right">Дата регистрации</span><span style="text-align:right">Ваш бонус</span></div>
+<div style="display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:12px 24px;border-bottom:1px solid rgba(255,255,255,.05)">
+  <div class="row g3"><div style="position:relative;width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;color:#cbd5e1">◉<span style="position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:999px;border:2px solid #1b0c2a;background:#34d399"></span></div>
+    <div><div class="row g2"><span class="sm sb w">Aleksei</span><span style="border-radius:999px;background:rgba(16,185,129,.15);color:#6ee7b7;padding:1px 8px;font-size:10px;font-weight:600">активен</span></div><div class="xs mut" style="margin-top:2px">aleksei_k</div></div></div>
+  <div class="sm mut2" style="align-self:center;text-align:right">14 авг 2026</div>
+  <div class="sm sb emerald" style="align-self:center;text-align:right">+2 480 ₽</div></div>
+<div style="display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:12px 24px;border-bottom:1px solid rgba(255,255,255,.05)">
+  <div class="row g3"><div style="position:relative;width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;color:#cbd5e1">◉<span style="position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:999px;border:2px solid #1b0c2a;background:#34d399"></span></div>
+    <div><div class="row g2"><span class="sm sb w">Реферал #1288</span><span style="border-radius:999px;background:rgba(16,185,129,.15);color:#6ee7b7;padding:1px 8px;font-size:10px;font-weight:600">активен</span></div></div></div>
+  <div class="sm mut2" style="align-self:center;text-align:right">02 авг 2026</div>
+  <div class="sm sb emerald" style="align-self:center;text-align:right">+1 120 ₽</div></div>
+<div style="display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:12px 24px;border-bottom:1px solid rgba(255,255,255,.05)">
+  <div class="row g3"><div style="position:relative;width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;color:#cbd5e1">◉<span style="position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:999px;border:2px solid #1b0c2a;background:#34d399"></span></div>
+    <div><div class="row g2"><span class="sm sb w">Marina</span><span style="border-radius:999px;background:rgba(16,185,129,.15);color:#6ee7b7;padding:1px 8px;font-size:10px;font-weight:600">активен</span></div><div class="xs mut" style="margin-top:2px">marina99</div></div></div>
+  <div class="sm mut2" style="align-self:center;text-align:right">28 июл 2026</div>
+  <div class="sm sb emerald" style="align-self:center;text-align:right">+640 ₽</div></div>
+<div style="display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:12px 24px;border-bottom:1px solid rgba(255,255,255,.05)">
+  <div class="row g3"><div style="position:relative;width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;color:#cbd5e1">◉</div>
+    <div><div class="row g2"><span class="sm sb w">Реферал #1204</span></div></div></div>
+  <div class="sm mut2" style="align-self:center;text-align:right">19 июл 2026</div>
+  <div class="sm sb emerald" style="align-self:center;text-align:right">+0 ₽</div></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="notes" style="margin-top:5mm;column-count:2;column-gap:8mm">
+    <h4>Блоки</h4>
+    <ul>
+      <li><b>Hero</b> (brand-panel) + <b>карточка уровня</b> с прогрессом до следующего порога.</li>
+      <li><b>Лестница уровней</b> — 5 плиток, текущая подсвечена бейджем и градиентным процентом.</li>
+      <li><b>Три метрики</b>: заработано, активные рефералы, оборот; под каждой — дельта за 30 дней.</li>
+      <li><b>Ссылка</b> — короткая <code>/r/ref-ID</code>, копирование, Telegram deep-link, QR-модалка (генерится в браузере).</li>
+      <li><b>Три буллета-преимущества</b> (стабильный доход / быстрые выплаты / без ограничений) — на макете ниже блока ссылки.</li>
+      <li><b>Таблица рефералов</b> — сортировка по доходу, пагинация по 25, на мобильном дата уезжает под сумму.</li>
+    </ul>
+    <h4>Состояния</h4>
+    <ul>
+      <li>Загрузка — 4 пульсирующие полосы вместо строк.</li>
+      <li>Пусто — «У вас пока нет рефералов. Поделитесь ссылкой выше — и доход появится здесь».</li>
+      <li>Пока профиль не загружен — в поле ссылки текст-заглушка.</li>
+      <li>Копирование подтверждается тостом «Ссылка скопирована».</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════ 12. Мастер подключения и системные элементы ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Мастер «Настройка VPN»</h2>
+    <span class="kicker">12 · components/SetupGuide.tsx, Toast, ConfirmDialog</span>
+  </div>
+  <p class="lead">
+    Ключевая модалка продукта: до неё ведут CTA «Подключиться» на Главной и
+    «Настроить подключение» в Подписках. Два шага, контент приходит с бэкенда
+    и зависит от платформы (iOS / Android / Windows / macOS).
+  </p>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5mm">
+    <div>
+      <div style="zoom:.44" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen glass" style="border-radius:16px;padding:0">
+          <div class="row between" style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.08)"><span class="sm b w" style="font-size:15px">Настройка VPN</span><span style="width:28px;height:28px;border-radius:8px;background:#311846;color:#94a3b8;display:flex;align-items:center;justify-content:center">✕</span></div>
+          <div style="padding:20px">
+            <div class="row g3" style="justify-content:center">
+              <div class="row g2"><div style="width:32px;height:32px;border-radius:999px;background:#dd56ca;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">1</div><div style="width:48px;height:2px;border-radius:999px;background:rgba(255,255,255,.08)"></div></div>
+              <div style="width:32px;height:32px;border-radius:999px;background:rgba(255,255,255,.08);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">2</div>
+            </div>
+            <div style="text-align:center;margin-top:16px"><span style="display:inline-flex;gap:6px;align-items:center;border-radius:999px;background:#311846;border:1px solid rgba(255,255,255,.08);padding:4px 12px;font-size:11px" class="mut">📱 iOS</span></div>
+            <div style="text-align:center;margin-top:16px">
+              <div style="width:80px;height:80px;margin:0 auto;border-radius:16px;background:linear-gradient(135deg,rgba(182,65,169,.3),rgba(147,51,234,.3));border:1px solid rgba(221,86,202,.2);display:flex;align-items:center;justify-content:center;font-size:34px">📲</div>
+              <div style="font-size:17px;font-weight:700;margin-top:16px">Установите приложение</div>
+              <div class="sm mut" style="margin-top:4px">Установите <b class="w">Happ</b> на ваше устройство</div>
+            </div>
+            <div class="btn" style="margin-top:20px;background:linear-gradient(90deg,#b641a9,#9333ea);padding:16px">⬇ Скачать Happ</div>
+            <div class="xs" style="color:#64748b;text-align:center;margin-top:12px;line-height:1.6">Не открывается App Store? Попробуйте <u>альтернативную ссылку</u></div>
+            <div class="btn" style="margin-top:16px;background:#311846;border:1px solid rgba(255,255,255,.1);color:#cbd5e1;font-weight:500;padding:12px">Уже установлено → Далее</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Шаг 1 — установка клиента</div>
+    </div>
+
+    <div>
+      <div style="zoom:.44" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen glass" style="border-radius:16px;padding:0">
+          <div class="row between" style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.08)"><span class="sm b w" style="font-size:15px">Настройка VPN</span><span style="width:28px;height:28px;border-radius:8px;background:#311846;color:#94a3b8;display:flex;align-items:center;justify-content:center">✕</span></div>
+          <div style="padding:20px">
+            <div class="row g3" style="justify-content:center">
+              <div class="row g2"><div style="width:32px;height:32px;border-radius:999px;background:rgba(16,185,129,.4);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">✓</div><div style="width:48px;height:2px;border-radius:999px;background:rgba(16,185,129,.4)"></div></div>
+              <div style="width:32px;height:32px;border-radius:999px;background:#dd56ca;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">2</div>
+            </div>
+            <div style="text-align:center;margin-top:16px">
+              <div style="width:80px;height:80px;margin:0 auto;border-radius:16px;background:linear-gradient(135deg,rgba(5,150,105,.3),rgba(182,65,169,.3));border:1px solid rgba(16,185,129,.2);display:flex;align-items:center;justify-content:center;font-size:34px">🔗</div>
+              <div style="font-size:17px;font-weight:700;margin-top:16px">Добавьте подписку</div>
+              <div class="sm mut" style="margin-top:4px">Нажмите кнопку ниже — подписка добавится автоматически</div>
+            </div>
+            <div class="btn" style="margin-top:20px;background:linear-gradient(90deg,#059669,#b641a9);padding:16px">⚡ Подключить</div>
+            <div style="text-align:center;margin-top:16px">
+              <div class="xs" style="color:#64748b;margin-bottom:10px">Или отсканируйте QR-код</div>
+              <div style="display:inline-block;padding:10px;background:#fff;border-radius:12px">
+                <div style="width:120px;height:120px;background:repeating-conic-gradient(#000 0% 25%,#fff 0% 50%) 0 0/16px 16px"></div>
+              </div>
+            </div>
+            <div class="btn" style="margin-top:16px;background:#311846;border:1px solid rgba(255,255,255,.1);color:#cbd5e1;font-weight:500;padding:12px">⧉ Скопировать ссылку</div>
+            <div class="xs" style="color:#64748b;text-align:center;margin-top:12px">Инструкция вручную ▾</div>
+            <div class="xs" style="color:#64748b;text-align:center;margin-top:12px">← Назад к скачиванию</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Шаг 2 — импорт подписки: deeplink, QR, копирование</div>
+    </div>
+
+    <div>
+      <div style="zoom:.44" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen glass" style="border-radius:16px;padding:20px;min-height:200px">
+          <div class="stack-sm">
+            <div class="skel" style="height:80px;border-radius:12px;background:#311846"></div>
+            <div class="skel" style="height:56px;border-radius:12px;background:#311846"></div>
+            <div class="skel" style="height:56px;border-radius:12px;background:#311846"></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="caption">Загрузка инструкции</div>
+
+      <div style="zoom:.44;margin-top:6px" class="app">
+        <div class="frame plain" style="width:448px"><div class="screen glass" style="border-radius:16px;padding:20px;min-height:220px">
+          <div style="text-align:center;padding:12px 0"><div style="font-size:34px">⚠️</div><div class="sm mut" style="margin-top:10px">Не удалось получить ссылку подписки</div></div>
+          <div style="background:#311846;border-radius:12px;padding:16px;font-size:12px;line-height:1.7" class="mut">Ручная инструкция: скопируйте ссылку подписки и добавьте её в приложение вручную…</div>
+        </div></div>
+      </div>
+      <div class="caption">Ошибка → ручная инструкция (fallback)</div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:6mm">
+    <div style="width:80mm">
+      <h3 class="sec">Системные элементы</h3>
+      <div style="zoom:.62" class="app">
+        <div class="stack-sm" style="width:420px">
+          <div class="glass r12" style="border:1px solid rgba(16,185,129,.3);background:rgba(16,185,129,.15);color:#6ee7b7;padding:12px 16px;font-size:13px;font-weight:500;max-width:320px">Услуга успешно подключена</div>
+          <div class="glass r12" style="border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.15);color:#fca5a5;padding:12px 16px;font-size:13px;font-weight:500;max-width:320px">Не удалось удалить устройство</div>
+          <div class="glass r12" style="border:1px solid rgba(182,65,169,.3);background:rgba(182,65,169,.15);color:#ff86df;padding:12px 16px;font-size:13px;font-weight:500;max-width:320px">Ссылка скопирована</div>
+          <div class="glass" style="border-radius:28px;padding:24px;margin-top:6px;max-width:360px">
+            <div class="sm b w" style="font-size:15px">Подтверждение</div>
+            <div class="sm mut2" style="margin-top:8px;line-height:1.5">«iPhone 15 Pro» будет отключено от VPN немедленно.</div>
+            <div class="row g3" style="margin-top:24px"><div class="btn btn-ghost" style="flex:1">Отмена</div><div class="btn" style="flex:1;background:rgba(244,63,94,.2);border:1px solid rgba(244,63,94,.3);color:#fecdd3">Удалить</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Тосты — правый верхний угол, 3.5&nbsp;с, три типа. ConfirmDialog — общий паттерн подтверждений</div>
+    </div>
+    <div style="flex:1" class="notes">
+      <h4>Как работает мастер</h4>
+      <ul>
+        <li>Контент шага (<code>title</code>, <code>app_name</code>, ссылки, deeplink, QR) приходит
+            с бэкенда по подписке или id услуги — фронт не знает про конкретные приложения.</li>
+        <li>Платформа определяется автоматически, показывается пилюлей над шагом.</li>
+        <li>Для iOS предусмотрены две региональные ссылки (основная и альтернативная).</li>
+        <li>Шаг 2 всегда даёт три пути: кнопка-deeplink, QR-код и копирование ссылки.</li>
+        <li>Если ссылку получить не удалось — вместо шагов показывается текстовая инструкция.</li>
+        <li>Модалка — <code>z-50</code>, скролл внутри (<code>max-h-80vh</code>), закрытие по скриму.</li>
+      </ul>
+      <div class="callout" style="margin-top:4mm">
+        Мастер и «Инструкции» (<code>/setup.html</code>) — два независимых источника
+        одной и той же справки: первый динамический в модалке, второй статический вне SPA.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 13. Инвентарь компонентов ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Инвентарь компонентов</h2>
+    <span class="kicker">13 · что придётся перерисовать</span>
+  </div>
+  <p class="lead">
+    32 компонента и 7 страниц, ≈6&nbsp;500 строк вёрстки. Переиспользуемого слоя UI-примитивов нет:
+    кнопки, поля и карточки собираются классами Tailwind на месте.
+  </p>
+
+  <table class="t">
+    <tr><th style="width:52mm">Компонент</th><th style="width:26mm">Строк</th><th>Назначение и состояния</th></tr>
+<tr><td colspan="3" style="background:#f7f4fa;font-size:8.5px;text-transform:uppercase;letter-spacing:.12em;color:#8b7f9c;font-weight:600">Страницы</td></tr>
+<tr><td class="m">pages/LoginPage</td><td class="m">1001</td><td>Вход, регистрация, OTP, запрос сброса, новый пароль, капча, Telegram-виджет</td></tr>
+<tr><td class="m">pages/ReferralsPage</td><td class="m">802</td><td>Hero, уровень, лестница, 3 метрики, ссылка + QR, таблица с пагинацией</td></tr>
+<tr><td class="m">pages/ServicesPage</td><td class="m">600</td><td>Управление активной услугой, каталог, фильтр, 3 модалки</td></tr>
+<tr><td class="m">pages/ProfilePage</td><td class="m">594</td><td>Карточка аккаунта, баланс/скидка, меню, модалки email/OTP/оферта</td></tr>
+<tr><td class="m">pages/PaymentsPage</td><td class="m">549</td><td>Баланс, неоплаченные, прогноз, промокод, пополнение, история</td></tr>
+<tr><td class="m">pages/ChangePasswordPage</td><td class="m">140</td><td>Отдельный экран смены пароля, авто-закрытие Mini App</td></tr>
+<tr><td class="m">pages/DashboardPage</td><td class="m">110</td><td>Сборка Главной: 3 ветки состояния + статус серверов</td></tr>
+<tr><td colspan="3" style="background:#f7f4fa;font-size:8.5px;text-transform:uppercase;letter-spacing:.12em;color:#8b7f9c;font-weight:600">Каркас и общее</td></tr>
+<tr><td class="m">components/Layout</td><td class="m">220</td><td>Хедер, таббар, меню профиля, фон, слот <main></td></tr>
+<tr><td class="m">components/OtpVerify</td><td class="m">566</td><td>6-значный код: автофокус, вставка, повтор, успех</td></tr>
+<tr><td class="m">components/SetupGuide</td><td class="m">258</td><td>Мастер подключения: 2 шага, QR, fallback, загрузка, ошибка</td></tr>
+<tr><td class="m">components/NotificationBell</td><td class="m">106</td><td>Колокольчик, счётчик, дропдаун, «прочитать все», пусто</td></tr>
+<tr><td class="m">components/ParticleCanvas</td><td class="m">137</td><td>Фоновая анимация частиц на canvas</td></tr>
+<tr><td class="m">components/CartBanner</td><td class="m">53</td><td>Янтарный баннер незавершённой покупки</td></tr>
+<tr><td class="m">components/LanguageSwitcher</td><td class="m">41</td><td>Селект ru/en в меню профиля</td></tr>
+<tr><td class="m">components/Toast</td><td class="m">41</td><td>Провайдер тостов: success / error / info</td></tr>
+<tr><td class="m">components/BrandLogo</td><td class="m">29</td><td>Логотип 48–72 px + вордмарк</td></tr>
+<tr><td class="m">components/Spinner</td><td class="m">21</td><td>Круговой индикатор загрузки</td></tr>
+<tr><td class="m">components/MaintenanceBanner</td><td class="m">18</td><td>Липкий баннер техработ</td></tr>
+<tr><td colspan="3" style="background:#f7f4fa;font-size:8.5px;text-transform:uppercase;letter-spacing:.12em;color:#8b7f9c;font-weight:600">Блоки дашборда</td></tr>
+<tr><td class="m">dashboard/ServerStatus</td><td class="m">226</td><td>Сворачиваемый статус локаций: uptime, пинг, качество, скелетон</td></tr>
+<tr><td class="m">dashboard/DeviceList</td><td class="m">187</td><td>Список устройств, удаление по одному и всех, подтверждение</td></tr>
+<tr><td class="m">dashboard/CompactSubscriptionCard</td><td class="m">123</td><td>Главная карточка подписки с кольцевым таймером</td></tr>
+<tr><td class="m">dashboard/PlanCard</td><td class="m">98</td><td>Текущий тариф + 3 метрики, бейдж пробного периода</td></tr>
+<tr><td class="m">dashboard/ActiveSubscription</td><td class="m">96</td><td>Развёрнутая карточка услуги (сейчас не подключена к страницам)</td></tr>
+<tr><td class="m">dashboard/RenewalCard</td><td class="m">73</td><td>Ближайшее списание: дата, сумма, «хватает / не хватает»</td></tr>
+<tr><td class="m">dashboard/CountdownBlock</td><td class="m">70</td><td>Таймер до окончания с обновлением раз в секунду</td></tr>
+<tr><td class="m">dashboard/CtaBanner</td><td class="m">48</td><td>Баннер-раскрывашка каталога тарифов</td></tr>
+<tr><td class="m">dashboard/TrafficSection</td><td class="m">47</td><td>Трафик с кнопкой обновления</td></tr>
+<tr><td class="m">dashboard/DeviceConnectionCard</td><td class="m">44</td><td>Счётчик подключённых устройств точками</td></tr>
+<tr><td class="m">dashboard/TrafficMiniCard</td><td class="m">42</td><td>Мини-плитка трафика</td></tr>
+<tr><td class="m">dashboard/TrialOfferCard</td><td class="m">37</td><td>Предложение пробного периода</td></tr>
+<tr><td class="m">dashboard/SubscriptionHero</td><td class="m">36</td><td>Hero «Оформить подписку» для пустого состояния</td></tr>
+<tr><td class="m">dashboard/DevicesMiniCard</td><td class="m">34</td><td>Мини-плитка устройств с сегментами</td></tr>
+<tr><td class="m">dashboard/LocationsSection</td><td class="m">25</td><td>Чипы доступных локаций</td></tr>
+  </table>
+
+  <div class="notes" style="margin-top:5mm;column-count:2;column-gap:8mm">
+    <h4>Повторяющиеся паттерны (кандидаты в дизайн-систему)</h4>
+    <ul>
+      <li><b>Карточка-секция</b> — <code>.glass</code> + радиус 28–32&nbsp;px + паддинг 20&nbsp;px: встречается ≈30 раз.</li>
+      <li><b>Микро-лейбл</b> 10–11&nbsp;px uppercase + значение — 12 вариантов.</li>
+      <li><b>Кнопка-градиент</b> <code>brand-500 → brand-700</code> + <code>shadow-brand</code> — главный CTA на всех экранах.</li>
+      <li><b>Bottom sheet</b> с «ручкой» — 5 модалок, каждая свёрстана отдельно.</li>
+      <li><b>Строка списка</b> «иконка + текст + значение справа» — устройства, платежи, рефералы, тарифы.</li>
+      <li><b>Пагинация</b> «25/стр · 1–25 / 42 · ‹ ›» — продублирована в платежах и рефералах.</li>
+      <li><b>Плашка результата</b> зелёная / розовая / янтарная — промокод, ошибки, статусы.</li>
+      <li><b>Прогресс</b> трёх видов: линейный бар, кольцо SVG, сегменты и точки.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════ 14. Состояния и наблюдения ══════════════ -->
+<section class="page">
+  <div class="phead">
+    <h2>Состояния экранов и заметки к редизайну</h2>
+    <span class="kicker">14 · сводка</span>
+  </div>
+
+  <h3 class="sec">Матрица состояний</h3>
+  <table class="t">
+    <tr><th style="width:30mm">Экран</th><th>Загрузка</th><th>Пусто</th><th>Ошибка</th><th>Особые</th></tr>
+    <tr><td>Главная</td><td>Скелетон: 3 блока</td><td>Hero «Оформить подписку»</td><td>Розовая плашка, без кнопки повтора</td><td>Триал доступен · корзина · несколько услуг</td></tr>
+    <tr><td>Подписки</td><td>Скелетон: hero + 6 карточек</td><td>«По фильтру нет тарифов» 🔎</td><td>Тост поверх страницы</td><td>Неоплаченные · уже подключён · покупка идёт</td></tr>
+    <tr><td>Платежи</td><td>2 полосы вместо платёжек</td><td>«История платежей пока пуста»</td><td>«Платёжные системы не настроены»</td><td>Платёж открыт в другой вкладке · просрочка</td></tr>
+    <tr><td>Профиль</td><td>Прочерки в полях</td><td>Email не задан → «Привязать»</td><td>Тост</td><td>Email не подтверждён · нет Telegram ID</td></tr>
+    <tr><td>Рефералы</td><td>4 полосы в таблице</td><td>«У вас пока нет рефералов»</td><td>Тост «Ошибка загрузки статистики»</td><td>Ссылка ещё не готова · последний уровень</td></tr>
+    <tr><td>Вход</td><td>Плейсхолдер под виджет</td><td>—</td><td>Розовая плашка под формой</td><td>Виджет заблокирован · Mini App · сброс по токену</td></tr>
+    <tr><td>Мастер VPN</td><td>3 серые плашки</td><td>—</td><td>⚠️ + ручная инструкция</td><td>Платформа не определена</td></tr>
+  </table>
+
+  <div class="cols" style="margin-top:6mm">
+    <div style="flex:1" class="notes">
+      <h4>Что бросается в глаза</h4>
+      <ul>
+        <li><b>Два визуальных языка.</b> Главная, Подписки, Платежи и Рефералы — «стекло» с радиусом 28–32&nbsp;px.
+            Профиль и мастер подключения — плоские карточки на <code>surface-1/2/3</code> с радиусом 12–16&nbsp;px.</li>
+        <li><b>Дублирование данных.</b> Остаток дней — в 3 местах, устройства — в 3, баланс — в 3,
+            трафик — в 2. Одна и та же сущность выглядит каждый раз по-новому.</li>
+        <li><b>Главная почти ничего не решает.</b> Полезных действия два — «Подключиться» и «Обновить
+            прогноз»; всё остальное — переходы на другие экраны.</li>
+        <li><b>Подписки перегружены.</b> Восемь блоков подряд + скрытый каталог + список устройств
+            на одном маршруте.</li>
+        <li><b>Рефералы спрятаны</b> в списке профиля, хотя это самый проработанный экран.</li>
+        <li><b>Нет заголовков страниц</b> нигде, кроме «Баланс» и «Реферальная программа», —
+            непонятно, где ты находишься.</li>
+        <li><b>Пять модалок</b> сверстаны независимо, но по одному шаблону: скрим + sheet + две кнопки.</li>
+        <li><b>Локализация наполовину.</b> i18n подключён (ru/en), но большинство строк вшито в JSX
+            по-русски — при редизайне это отдельная задача.</li>
+        <li><b>Мобильный приоритет.</b> Десктоп получает те же карточки в один столбец шириной
+            1152&nbsp;px — воздух не используется, сеток на 2–3 колонки почти нет.</li>
+      </ul>
+    </div>
+    <div style="width:74mm">
+      <h3 class="sec">Наследуемые ограничения</h3>
+      <div class="notes">
+        <ul>
+          <li>Данные приходят одним запросом <code>/api/dashboard</code> — экраны привязаны к его структуре.</li>
+          <li>Статусы услуг из SHM: <code>0/2</code> — не оплачена, <code>1</code> — активна, <code>3</code> — удалена.</li>
+          <li>Лимиты устройств и трафика — из Remnawave, могут отсутствовать (тогда «--» и «безлимит»).</li>
+          <li>Тема только тёмная; светлой в коде нет вообще.</li>
+          <li>Кабинет работает и как Mini App внутри Telegram — верхняя область и кнопка «назад»
+              принадлежат клиенту Telegram, дизайн должен это учитывать.</li>
+          <li>Safe-area снизу учтён классом <code>.safe-bottom</code>.</li>
+        </ul>
+      </div>
+      <div class="callout" style="margin-top:5mm">
+        <b>Исходники макета.</b> Документ собран как <code>design/cabinet-layout.html</code>
+        и экспортирован в <code>design/cabinet-layout.pdf</code>. HTML можно править и
+        пересобирать — все экраны свёрстаны обычной разметкой без зависимостей.
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
