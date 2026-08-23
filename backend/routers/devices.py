@@ -13,7 +13,11 @@ from models import (
     RemnaUserInfo,
     ServiceDevicesOut,
 )
-from remnawave_client import remnawave_request, resolve_remna_user_id
+from remnawave_client import (
+    remnawave_request,
+    resolve_remna_user_id,
+    resolve_remna_user_id_by_username,
+)
 from security import get_current_session
 from shm_client import shm_request
 
@@ -28,10 +32,10 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
     raw_list = data.get("data", [])
 
     user_id = session.get("user_id", 0)
-    # В 3.x пользователь адресуется числовым id, а он один на весь аккаунт SHM
-    # (имена в панели — `us_<user_id>`), поэтому резолвим один раз на запрос,
-    # а не по разу на услугу. Per-service остаётся только legacy-путь по UUID.
-    remna_user_id = await resolve_remna_user_id(0, None, user_id, session["shm_session"])
+    # Резолв id — per-service (в хранилище услуги лежит свой `id`), но запрос
+    # по имени `us_<user_id>` один на весь аккаунт, поэтому делаем его заранее
+    # и передаём результат как готовый fallback.
+    username_id = await resolve_remna_user_id_by_username(user_id)
 
     async def fetch_devices_for_service(svc: dict) -> ServiceDevicesOut:
         user_service_id = svc.get("user_service_id")
@@ -39,11 +43,9 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
         service_name = service_info.get("name") or svc.get("name", "")
         service_id = svc.get("service_id", 0)
         try:
-            remna_id = remna_user_id
-            if not remna_id:
-                remna_id = await resolve_remna_user_id(
-                    user_service_id, svc, user_id, session["shm_session"],
-                )
+            remna_id = await resolve_remna_user_id(
+                user_service_id, svc, user_id, session["shm_session"], username_id,
+            )
             if not remna_id:
                 raise ValueError("no remnawave user id")
             remna_data = await remnawave_request("GET", f"/api/hwid/devices/{remna_id}")
@@ -123,16 +125,14 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     raw_list = data.get("data", [])
     valid_services = [s for s in raw_list if s.get("user_service_id")]
     user_id = session.get("user_id", 0)
-    remna_user_id = await resolve_remna_user_id(0, None, user_id, session["shm_session"])
+    username_id = await resolve_remna_user_id_by_username(user_id)
 
     async def fetch_remna_user(svc: dict) -> RemnaUserInfo:
         user_service_id = svc["user_service_id"]
         try:
-            remna_id = remna_user_id
-            if not remna_id:
-                remna_id = await resolve_remna_user_id(
-                    user_service_id, svc, user_id, session["shm_session"],
-                )
+            remna_id = await resolve_remna_user_id(
+                user_service_id, svc, user_id, session["shm_session"], username_id,
+            )
             if not remna_id:
                 logging.warning("get_remna_info usi=%s: no remnawave user id", user_service_id)
                 return RemnaUserInfo(user_service_id=user_service_id)
