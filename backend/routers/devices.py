@@ -13,7 +13,7 @@ from models import (
     RemnaUserInfo,
     ServiceDevicesOut,
 )
-from remnawave_client import remnawave_request, resolve_remna_uuid
+from remnawave_client import remnawave_request, resolve_remna_user_id
 from security import get_current_session
 from shm_client import shm_request
 
@@ -28,6 +28,10 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
     raw_list = data.get("data", [])
 
     user_id = session.get("user_id", 0)
+    # В 3.x пользователь адресуется числовым id, а он один на весь аккаунт SHM
+    # (имена в панели — `us_<user_id>`), поэтому резолвим один раз на запрос,
+    # а не по разу на услугу. Per-service остаётся только legacy-путь по UUID.
+    remna_user_id = await resolve_remna_user_id(0, None, user_id, session["shm_session"])
 
     async def fetch_devices_for_service(svc: dict) -> ServiceDevicesOut:
         user_service_id = svc.get("user_service_id")
@@ -35,10 +39,14 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
         service_name = service_info.get("name") or svc.get("name", "")
         service_id = svc.get("service_id", 0)
         try:
-            uuid = await resolve_remna_uuid(user_service_id, svc, user_id, session["shm_session"])
-            if not uuid:
-                raise ValueError("no uuid")
-            remna_data = await remnawave_request("GET", f"/api/hwid/devices/{uuid}")
+            remna_id = remna_user_id
+            if not remna_id:
+                remna_id = await resolve_remna_user_id(
+                    user_service_id, svc, user_id, session["shm_session"],
+                )
+            if not remna_id:
+                raise ValueError("no remnawave user id")
+            remna_data = await remnawave_request("GET", f"/api/hwid/devices/{remna_id}")
             response = remna_data.get("response") or {}
             devices_raw = response.get("devices") or []
             devices = [DeviceOut(**d) for d in devices_raw if isinstance(d, dict)]
@@ -95,14 +103,14 @@ async def delete_user_device(req: DeleteDeviceRequest, session: dict = Depends(g
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
     target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
-    user_uuid = await resolve_remna_uuid(
+    remna_user_id = await resolve_remna_user_id(
         req.user_service_id, target_svc, session.get("user_id", 0), session["shm_session"],
     )
-    if not user_uuid:
-        raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
+    if not remna_user_id:
+        raise HTTPException(status_code=404, detail="Пользователь Remnawave не найден для этой услуги")
     result = await remnawave_request(
         "POST", "/api/hwid/devices/delete",
-        json_data={"userUuid": user_uuid, "hwid": req.hwid},
+        json_data={"userId": remna_user_id, "hwid": req.hwid},
     )
     await invalidate_dashboard(session.get("user_id"))
     return result
@@ -115,20 +123,34 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     raw_list = data.get("data", [])
     valid_services = [s for s in raw_list if s.get("user_service_id")]
     user_id = session.get("user_id", 0)
+    remna_user_id = await resolve_remna_user_id(0, None, user_id, session["shm_session"])
 
     async def fetch_remna_user(svc: dict) -> RemnaUserInfo:
         user_service_id = svc["user_service_id"]
         try:
-            uuid = await resolve_remna_uuid(user_service_id, svc, user_id, session["shm_session"])
-            if not uuid:
-                logging.warning("get_remna_info usi=%s: no uuid", user_service_id)
+            remna_id = remna_user_id
+            if not remna_id:
+                remna_id = await resolve_remna_user_id(
+                    user_service_id, svc, user_id, session["shm_session"],
+                )
+            if not remna_id:
+                logging.warning("get_remna_info usi=%s: no remnawave user id", user_service_id)
                 return RemnaUserInfo(user_service_id=user_service_id)
-            resp = await remnawave_request("GET", f"/api/users/{uuid}")
+            resp = await remnawave_request("GET", f"/api/users/{remna_id}")
             user_data = resp.get("response") or resp
-            inbounds = user_data.get("activeUserInbounds") or user_data.get("inbounds") or []
+            # 3.x отдаёт локации как `activeInternalSquads` ([{uuid, name}]);
+            # старые ключи оставлены для совместимости со 2.x.
+            inbounds = (
+                user_data.get("activeInternalSquads")
+                or user_data.get("activeUserInbounds")
+                or user_data.get("inbounds")
+                or []
+            )
             tags = []
             for inb in inbounds:
-                tag = inb.get("tag") or inb.get("inboundTag") or inb.get("name")
+                if not isinstance(inb, dict):
+                    continue
+                tag = inb.get("name") or inb.get("tag") or inb.get("inboundTag")
                 if tag:
                     tags.append(tag)
             traffic = user_data.get("userTraffic") or {}
@@ -171,24 +193,22 @@ async def delete_all_user_devices(req: DeleteAllDevicesRequest, session: dict = 
         raise HTTPException(status_code=403, detail="Нет доступа к этой услуге")
 
     target_svc = next((s for s in raw_list if s.get("user_service_id") == req.user_service_id), None)
-    user_uuid = await resolve_remna_uuid(
+    remna_user_id = await resolve_remna_user_id(
         req.user_service_id, target_svc, session.get("user_id", 0), session["shm_session"],
     )
-    if not user_uuid:
-        raise HTTPException(status_code=404, detail="UUID не найден для этой услуги")
-    remna_data = await remnawave_request("GET", f"/api/hwid/devices/{user_uuid}")
-    devices_raw = (remna_data.get("response") or {}).get("devices") or []
+    if not remna_user_id:
+        raise HTTPException(status_code=404, detail="Пользователь Remnawave не найден для этой услуги")
 
-    deleted, failed = 0, 0
-    for d in devices_raw:
-        hwid = d.get("hwid")
-        if not hwid:
-            continue
-        try:
-            await remnawave_request("POST", "/api/hwid/devices/delete",
-                                    json_data={"userUuid": user_uuid, "hwid": hwid})
-            deleted += 1
-        except Exception:
-            failed += 1
+    remna_data = await remnawave_request("GET", f"/api/hwid/devices/{remna_user_id}")
+    before = (remna_data.get("response") or {}).get("devices") or []
+
+    # 3.x умеет удалять все устройства пользователя одним запросом —
+    # перебор по одному больше не нужен и не оставляет частичный результат.
+    result = await remnawave_request(
+        "POST", "/api/hwid/devices/delete-all",
+        json_data={"userId": remna_user_id},
+    )
+    left = (result.get("response") or {}).get("devices") or []
+    deleted = max(len(before) - len(left), 0)
     await invalidate_dashboard(session.get("user_id"))
-    return {"deleted": deleted, "failed": failed}
+    return {"deleted": deleted, "failed": len(left)}
