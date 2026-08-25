@@ -17,6 +17,7 @@ import LocationsSection from '../components/dashboard/LocationsSection'
 import CtaBanner from '../components/dashboard/CtaBanner'
 import DeviceList from '../components/dashboard/DeviceList'
 import { resolveDeviceLimit } from '../utils/deviceLimit'
+import { servicePrice, formatPrice } from '../utils/price'
 
 function periodLabel(period: number, type: string) {
   if (type === 'month') return period === 1 ? 'в месяц' : `за ${period} мес`
@@ -55,7 +56,7 @@ function ChangeTariffModal({
   const [loading, setLoading] = useState(false)
   const available = catalog
     .filter(s => s.status === 1 && s.service_id !== svc.service_id)
-    .sort((a, b) => a.cost - b.cost)
+    .sort((a, b) => servicePrice(a).final - servicePrice(b).final)
 
   const handleChange = async () => {
     if (!selectedId || !svc.id) return
@@ -107,7 +108,9 @@ function ChangeTariffModal({
               Сейчас нет доступных вариантов для смены тарифа.
             </div>
           ) : (
-            available.map(option => (
+            available.map(option => {
+              const price = servicePrice(option)
+              return (
               <button
                 key={option.service_id}
                 onClick={() => setSelectedId(option.service_id)}
@@ -123,12 +126,16 @@ function ChangeTariffModal({
                     {option.descr && <div className="mt-1 text-sm leading-6 text-slate-300">{option.descr}</div>}
                   </div>
                   <div className="rounded-xl bg-white/5 px-3 py-2 text-right">
-                    <div className="text-lg font-bold text-white">{option.cost} ₽</div>
+                    <div className="text-lg font-bold text-white">{formatPrice(price.final)} ₽</div>
+                    {price.hasDiscount && (
+                      <div className="text-xs text-slate-400 line-through">{formatPrice(price.base)} ₽</div>
+                    )}
                     <div className="text-xs text-slate-300">{periodLabel(option.period, option.period_type)}</div>
                   </div>
                 </div>
               </button>
-            ))
+              )
+            })
           )}
         </div>
 
@@ -212,7 +219,7 @@ export default function ServicesPage() {
       const aOwned = myActiveIds.has(a.service_id)
       const bOwned = myActiveIds.has(b.service_id)
       if (aOwned !== bOwned) return aOwned ? -1 : 1
-      return a.cost - b.cost
+      return servicePrice(a).final - servicePrice(b).final
     })
   }, [catalog, filter, myActiveIds, availableIds, unpaidServiceIds])
 
@@ -228,7 +235,7 @@ export default function ServicesPage() {
         saveCart({
           service_id: serviceId,
           service_name: catalogItem?.name,
-          cost: catalogItem?.cost,
+          cost: catalogItem ? servicePrice(catalogItem).final : undefined,
           amount_needed: res.amount_needed,
           balance: res.balance,
         }).catch(() => { /* backend без БД — игнорируем */ })
@@ -373,6 +380,7 @@ export default function ServicesPage() {
             const isBuying = buying === svc.service_id
             const success = justBought.has(svc.service_id)
             const disabled = owned || isBuying
+            const price = servicePrice(svc)
 
             return (
               <div
@@ -407,7 +415,15 @@ export default function ServicesPage() {
                   <div className="flex items-end justify-between gap-3">
                     <div>
                       <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Стоимость</div>
-                      <div className="mt-1 text-4xl font-black gradient-text leading-none">{svc.cost} ₽</div>
+                      <div className="mt-1 text-4xl font-black gradient-text leading-none">{formatPrice(price.final)} ₽</div>
+                      {price.hasDiscount && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <span className="text-sm text-slate-400 line-through">{formatPrice(price.base)} ₽</span>
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-100">
+                            Скидка {formatPrice(price.percent)}%
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Период</div>
