@@ -74,12 +74,25 @@ export function normalizeUserService(svc: Record<string, unknown>): UserService 
   }
 }
 
+// SHM в прайс-листе (`Core::Service::price_list`) уже применяет персональную
+// скидку пользователя: возвращает процент в `discount` и готовую цену в
+// `real_cost`. Сами ничего не пересчитываем — иначе разъедемся с биллингом на
+// услугах с `no_discount`. Если поля не пришли (старый SHM, админский роут),
+// откатываемся на номинал.
+function toFiniteNumber(value: unknown, fallback: number): number {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
 export function normalizeCatalogService(svc: Record<string, unknown>): Service {
   const allow = svc.allow_to_order ?? 1
+  const cost = toFiniteNumber(svc.cost, 0)
   return {
     service_id: Number(svc.id ?? svc.service_id ?? 0),
     name: (svc.name as string) || '',
-    cost: Number(svc.cost ?? 0),
+    cost,
+    discount: svc.discount == null ? 0 : toFiniteNumber(svc.discount, 0),
+    real_cost: svc.real_cost == null ? cost : toFiniteNumber(svc.real_cost, cost),
     period: Number(svc.period_cost ?? svc.period ?? 1),
     period_type: (svc.period_type as string) || 'month',
     descr: svc.descr as string | undefined,

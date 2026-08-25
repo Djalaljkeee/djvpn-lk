@@ -37,7 +37,14 @@ export interface UserService {
 export interface Service {
   service_id: number
   name: string
+  // Номинал тарифа без скидки (SHM `cost`).
   cost: number
+  // Персональная скидка пользователя в процентах, которую SHM применил к этой
+  // услуге (`Core::Service::price_list`). У услуги с `no_discount` придёт 0,
+  // даже если скидка у пользователя есть.
+  discount: number
+  // Цена с учётом скидки (SHM `real_cost`). Именно её списывает биллинг.
+  real_cost: number
   period: number
   period_type: string
   descr?: string
