@@ -8,6 +8,7 @@ import LanguageSwitcher from './LanguageSwitcher'
 import MaintenanceBanner from './MaintenanceBanner'
 import NotificationBell from './NotificationBell'
 import ParticleCanvas from './ParticleCanvas'
+import SupportChat from './support/SupportChat'
 
 const navItems = [
   { to: '/',         labelKey: 'nav.home',     icon: HomeIcon,    end: true  },
@@ -183,6 +184,8 @@ export default function Layout() {
           ))}
         </div>
       </nav>
+
+      <SupportChat />
     </div>
   )
 }

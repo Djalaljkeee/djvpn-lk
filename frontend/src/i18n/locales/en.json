@@ -45,5 +45,18 @@
   },
   "maintenance": {
     "banner": "Maintenance in progress. Some features may be temporarily unavailable."
+  },
+  "support": {
+    "title": "Support",
+    "subtitle": "We answer right here",
+    "ticket": "Ticket",
+    "placeholder": "Describe your question…",
+    "send": "Send",
+    "close": "Close",
+    "loading": "Loading conversation…",
+    "empty": "Nothing here yet",
+    "emptyHint": "Ask a question and we'll answer in this window. Need to attach a screenshot? Use the Telegram link below.",
+    "banned": "Cabinet support is not available for your account.",
+    "openInTelegram": "Open Telegram"
   }
 }

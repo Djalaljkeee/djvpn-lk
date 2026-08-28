@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { useSupportChatStore } from '../store/supportChatStore'
 import { useToast } from '../components/Toast'
 import { useInvalidateDashboard } from '../hooks/useDashboard'
 import { updateEmail, fetchProfile, requestEmailVerification, verifyEmailToken } from '../api/user'
@@ -363,6 +364,11 @@ export default function ProfilePage() {
         <MenuRow
           icon={<SupportIcon />}
           label="Техническая поддержка"
+          onClick={() => useSupportChatStore.getState().openChat()}
+        />
+        <MenuRow
+          icon={<SupportIcon />}
+          label="Поддержка в Telegram"
           onClick={() => window.open('https://t.me/help_djvpn', '_blank')}
         />
         <MenuRow

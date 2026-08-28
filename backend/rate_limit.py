@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+
 from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -30,6 +32,20 @@ def _key_func(request: Request) -> str:
     auth = request.headers.get("authorization", "")
     if auth.startswith("Bearer "):
         return f"user:{auth[-16:]}"
+    return get_remote_address(request)
+
+
+def session_key_func(request: Request) -> str:
+    """Ключ по cookie сессии.
+
+    Кабинет давно ходит по cookie, а не по Bearer, поэтому `_key_func` для
+    авторизованных ручек фактически вырождается в лимит по IP: за одним NAT
+    пользователи бьют друг друга, а обойти лимит можно сменой IP. Для чата
+    считаем по сессии, с фолбэком на IP для неавторизованных.
+    """
+    sid = request.cookies.get("session_id")
+    if sid:
+        return "sess:" + sha256(sid.encode()).hexdigest()[:16]
     return get_remote_address(request)
 
 
