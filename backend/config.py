@@ -45,6 +45,21 @@ class Settings(BaseSettings):
     NOTIFICATION_RETENTION_DAYS: int = 90
     CART_RETENTION_DAYS: int = 7
 
+    # Support chat: виджет в кабинете <-> бот поддержки.
+    # Пустой SUPPORT_BRIDGE_URL = фича работает «в себя»: сообщения сохраняются,
+    # но наружу ничего не уходит и виджет отдаёт enabled=false.
+    SUPPORT_CHAT_ENABLED: bool = False
+    SUPPORT_BRIDGE_URL: str = ""            # http://support-bot:8081
+    SUPPORT_BRIDGE_SECRET: str = ""
+    SUPPORT_RETENTION_DAYS: int = 180
+    # Дубль ответа в @DJ_VPN_bot, если клиент не забирал сообщения. Бот поддержки
+    # написать первым не может — он для клиента чужой, пока тот не нажал у него
+    # /start, — поэтому дублирует кабинет своим ботом.
+    SUPPORT_TG_FANOUT: bool = True
+    SUPPORT_FANOUT_DELAY_S: int = 90
+    SUPPORT_LK_URL: str = "https://lk.djvpn.ru"
+    SUPPORT_TG_LINK: str = "https://t.me/help_djvpn"
+
     # Observability
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True

@@ -32,8 +32,10 @@ from remnawave_client import close_remna_client, get_remna_in_flight
 from routers import devices, public, shm_proxy, status, system, vpn
 from routers import cart as cart_router
 from routers import notifications as notifications_router
+from routers import support as support_router
 from scheduler import shutdown_scheduler, start_scheduler
 from shm_client import close_shm_client, get_shm_in_flight
+from support_bridge import close_client as close_support_bridge_client
 
 
 # Настраиваем logging до всех прочих импортов бизнес-логики, чтобы
@@ -138,6 +140,7 @@ async def lifespan(app: FastAPI):
     # Закрываем singleton-httpx-клиенты, чтобы корректно отпустить keep-alive
     # соединения и не оставлять «висячие» сокеты при graceful-перезапуске.
     await close_shm_client()
+    await close_support_bridge_client()
     await close_remna_client()
     await close_kuma_client()
 
@@ -177,6 +180,7 @@ app.include_router(status.router)
 app.include_router(system.router)
 app.include_router(cart_router.router)
 app.include_router(notifications_router.router)
+app.include_router(support_router.router)
 app.include_router(shm_proxy.router)
 
 
