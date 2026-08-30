@@ -55,8 +55,10 @@
     "close": "Close",
     "loading": "Loading conversation…",
     "empty": "Nothing here yet",
-    "emptyHint": "Ask a question and we'll answer in this window. Need to attach a screenshot? Use the Telegram link below.",
+    "emptyHint": "Ask a question and we'll answer in this window. Attach a screenshot with the clip, or just paste it.",
     "banned": "Cabinet support is not available for your account.",
-    "openInTelegram": "Open Telegram"
+    "openInTelegram": "Open Telegram",
+    "attach": "Attach a file",
+    "attachHint": "A screenshot or a file up to {{mb}} MB"
   }
 }

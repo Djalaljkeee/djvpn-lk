@@ -5,6 +5,7 @@ import {
   fetchSupportThread,
   markSupportRead,
   sendSupportMessage,
+  uploadSupportAttachment,
   type SupportMessage,
   type SupportThread,
 } from '../api/support'
@@ -24,12 +25,27 @@ const EMPTY_THREAD: SupportThread = {
   ticket_id: null,
   unread: 0,
   last_message_at: null,
+  max_upload_mb: 10,
 }
 
 /** Локальное сообщение, ещё не подтверждённое сервером. */
 export interface PendingMessage extends SupportMessage {
   clientMsgId: string
   failed?: boolean
+  /** blob-ссылка на выбранный файл: превью видно, пока файл ещё грузится. */
+  previewUrl?: string
+}
+
+function newClientMsgId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function humanSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
+    : `${Math.max(1, Math.round(bytes / 1024))} КБ`
 }
 
 export function useSupportChat(open: boolean) {
@@ -37,7 +53,16 @@ export function useSupportChat(open: boolean) {
   const [messages, setMessages] = useState<SupportMessage[]>([])
   const [pending, setPending] = useState<PendingMessage[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const lastIdRef = useRef(0)
+  // Выбранные файлы держим здесь: повтор неудачной отправки заливает тот же
+  // File, а не просит клиента выбрать его заново.
+  const filesRef = useRef(new Map<string, { file: File; caption: string }>())
+
+  // Эффект очистки не должен пересобираться на каждое сообщение — держим
+  // актуальный список в ref.
+  const pendingRef = useRef<PendingMessage[]>([])
+  pendingRef.current = pending
 
   const applyIncoming = useCallback((items: SupportMessage[]) => {
     if (!items.length) return
@@ -102,10 +127,7 @@ export function useSupportChat(open: boolean) {
   const send = useCallback(async (text: string) => {
     const body = text.trim()
     if (!body) return
-    const clientMsgId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const clientMsgId = newClientMsgId()
 
     const optimistic: PendingMessage = {
       id: -Date.now(),
@@ -129,12 +151,79 @@ export function useSupportChat(open: boolean) {
     }
   }, [applyIncoming])
 
+  /**
+   * Отправляет файл: оптимистичная копия с локальным превью, затем ответ
+   * сервера её вытесняет. Размер проверяем и здесь — чтобы не гнать 20 МБ по
+   * мобильной сети ради 413.
+   */
+  const sendFile = useCallback(async (file: File, caption = '') => {
+    const limitMb = thread.max_upload_mb || 10
+    if (file.size > limitMb * 1024 * 1024) {
+      setError(`Файл ${humanSize(file.size)} — больше ${limitMb} МБ. Пришлите его в Telegram.`)
+      return
+    }
+    setError('')
+
+    const clientMsgId = newClientMsgId()
+    const isImage = file.type.startsWith('image/')
+    const previewUrl = isImage ? URL.createObjectURL(file) : undefined
+    filesRef.current.set(clientMsgId, { file, caption })
+
+    const optimistic: PendingMessage = {
+      id: -Date.now(),
+      direction: 'in',
+      author: 'customer',
+      body: caption,
+      delivery: 'queued',
+      created_at: new Date().toISOString(),
+      clientMsgId,
+      previewUrl,
+      attachment: {
+        id: 0,
+        kind: isImage ? 'photo' : 'document',
+        name: file.name,
+        mime: file.type,
+        size: file.size,
+      },
+    }
+    setPending((prev) => [...prev, optimistic])
+
+    try {
+      const saved = await uploadSupportAttachment(file, clientMsgId, caption)
+      setPending((prev) => prev.filter((p) => p.clientMsgId !== clientMsgId))
+      filesRef.current.delete(clientMsgId)
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      applyIncoming([saved])
+    } catch (e: any) {
+      setPending((prev) =>
+        prev.map((p) => (p.clientMsgId === clientMsgId ? { ...p, failed: true } : p)),
+      )
+      setError(
+        e?.response?.status === 413
+          ? `Файл больше ${limitMb} МБ — пришлите его в Telegram.`
+          : 'Файл не отправился. Попробуйте ещё раз.',
+      )
+    }
+  }, [applyIncoming, thread.max_upload_mb])
+
   const retry = useCallback(async (clientMsgId: string) => {
     const item = pending.find((p) => p.clientMsgId === clientMsgId)
     if (!item) return
+    const attached = filesRef.current.get(clientMsgId)
     setPending((prev) => prev.filter((p) => p.clientMsgId !== clientMsgId))
+    filesRef.current.delete(clientMsgId)
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+    if (attached) {
+      await sendFile(attached.file, attached.caption)
+      return
+    }
     await send(item.body)
-  }, [pending, send])
+  }, [pending, send, sendFile])
 
-  return { thread, messages, pending, loading, send, retry, refresh }
+  // Блобы переживают закрытие виджета, если их не отпустить руками.
+  useEffect(() => () => {
+    pendingRef.current.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
+  }, [])
+
+  return { thread, messages, pending, loading, error, setError, send, sendFile, retry, refresh }
 }
