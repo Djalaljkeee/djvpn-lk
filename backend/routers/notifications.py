@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select, update
 
-from db import db_enabled, get_db_session
+from db import db_enabled, db_session
 from db.models import NotificationInbox
 from security import get_current_session
 
@@ -43,7 +43,7 @@ async def list_notifications(
 
     limit = max(1, min(int(limit or 20), 100))
 
-    async for db in _db():
+    async with _db() as db:
         rows = (
             await db.execute(
                 select(NotificationInbox)
@@ -84,7 +84,7 @@ async def mark_read(notif_id: int, session: dict = Depends(get_current_session))
     if not user_id:
         raise HTTPException(status_code=401, detail="Нет user_id в сессии")
 
-    async for db in _db():
+    async with _db() as db:
         result = await db.execute(
             update(NotificationInbox)
             .where(
@@ -105,7 +105,7 @@ async def mark_all_read(session: dict = Depends(get_current_session)):
     if not user_id:
         raise HTTPException(status_code=401, detail="Нет user_id в сессии")
 
-    async for db in _db():
+    async with _db() as db:
         result = await db.execute(
             update(NotificationInbox)
             .where(
@@ -117,6 +117,6 @@ async def mark_all_read(session: dict = Depends(get_current_session)):
         return {"ok": True, "updated": result.rowcount or 0}
 
 
-async def _db():
-    async for session in get_db_session():
-        yield session
+def _db():
+    """Локальный alias, чтобы не плодить Depends() в каждом обработчике."""
+    return db_session()

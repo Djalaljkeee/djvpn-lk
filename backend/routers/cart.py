@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from db import db_enabled, get_db_session
+from db import db_enabled, db_session
 from db.models import CartState
 from logging_config import get_logger
 from security import get_current_session
@@ -47,7 +47,7 @@ async def get_cart(session: dict = Depends(get_current_session)):
     if not user_id:
         return CartOut(empty=True)
 
-    async for db in _db():
+    async with _db() as db:
         row = (await db.execute(select(CartState).where(CartState.user_id == user_id))).scalar_one_or_none()
         if not row:
             return CartOut(empty=True)
@@ -68,7 +68,7 @@ async def put_cart(payload: CartPayload, session: dict = Depends(get_current_ses
         raise HTTPException(status_code=401, detail="Нет user_id в сессии")
 
     data = payload.model_dump(exclude_none=True)
-    async for db in _db():
+    async with _db() as db:
         stmt = (
             pg_insert(CartState)
             .values(user_id=user_id, payload=data)
@@ -95,13 +95,12 @@ async def delete_cart(session: dict = Depends(get_current_session)):
         return
 
     from sqlalchemy import delete
-    async for db in _db():
+    async with _db() as db:
         await db.execute(delete(CartState).where(CartState.user_id == user_id))
 
 
 # ---- helpers ---------------------------------------------------------------
 
-async def _db():
+def _db():
     """Локальный alias, чтобы не плодить Depends() в каждом обработчике."""
-    async for session in get_db_session():
-        yield session
+    return db_session()

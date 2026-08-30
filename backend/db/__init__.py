@@ -7,6 +7,7 @@
 
 from db.session import (
     db_enabled,
+    db_session,
     get_db_session,
     init_engine,
     run_migrations,
@@ -15,6 +16,7 @@ from db.session import (
 
 __all__ = [
     "db_enabled",
+    "db_session",
     "get_db_session",
     "init_engine",
     "run_migrations",

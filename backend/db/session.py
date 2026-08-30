@@ -8,6 +8,7 @@ no-op (`db_enabled()` возвращает False), либо бросают 503, 
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
 from fastapi import HTTPException
@@ -181,8 +182,15 @@ async def run_migrations() -> None:
         raise last_exc
 
 
-async def get_db_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: выдаёт сессию БД на время запроса."""
+@asynccontextmanager
+async def db_session() -> AsyncIterator[AsyncSession]:
+    """Сессия БД с коммитом на выходе — для кода вне `Depends()`.
+
+    Именно контекстный менеджер, а не генератор: `async for db in _db(): …
+    return` бросает генератор недочитанным, его доводит до конца сборщик
+    мусора — и код после `yield`, то есть сам `commit()`, не выполняется
+    никогда. Запрос при этом отвечает 200, а транзакция тихо откатывается.
+    """
     if _session_factory is None:
         raise HTTPException(status_code=503, detail="Database is not configured")
     async with _session_factory() as session:
@@ -193,3 +201,13 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
             raise
         else:
             await session.commit()
+
+
+async def get_db_session() -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: выдаёт сессию БД на время запроса.
+
+    Генератор здесь безопасен: FastAPI дочитывает зависимость сам, после
+    того как ответ сформирован.
+    """
+    async with db_session() as session:
+        yield session
