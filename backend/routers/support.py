@@ -10,12 +10,15 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hmac
 import re
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import asc, desc, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 import support_bridge
 from config import settings
 from db import db_enabled, get_db_session
-from db.models import NotificationInbox, SupportMessage, SupportThread
+from db.models import NotificationInbox, SupportAttachment, SupportMessage, SupportThread
 from logging_config import get_logger
 from rate_limit import limiter, session_key_func
 from security import get_current_session
@@ -34,14 +37,31 @@ router = APIRouter()
 log = get_logger("support")
 
 MAX_TEXT = 4000
+# Telegram обрезает подпись к файлу на 1024 символах.
+MAX_CAPTION = 1000
 IDENTITY_TTL = timedelta(hours=24)
 # Управляющие символы ломают вставку в postgres и ничего не значат в чате.
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# Имя файла показывается клиенту и уезжает в подпись в Telegram: режем всё,
+# что похоже на путь, и всю управляющую мелочь.
+_FILENAME_BAD_RE = re.compile(r"[\x00-\x1f\x7f/\\\r\n\t]")
+# Картинки, которые браузеру безопасно отдать inline. Всё остальное уходит
+# вложением с octet-stream: mime приходит от клиента, и inline text/html или
+# svg — это XSS на домене кабинета.
+_INLINE_MIME = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 
 
 # --------------------------------------------------------------------------- #
 # Схемы
 # --------------------------------------------------------------------------- #
+
+class SupportAttachmentOut(BaseModel):
+    id: int
+    kind: str
+    name: str
+    mime: str
+    size: int
+
 
 class SupportMessageOut(BaseModel):
     id: int
@@ -50,6 +70,7 @@ class SupportMessageOut(BaseModel):
     body: str
     delivery: str
     created_at: str
+    attachment: Optional[SupportAttachmentOut] = None
 
 
 class SupportThreadOut(BaseModel):
@@ -58,6 +79,8 @@ class SupportThreadOut(BaseModel):
     ticket_id: Optional[int] = None
     unread: int = 0
     last_message_at: Optional[str] = None
+    # Предел вложения — виджету, чтобы отказать большому файлу до отправки.
+    max_upload_mb: int = Field(default_factory=lambda: settings.SUPPORT_MAX_UPLOAD_MB)
 
 
 class SupportListOut(BaseModel):
@@ -80,6 +103,19 @@ class BotWebhookIn(BaseModel):
     delivered_telegram: bool = False
 
 
+class BotFileIn(BaseModel):
+    name: str = Field(max_length=256)
+    mime: str = Field(default="application/octet-stream", max_length=96)
+    size: int = 0
+    #: Содержимое файла, base64 — см. support_bridge.send_file.
+    data_b64: str
+    tg_file_id: Optional[str] = Field(default=None, max_length=160)
+
+
+class BotWebhookFileIn(BotWebhookIn):
+    file: BotFileIn
+
+
 # --------------------------------------------------------------------------- #
 # Вспомогательное
 # --------------------------------------------------------------------------- #
@@ -98,7 +134,9 @@ def _clean(text: str) -> str:
     return re.sub(r"\n{4,}", "\n\n\n", text)[:MAX_TEXT]
 
 
-def _as_out(row: SupportMessage) -> SupportMessageOut:
+def _as_out(
+    row: SupportMessage, attachment: Optional[SupportAttachmentOut] = None
+) -> SupportMessageOut:
     return SupportMessageOut(
         id=row.id,
         direction=row.direction,
@@ -106,7 +144,64 @@ def _as_out(row: SupportMessage) -> SupportMessageOut:
         body=row.body,
         delivery=row.delivery,
         created_at=_iso(row.created_at) or "",
+        attachment=attachment,
     )
+
+
+def _max_upload_bytes() -> int:
+    return max(1, int(settings.SUPPORT_MAX_UPLOAD_MB)) * 1024 * 1024
+
+
+def _kind_for(mime: str, name: str) -> str:
+    """photo — картинка, её кабинет рисует прямо в переписке; всё прочее — document."""
+    if (mime or "").lower() in _INLINE_MIME:
+        return "photo"
+    if not mime and re.search(r"\.(jpe?g|png|webp|gif)$", name or "", re.I):
+        return "photo"
+    return "document"
+
+
+def _safe_file_name(name: str) -> str:
+    """Имя файла без путей и управляющих символов, не длиннее колонки."""
+    cleaned = _FILENAME_BAD_RE.sub("", (name or "").strip()).lstrip(".")
+    return (cleaned or "file")[:160]
+
+
+def _safe_mime(mime: str) -> str:
+    mime = (mime or "").strip().lower()
+    return mime[:96] if re.fullmatch(r"[\w.+-]+/[\w.+-]+", mime or "") else "application/octet-stream"
+
+
+async def _attachments_for(db, message_ids: List[int]) -> Dict[int, SupportAttachmentOut]:
+    """Карточки вложений для списка сообщений — без самих байт.
+
+    `SupportAttachment.data` тянуть в список переписки нельзя: пятьдесят
+    сообщений со скриншотами — это полтабуна мегабайт на каждый поллинг.
+    """
+    if not message_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                SupportAttachment.id,
+                SupportAttachment.message_id,
+                SupportAttachment.kind,
+                SupportAttachment.file_name,
+                SupportAttachment.mime,
+                SupportAttachment.size,
+            ).where(SupportAttachment.message_id.in_(message_ids))
+        )
+    ).all()
+    return {
+        row.message_id: SupportAttachmentOut(
+            id=row.id, kind=row.kind, name=row.file_name, mime=row.mime, size=row.size
+        )
+        for row in rows
+    }
+
+
+async def _attachment_out(db, message_id: int) -> Optional[SupportAttachmentOut]:
+    return (await _attachments_for(db, [message_id])).get(message_id)
 
 
 def _telegram_id_from(login: str, tg: dict) -> Optional[int]:
@@ -191,15 +286,37 @@ async def _thread_out(db, thread: SupportThread) -> SupportThreadOut:
 
 
 async def deliver_to_bot(db, thread: SupportThread, message: SupportMessage) -> None:
-    """Пробует отдать сообщение боту. Неудача — не ошибка: добьёт outbox-джоба."""
-    try:
-        result = await support_bridge.send_message(
-            shm_user_id=thread.user_id,
-            telegram_id=thread.telegram_chat_id,
-            name=thread.customer_name,
-            text=message.body,
-            client_msg_id=message.client_msg_id or str(message.id),
+    """Пробует отдать сообщение боту. Неудача — не ошибка: добьёт outbox-джоба.
+
+    Вложение ищется здесь, а не передаётся аргументом: ретрай из джобы знает
+    только сообщение, и так у файла и текста остаётся один путь доставки.
+    """
+    attachment = (
+        await db.execute(
+            select(SupportAttachment).where(SupportAttachment.message_id == message.id)
         )
+    ).scalar_one_or_none()
+    client_msg_id = message.client_msg_id or str(message.id)
+    try:
+        if attachment is not None:
+            result = await support_bridge.send_file(
+                shm_user_id=thread.user_id,
+                telegram_id=thread.telegram_chat_id,
+                name=thread.customer_name,
+                caption=message.body,
+                client_msg_id=client_msg_id,
+                file_name=attachment.file_name,
+                mime=attachment.mime,
+                data=attachment.data,
+            )
+        else:
+            result = await support_bridge.send_message(
+                shm_user_id=thread.user_id,
+                telegram_id=thread.telegram_chat_id,
+                name=thread.customer_name,
+                text=message.body,
+                client_msg_id=client_msg_id,
+            )
     except support_bridge.BridgeError as exc:
         reason = str(exc)
         message.attempts = (message.attempts or 0) + 1
@@ -207,6 +324,9 @@ async def deliver_to_bot(db, thread: SupportThread, message: SupportMessage) -> 
         if reason == "banned":
             message.delivery = "failed"
             thread.status = "banned"
+        elif exc.permanent:
+            # Мост нас понял и отказал — повтор вернёт тот же ответ.
+            message.delivery = "failed"
         else:
             message.delivery = "queued"
             message.next_attempt_at = datetime.now(timezone.utc) + timedelta(
@@ -278,7 +398,11 @@ async def list_messages(
         if thread.last_seen_at is None or (now - thread.last_seen_at).total_seconds() > 30:
             thread.last_seen_at = now
 
-        return SupportListOut(thread=await _thread_out(db, thread), items=[_as_out(r) for r in rows])
+        attachments = await _attachments_for(db, [r.id for r in rows])
+        return SupportListOut(
+            thread=await _thread_out(db, thread),
+            items=[_as_out(r, attachments.get(r.id)) for r in rows],
+        )
 
 
 @router.post("/api/support/messages", response_model=SupportMessageOut)
@@ -335,6 +459,134 @@ async def send_message(
         return _as_out(row)
 
 
+@router.post("/api/support/attachments", response_model=SupportMessageOut)
+@limiter.limit("6/minute", key_func=session_key_func)
+async def upload_attachment(
+    request: Request,
+    file: UploadFile = File(...),
+    client_msg_id: str = Form(..., min_length=8, max_length=64),
+    caption: str = Form(""),
+    session: dict = Depends(get_current_session),
+):
+    """Файл из виджета: ложится в переписку и уезжает в тему тикета.
+
+    Байты хранятся в постгресе рядом с сообщением — см. `SupportAttachment`.
+    """
+    if not settings.SUPPORT_CHAT_ENABLED:
+        raise HTTPException(status_code=503, detail="Чат поддержки временно недоступен")
+    if not db_enabled():
+        raise HTTPException(status_code=503, detail="Чат недоступен: БД не настроена")
+
+    limit = _max_upload_bytes()
+    # Читаем на байт больше лимита: так «слишком большой» видно, не утащив в
+    # память весь файл целиком.
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Файл больше {settings.SUPPORT_MAX_UPLOAD_MB} МБ — пришлите его в Telegram",
+        )
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+
+    file_name = _safe_file_name(file.filename or "")
+    mime = _safe_mime(file.content_type or "")
+    text = _clean(caption)[:MAX_CAPTION]
+    user_id = session["user_id"]
+
+    async for db in _db():
+        thread = await _ensure_thread(db, session)
+        if thread.status == "banned":
+            raise HTTPException(status_code=403, detail="Обращения через кабинет недоступны")
+
+        stmt = (
+            pg_insert(SupportMessage)
+            .values(
+                user_id=user_id,
+                direction="in",
+                author="customer",
+                body=text,
+                client_msg_id=client_msg_id,
+                delivery="queued",
+            )
+            .on_conflict_do_nothing(constraint="uq_support_msg_client")
+            .returning(SupportMessage)
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            # Повтор той же отправки — отдаём уже сохранённое сообщение.
+            row = (
+                await db.execute(
+                    select(SupportMessage).where(
+                        SupportMessage.user_id == user_id,
+                        SupportMessage.client_msg_id == client_msg_id,
+                    )
+                )
+            ).scalar_one()
+            return _as_out(row, await _attachment_out(db, row.id))
+
+        await db.flush()
+        db.add(
+            SupportAttachment(
+                message_id=row.id,
+                user_id=user_id,
+                kind=_kind_for(mime, file_name),
+                file_name=file_name,
+                mime=mime,
+                size=len(data),
+                data=data,
+            )
+        )
+        thread.last_message_at = datetime.now(timezone.utc)
+        await db.flush()
+        await deliver_to_bot(db, thread, row)
+        return _as_out(row, await _attachment_out(db, row.id))
+
+
+@router.get("/api/support/attachments/{attachment_id}")
+async def download_attachment(
+    attachment_id: int, session: dict = Depends(get_current_session)
+):
+    """Отдаёт файл переписки его владельцу.
+
+    Inline — только для картинок известных типов: mime приходит от клиента, и
+    `text/html` или svg, отданные inline, стали бы XSS на домене кабинета.
+    """
+    if not db_enabled():
+        raise HTTPException(status_code=503, detail="Чат недоступен: БД не настроена")
+
+    async for db in _db():
+        row = (
+            await db.execute(
+                select(SupportAttachment).where(
+                    SupportAttachment.id == attachment_id,
+                    SupportAttachment.user_id == session["user_id"],
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Файл не найден")
+
+        inline = row.mime in _INLINE_MIME
+        disposition = "inline" if inline else "attachment"
+        media_type = row.mime if inline else "application/octet-stream"
+        return Response(
+            content=row.data,
+            media_type=media_type,
+            headers={
+                # filename* — имя может быть кириллическим, а голый filename
+                # обязан быть ASCII.
+                "Content-Disposition": (
+                    f"{disposition}; filename*=UTF-8''{quote(row.file_name)}"
+                ),
+                "Content-Length": str(row.size),
+                "X-Content-Type-Options": "nosniff",
+                # Файл не меняется, но и в общий кэш ему нельзя: ручка приватная.
+                "Cache-Control": "private, max-age=86400",
+            },
+        )
+
+
 @router.post("/api/support/read")
 async def mark_read(session: dict = Depends(get_current_session)):
     if not db_enabled():
@@ -352,15 +604,8 @@ async def mark_read(session: dict = Depends(get_current_session)):
 # Вебхук бота
 # --------------------------------------------------------------------------- #
 
-@router.post("/api/internal/support/incoming")
-@limiter.limit("120/minute")
-async def bot_webhook(request: Request, payload: BotWebhookIn, response: Response):
-    """Приём сообщения от бота поддержки.
-
-    Публично достижим (nginx проксирует весь /api/), поэтому защищён общим
-    секретом. Никогда не создаёт тред: не нашли — 200 и лог, иначе бот будет
-    вечно ретраить сообщение, которому некуда лечь.
-    """
+def _require_bridge_secret(request: Request) -> None:
+    """Ручки бота публично достижимы (nginx проксирует весь /api/) — только секрет."""
     secret = request.headers.get("x-bridge-secret", "")
     if not settings.SUPPORT_BRIDGE_SECRET or not hmac.compare_digest(
         secret, settings.SUPPORT_BRIDGE_SECRET
@@ -369,48 +614,119 @@ async def bot_webhook(request: Request, payload: BotWebhookIn, response: Respons
     if not db_enabled():
         raise HTTPException(status_code=503, detail="db is off")
 
+
+async def _store_from_bot(
+    db, payload: BotWebhookIn, body: str, notice: str
+) -> tuple[Optional[SupportThread], Optional[SupportMessage]]:
+    """Кладёт сообщение бота в переписку.
+
+    Никогда не создаёт тред: не нашли — зовущая ручка отвечает 200 и пишет лог,
+    иначе бот будет вечно ретраить сообщение, которому некуда лечь.
+
+    :returns: `(тред, сообщение)`; сообщение — None, если это дубль.
+    """
+    thread = (
+        await db.execute(
+            select(SupportThread).where(SupportThread.user_id == payload.shm_user_id)
+        )
+    ).scalar_one_or_none()
+    if thread is None:
+        log.info("support.webhook_no_thread", shm_user_id=payload.shm_user_id)
+        return None, None
+
+    now = datetime.now(timezone.utc)
+    stmt = (
+        pg_insert(SupportMessage)
+        .values(
+            user_id=thread.user_id,
+            direction=payload.direction,
+            author="staff" if payload.direction == "out" else "customer",
+            body=body,
+            external_id=payload.external_id,
+            delivery="na",
+        )
+        .on_conflict_do_nothing(constraint="uq_support_msg_external")
+        .returning(SupportMessage)
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        return thread, None
+
+    thread.ticket_id = thread.ticket_id or payload.ticket_id
+    thread.last_message_at = now
+    if payload.direction == "out":
+        thread.last_staff_message_at = now
+        if not payload.delivered_telegram:
+            # Клиенту ответ ещё не доехал: если он не вернётся в кабинет,
+            # дубль отправит фоновая джоба.
+            thread.notify_after = now + timedelta(seconds=settings.SUPPORT_FANOUT_DELAY_S)
+        db.add(
+            NotificationInbox(
+                user_id=thread.user_id,
+                type="support.reply",
+                payload={"title": "Ответ поддержки", "body": notice[:120]},
+            )
+        )
+    return thread, row
+
+
+@router.post("/api/internal/support/incoming")
+@limiter.limit("120/minute")
+async def bot_webhook(request: Request, payload: BotWebhookIn, response: Response):
+    """Приём сообщения от бота поддержки."""
+    _require_bridge_secret(request)
+
     body = _clean(payload.text)
     async for db in _db():
-        thread = (
-            await db.execute(
-                select(SupportThread).where(SupportThread.user_id == payload.shm_user_id)
-            )
-        ).scalar_one_or_none()
+        thread, row = await _store_from_bot(db, payload, body, body)
         if thread is None:
-            log.info("support.webhook_no_thread", shm_user_id=payload.shm_user_id)
             return {"ok": True, "stored": False}
+        if row is None:
+            return {"ok": True, "stored": False, "duplicate": True}
+        return {"ok": True, "stored": True, "message_id": row.id}
 
-        now = datetime.now(timezone.utc)
-        stmt = (
-            pg_insert(SupportMessage)
-            .values(
-                user_id=thread.user_id,
-                direction=payload.direction,
-                author="staff" if payload.direction == "out" else "customer",
-                body=body,
-                external_id=payload.external_id,
-                delivery="na",
-            )
-            .on_conflict_do_nothing(constraint="uq_support_msg_external")
-            .returning(SupportMessage)
-        )
-        row = (await db.execute(stmt)).scalar_one_or_none()
+
+@router.post("/api/internal/support/incoming-file")
+@limiter.limit("60/minute")
+async def bot_webhook_file(request: Request, payload: BotWebhookFileIn):
+    """Приём файла от бота: скриншот из Telegram — в историю кабинета.
+
+    Тело — тот же JSON, что у текстовой ручки, плюс файл в base64. Клиент за
+    ним потом придёт в `/api/support/attachments/{id}` под своей сессией.
+    """
+    _require_bridge_secret(request)
+
+    try:
+        data = base64.b64decode(payload.file.data_b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="bad base64")
+    if not data:
+        raise HTTPException(status_code=400, detail="empty file")
+    if len(data) > _max_upload_bytes():
+        raise HTTPException(status_code=413, detail="file too large")
+
+    body = _clean(payload.text)[:MAX_CAPTION]
+    file_name = _safe_file_name(payload.file.name)
+    mime = _safe_mime(payload.file.mime)
+
+    async for db in _db():
+        thread, row = await _store_from_bot(db, payload, body, body or f"\U0001f4ce {file_name}")
+        if thread is None:
+            return {"ok": True, "stored": False}
         if row is None:
             return {"ok": True, "stored": False, "duplicate": True}
 
-        thread.ticket_id = thread.ticket_id or payload.ticket_id
-        thread.last_message_at = now
-        if payload.direction == "out":
-            thread.last_staff_message_at = now
-            if not payload.delivered_telegram:
-                # Клиенту ответ ещё не доехал: если он не вернётся в кабинет,
-                # дубль отправит фоновая джоба.
-                thread.notify_after = now + timedelta(seconds=settings.SUPPORT_FANOUT_DELAY_S)
-            db.add(
-                NotificationInbox(
-                    user_id=thread.user_id,
-                    type="support.reply",
-                    payload={"title": "Ответ поддержки", "body": body[:120]},
-                )
+        await db.flush()
+        db.add(
+            SupportAttachment(
+                message_id=row.id,
+                user_id=thread.user_id,
+                kind=_kind_for(mime, file_name),
+                file_name=file_name,
+                mime=mime,
+                size=len(data),
+                data=data,
+                tg_file_id=payload.file.tg_file_id,
             )
+        )
         return {"ok": True, "stored": True, "message_id": row.id}
