@@ -25,7 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import support_bridge
 from config import settings
-from db import db_enabled, get_db_session
+from db import db_enabled, db_session
 from db.models import NotificationInbox, SupportAttachment, SupportMessage, SupportThread
 from logging_config import get_logger
 from rate_limit import limiter, session_key_func
@@ -120,9 +120,9 @@ class BotWebhookFileIn(BotWebhookIn):
 # Вспомогательное
 # --------------------------------------------------------------------------- #
 
-async def _db():
-    async for session in get_db_session():
-        yield session
+def _db():
+    """Локальный alias, чтобы не плодить Depends() в каждом обработчике."""
+    return db_session()
 
 
 def _iso(value: Optional[datetime]) -> Optional[str]:
@@ -351,7 +351,7 @@ async def get_thread(session: dict = Depends(get_current_session)):
     """Дешёвая ручка для бейджа: одна строка треда и число непрочитанных."""
     if not db_enabled() or not settings.SUPPORT_CHAT_ENABLED:
         return SupportThreadOut(enabled=False)
-    async for db in _db():
+    async with _db() as db:
         thread = (
             await db.execute(
                 select(SupportThread).where(SupportThread.user_id == session["user_id"])
@@ -374,7 +374,7 @@ async def list_messages(
     limit = max(1, min(int(limit or 50), 200))
     user_id = session["user_id"]
 
-    async for db in _db():
+    async with _db() as db:
         thread = (
             await db.execute(select(SupportThread).where(SupportThread.user_id == user_id))
         ).scalar_one_or_none()
@@ -422,7 +422,7 @@ async def send_message(
         raise HTTPException(status_code=400, detail="Пустое сообщение")
 
     user_id = session["user_id"]
-    async for db in _db():
+    async with _db() as db:
         thread = await _ensure_thread(db, session)
         if thread.status == "banned":
             raise HTTPException(status_code=403, detail="Обращения через кабинет недоступны")
@@ -494,7 +494,7 @@ async def upload_attachment(
     text = _clean(caption)[:MAX_CAPTION]
     user_id = session["user_id"]
 
-    async for db in _db():
+    async with _db() as db:
         thread = await _ensure_thread(db, session)
         if thread.status == "banned":
             raise HTTPException(status_code=403, detail="Обращения через кабинет недоступны")
@@ -555,7 +555,7 @@ async def download_attachment(
     if not db_enabled():
         raise HTTPException(status_code=503, detail="Чат недоступен: БД не настроена")
 
-    async for db in _db():
+    async with _db() as db:
         row = (
             await db.execute(
                 select(SupportAttachment).where(
@@ -591,7 +591,7 @@ async def download_attachment(
 async def mark_read(session: dict = Depends(get_current_session)):
     if not db_enabled():
         raise HTTPException(status_code=503, detail="Чат недоступен: БД не настроена")
-    async for db in _db():
+    async with _db() as db:
         await db.execute(
             update(SupportThread)
             .where(SupportThread.user_id == session["user_id"])
@@ -677,7 +677,7 @@ async def bot_webhook(request: Request, payload: BotWebhookIn, response: Respons
     _require_bridge_secret(request)
 
     body = _clean(payload.text)
-    async for db in _db():
+    async with _db() as db:
         thread, row = await _store_from_bot(db, payload, body, body)
         if thread is None:
             return {"ok": True, "stored": False}
@@ -709,7 +709,7 @@ async def bot_webhook_file(request: Request, payload: BotWebhookFileIn):
     file_name = _safe_file_name(payload.file.name)
     mime = _safe_mime(payload.file.mime)
 
-    async for db in _db():
+    async with _db() as db:
         thread, row = await _store_from_bot(db, payload, body, body or f"\U0001f4ce {file_name}")
         if thread is None:
             return {"ok": True, "stored": False}
