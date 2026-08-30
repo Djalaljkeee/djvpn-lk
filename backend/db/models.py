@@ -5,8 +5,9 @@
   - `UserSettings` — пользовательские предпочтения кабинета (язык, нотификации)
   - `CartState` — выбранная услуга, которую нужно завершить после топ-апа
   - `NotificationInbox` — in-app уведомления (звонок/баджи)
-  - `SupportThread` / `SupportMessage` — переписка с поддержкой: тикеты живут в
-    боте, а история нужна клиенту в кабинете (после F5 и с другого устройства)
+  - `SupportThread` / `SupportMessage` / `SupportAttachment` — переписка с
+    поддержкой: тикеты живут в боте, а история нужна клиенту в кабинете (после
+    F5 и с другого устройства)
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    ForeignKey,
+    LargeBinary,
     Index,
     Integer,
     SmallInteger,
@@ -136,4 +139,42 @@ class SupportMessage(Base):
         UniqueConstraint("user_id", "external_id", name="uq_support_msg_external"),
         Index("ix_support_msg_user_id_id", "user_id", "id"),
         Index("ix_support_msg_outbox", "delivery", "next_attempt_at"),
+    )
+
+
+class SupportAttachment(Base):
+    """Файл, приложенный к сообщению переписки.
+
+    Байты лежат прямо в постгресе: скриншотов в поддержке единицы в день, а том
+    на диске — это ещё один volume в compose, бэкап отдельно от базы и раздача
+    в обход сессии кабинета. При `SUPPORT_MAX_UPLOAD_MB=10` таблица растёт
+    медленнее, чем чистит её ретенция.
+
+    Строка живёт ровно столько, сколько её сообщение: чистка переписки удаляет
+    файлы каскадом.
+    """
+
+    __tablename__ = "support_attachment"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("support_message.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    # Дублируем владельца: по нему проверяется доступ на отдаче файла, без
+    # join'а к сообщению на каждый запрос картинки.
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    # photo — картинка, показывается в переписке; document — всё остальное.
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="document")
+    file_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    mime: Mapped[str] = mapped_column(String(96), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # file_id телеграма, если файл пришёл оттуда: по нему бот может переслать
+    # тот же файл, не заливая его заново.
+    tg_file_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
     )

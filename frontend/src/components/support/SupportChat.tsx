@@ -17,9 +17,11 @@ const TELEGRAM_FALLBACK = 'https://t.me/help_djvpn'
 export default function SupportChat() {
   const { t } = useTranslation()
   const { open, openChat, closeChat, toggleChat } = useSupportChatStore()
-  const { thread, messages, pending, loading, send, retry } = useSupportChat(open)
+  const { thread, messages, pending, loading, error, setError, send, sendFile, retry } =
+    useSupportChat(open)
   const [draft, setDraft] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   // Ссылка из телеграм-дубля ответа ведёт сразу в открытый чат.
   useEffect(() => {
@@ -48,6 +50,14 @@ export default function SupportChat() {
     if (!text) return
     setDraft('')
     void send(text)
+  }
+
+  /** Файл уходит сразу, а набранный текст — подписью к нему. */
+  const attach = (file: File | null | undefined) => {
+    if (!file) return
+    const caption = draft.trim()
+    setDraft('')
+    void sendFile(file, caption)
   }
 
   const panel = (
@@ -87,6 +97,7 @@ export default function SupportChat() {
             key={m.id}
             message={m}
             failed={'failed' in m ? (m as { failed?: boolean }).failed : false}
+            previewUrl={'previewUrl' in m ? (m as { previewUrl?: string }).previewUrl : undefined}
             onRetry={'clientMsgId' in m ? () => void retry((m as { clientMsgId: string }).clientMsgId) : undefined}
           />
         ))}
@@ -102,12 +113,56 @@ export default function SupportChat() {
           onSubmit={submit}
           className="border-t border-white/10 px-3 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]"
         >
+          {error && (
+            <div
+              role="alert"
+              className="mb-2 flex items-start gap-2 rounded-xl bg-rose-500/15 px-3 py-2 text-[11px] text-rose-200"
+            >
+              <span className="flex-1">{error}</span>
+              <button type="button" onClick={() => setError('')} aria-label={t('support.close')}>
+                ✕
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                attach(e.target.files?.[0])
+                // Тот же файл, выбранный повторно, не даёт change без сброса.
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              aria-label={t('support.attach')}
+              title={t('support.attachHint', { mb: thread.max_upload_mb })}
+              className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21.4 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 014.95 4.95l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78"
+                />
+              </svg>
+            </button>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) submit(e)
+              }}
+              // Ctrl+V со скриншотом — самый частый способ его приложить.
+              onPaste={(e) => {
+                const file = Array.from(e.clipboardData.files)[0]
+                if (file) {
+                  e.preventDefault()
+                  attach(file)
+                }
               }}
               rows={1}
               maxLength={4000}
