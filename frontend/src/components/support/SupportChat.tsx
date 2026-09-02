@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { useSupportChat } from '../../hooks/useSupportChat'
@@ -90,6 +91,16 @@ export default function SupportChat() {
           <div className="mt-6 text-center text-sm text-slate-400">
             <p>{t('support.empty')}</p>
             <p className="mt-2 text-xs">{t('support.emptyHint')}</p>
+            {/* Половина обращений в переписке — вопросы из базы знаний.
+                Показываем её до того, как человек начнёт печатать. */}
+            <p className="mt-5 text-xs">{t('support.faqHint')}</p>
+            <Link
+              to="/faq"
+              onClick={closeChat}
+              className="mt-2 inline-block rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 hover:text-white"
+            >
+              {t('support.openFaq')}
+            </Link>
           </div>
         )}
         {items.map((m) => (

@@ -90,6 +90,25 @@ export default function Layout() {
               <span className="text-sm font-mono text-fuchsia-100">{balance.toFixed(2)} ₽</span>
             </div>
 
+            {/* База знаний не идёт ни в нижний навбар (пять пунктов по
+                min-w-[72px] не влезают в 360px), ни в шапку на мобиле —
+                четвёртый значок доламывает и без того переносящийся вордмарк.
+                На узком экране вход в неё живёт в меню профиля ниже. */}
+            <NavLink
+              to="/faq"
+              aria-label={t('nav.faq')}
+              title={t('nav.faq')}
+              className={({ isActive }) =>
+                `hidden h-10 w-10 items-center justify-center rounded-2xl border border-white/10 transition-colors sm:flex ${
+                  isActive ? 'bg-brand-500/25' : 'bg-white/5 hover:bg-white/10'
+                }`
+              }
+            >
+              <svg className="h-5 w-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 17.25h.007v.008H12v-.008zM21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </NavLink>
+
             <a
               href="/setup.html"
               aria-label="Инструкции"
@@ -136,6 +155,16 @@ export default function Layout() {
                     <div className="text-xs text-slate-300">{t('layout.balance')}</div>
                     <div className="mt-1 text-lg font-mono text-white">{balance.toFixed(2)} ₽</div>
                   </div>
+                  <NavLink
+                    to="/faq"
+                    onClick={() => setMenuOpen(false)}
+                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-200 hover:bg-white/10 sm:hidden"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 17.25h.007v.008H12v-.008zM21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {t('nav.faq')}
+                  </NavLink>
                   <div className="mt-2 flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
                     <span className="text-xs text-slate-300">{t('common.language')}</span>
                     <LanguageSwitcher />

@@ -13,6 +13,7 @@ import PaymentsPage from './pages/PaymentsPage'
 import ReferralsPage from './pages/ReferralsPage'
 import ProfilePage from './pages/ProfilePage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
+import FaqPage from './pages/FaqPage'
 import Layout from './components/Layout'
 
 declare global {
@@ -215,6 +216,7 @@ export default function App() {
             <Route path="payments" element={<PaymentsPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="referrals" element={<ReferralsPage />} />
+            <Route path="faq" element={<FaqPage />} />
           </Route>
           <Route
             path="*"
