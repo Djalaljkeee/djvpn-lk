@@ -3,7 +3,8 @@
     "home": "Home",
     "services": "Plans",
     "payments": "Payments",
-    "profile": "Profile"
+    "profile": "Profile",
+    "faq": "Help"
   },
   "layout": {
     "balance": "Balance",
@@ -59,6 +60,26 @@
     "banned": "Cabinet support is not available for your account.",
     "openInTelegram": "Open Telegram",
     "attach": "Attach a file",
-    "attachHint": "A screenshot or a file up to {{mb}} MB"
+    "attachHint": "A screenshot or a file up to {{mb}} MB",
+    "faqHint": "The answer may already be in the knowledge base",
+    "openFaq": "Open knowledge base"
+  },
+  "faq": {
+    "title": "Knowledge base",
+    "subtitle": "Answers to the questions support gets most often. Cannot find yours — message us, we reply right here.",
+    "searchLabel": "Search the knowledge base",
+    "searchPlaceholder": "For example: no connection on mobile data",
+    "nothingFound": "Nothing matched your search. Try other words or ask support.",
+    "askSupport": "Message support",
+    "stillStuck": "Still stuck or something does not add up? Message us and we will sort it out.",
+    "ruOnly": "The knowledge base is currently available in Russian only.",
+    "category": {
+      "all": "All",
+      "trouble": "VPN not working",
+      "connect": "Devices",
+      "network": "Speed and sites",
+      "billing": "Payments",
+      "account": "Account and support"
+    }
   }
 }
