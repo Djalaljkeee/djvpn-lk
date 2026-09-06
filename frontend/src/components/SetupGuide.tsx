@@ -8,7 +8,7 @@ interface SetupData {
     title: string
     app_name: string
     download_url: string
-    /* Вторая витрина App Store (iOS/macOS) — у Happ разные app-id для РФ и остального мира */
+    /* Вторая витрина App Store — у Happ разные app-id для РФ и остального мира (macOS; на iOS одна карточка INCY) */
     download_url_alt?: string | null
     download_alt_label?: string | null
     all_downloads: Record<string, string>
@@ -66,6 +66,15 @@ const PLATFORM_LABELS: Record<string, string> = {
   macos: 'macOS',
 }
 
+/**
+ * Имя клиента для ручной инструкции, когда /vpn/setup не ответил и платформу
+ * спросить не у кого. Совпадает с выбором бэкенда (vpn_setup.APPS_BY_PLATFORM):
+ * iOS — INCY, остальные — Happ.
+ */
+function fallbackAppName(): string {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ? 'INCY' : 'Happ'
+}
+
 export default function SetupGuide({
   subUrl,
   serviceId,
@@ -121,7 +130,7 @@ export default function SetupGuide({
               </div>
               {subUrl && <CopyBtn text={subUrl} label="Скопировать ссылку подписки" />}
               <div className="bg-surface-3 rounded-xl p-4 text-xs text-slate-400 leading-relaxed whitespace-pre-line">
-                {'1. Скачайте приложение Happ\n2. Откройте и нажмите «+»\n3. Выберите «Добавить подписку»\n4. Вставьте скопированную ссылку'}
+                {`1. Скачайте приложение ${fallbackAppName()}\n2. Откройте и нажмите «+»\n3. Выберите «Добавить подписку»\n4. Вставьте скопированную ссылку`}
               </div>
             </div>
           ) : data ? (

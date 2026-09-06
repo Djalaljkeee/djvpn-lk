@@ -1,13 +1,16 @@
-"""Тесты выбора витрины App Store и сборки ответа /vpn/setup."""
+"""Тесты выбора клиента, витрины App Store и сборки ответа /vpn/setup."""
 
 from __future__ import annotations
 
 import pytest
 
 from vpn_setup import (
+    ALL_DOWNLOADS,
     APPSTORE_HAPP_INTL,
     APPSTORE_HAPP_RU,
+    APPSTORE_INCY,
     HAPP_DOWNLOADS,
+    build_deeplink,
     build_setup_response,
     detect_store_region,
 )
@@ -42,22 +45,31 @@ def test_detect_store_region(accept_language, expected):
     assert detect_store_region(accept_language) == expected
 
 
-def test_ios_ru_locale_gets_ru_store_first():
-    data = build_setup_response(SUB_URL, FakeRequest(accept_language="ru-RU,ru;q=0.9"), "ios")
+@pytest.mark.parametrize("accept_language", ["ru-RU,ru;q=0.9", "en-US,en;q=0.9"])
+def test_ios_gets_incy_from_single_store(accept_language):
+    """У INCY одна карточка — витрина роли не играет, второй ссылки нет."""
+    data = build_setup_response(SUB_URL, FakeRequest(accept_language=accept_language), "ios")
     step1 = data["step1"]
 
-    assert step1["download_url"] == APPSTORE_HAPP_RU
-    assert step1["download_url_alt"] == APPSTORE_HAPP_INTL
-    assert step1["download_alt_label"]
+    assert step1["app_name"] == "INCY"
+    assert step1["download_url"] == APPSTORE_INCY
+    assert step1["download_url_alt"] is None
+    assert step1["download_alt_label"] is None
 
 
-def test_ios_foreign_locale_gets_intl_store_first():
-    data = build_setup_response(SUB_URL, FakeRequest(accept_language="en-US,en;q=0.9"), "ios")
-    step1 = data["step1"]
+def test_ios_deeplink_uses_incy_scheme():
+    data = build_setup_response(SUB_URL, FakeRequest(accept_language="ru"), "ios")
 
-    assert step1["download_url"] == APPSTORE_HAPP_INTL
-    assert step1["download_url_alt"] == APPSTORE_HAPP_RU
-    assert step1["download_alt_label"]
+    assert data["step2"]["deeplink"] == f"incy://import/{SUB_URL}"
+    assert "INCY" in data["fallback"]["instruction"]
+
+
+@pytest.mark.parametrize("platform", ["android", "macos", "windows", "linux"])
+def test_other_platforms_stay_on_happ(platform):
+    data = build_setup_response(SUB_URL, FakeRequest(accept_language="ru"), platform)
+
+    assert data["step1"]["app_name"] == "Happ"
+    assert data["step2"]["deeplink"] == f"happ://add/{SUB_URL}"
 
 
 def test_macos_follows_the_same_two_store_rule():
@@ -84,6 +96,17 @@ def test_unknown_platform_falls_back_to_windows_build():
     assert step1["download_url_alt"] is None
 
 
+def test_all_downloads_lists_the_app_we_recommend_per_platform():
+    assert ALL_DOWNLOADS["ios"] == APPSTORE_INCY
+    assert ALL_DOWNLOADS["macos"] == HAPP_DOWNLOADS["macos"]
+    assert ALL_DOWNLOADS["android"] == HAPP_DOWNLOADS["android"]
+    assert ALL_DOWNLOADS["windows"] == HAPP_DOWNLOADS["windows"]
+
+
+def test_build_deeplink_defaults_to_happ_without_platform():
+    assert build_deeplink(SUB_URL) == f"happ://add/{SUB_URL}"
+
+
 def test_works_with_real_starlette_request():
     """Заглушка выше — dict; проверяем и настоящий ASGI-путь до request.headers."""
     from starlette.requests import Request
@@ -101,8 +124,7 @@ def test_works_with_real_starlette_request():
     intl = build_setup_response(SUB_URL, asgi_request("tr-TR"), None)
 
     assert ru["platform"] == intl["platform"] == "ios"
-    assert ru["step1"]["download_url"] == APPSTORE_HAPP_RU
-    assert intl["step1"]["download_url"] == APPSTORE_HAPP_INTL
+    assert ru["step1"]["download_url"] == intl["step1"]["download_url"] == APPSTORE_INCY
 
 
 def test_platform_detected_from_user_agent_when_not_forced():
@@ -110,4 +132,4 @@ def test_platform_detected_from_user_agent_when_not_forced():
     data = build_setup_response(SUB_URL, FakeRequest(user_agent=ua, accept_language="ru"), None)
 
     assert data["platform"] == "ios"
-    assert data["step1"]["download_url"] == APPSTORE_HAPP_RU
+    assert data["step1"]["download_url"] == APPSTORE_INCY
