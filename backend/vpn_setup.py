@@ -2,7 +2,7 @@
 
 import base64
 import io
-from typing import Dict, NamedTuple, Optional
+from typing import Dict, NamedTuple, Optional, Tuple
 
 import segno
 from fastapi import Request
@@ -15,16 +15,20 @@ class ClientApp(NamedTuple):
     #: Префикс диплинка импорта: к нему как есть приклеивается ссылка подписки.
     deeplink_scheme: str
     downloads: Dict[str, str]
-    #: Вторая витрина App Store — только там, где листингов действительно два.
-    downloads_intl: Dict[str, str]
+    #: Запасной способ установки: платформа → (ссылка, подпись для кнопки).
+    downloads_alt: Dict[str, Tuple[str, str]]
 
 
-# Happ в App Store живёт двумя независимыми листингами с РАЗНЫМИ id: Apple по
-# требованию РКН удаляла клиент из российской витрины, разработчик перезаливал
-# его под новым именем и новым id. Поэтому «безвитринная» ссылка не спасает —
-# нужны обе. При очередном перезаливе меняется только константа ниже.
-APPSTORE_HAPP_RU = "https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6788279553"
+# Happ в российской витрине App Store сейчас нет ни под каким id: Apple по
+# требованию РКН выпиливала клиент, разработчик перезаливал его под новым
+# именем и новым id, и на 06.09.2026 мертвы обе карточки (id6788279553 и
+# id6746188973). Поиск по RU-витрине выдаёт только чужие подделки «Happ VPN»
+# от посторонних издателей — на них не ссылаемся.
+# Живой остаётся международная карточка (Flyfrog LLC) — она есть везде, кроме
+# РФ, — и десктопный .dmg с GitHub, которому витрина вообще не нужна.
+# Если Happ вернётся в российскую витрину, ссылку добавлять сюда.
 APPSTORE_HAPP_INTL = "https://apps.apple.com/app/happ-proxy-utility/id6504287215"
+HAPP_MACOS_DMG = "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
 
 # INCY (llc.itdev.incy) — клиент для iOS. Карточка одна и лежит в российской
 # витрине, поэтому второй ссылки для него нет и «недоступно в вашем регионе»
@@ -33,30 +37,28 @@ APPSTORE_HAPP_INTL = "https://apps.apple.com/app/happ-proxy-utility/id6504287215
 APPSTORE_INCY = "https://apps.apple.com/ru/app/incy/id6756943388"
 
 HAPP_DOWNLOADS = {
-    "ios":     APPSTORE_HAPP_RU,
+    "ios":     APPSTORE_HAPP_INTL,
     "android": "https://play.google.com/store/apps/details?id=com.happ.vpn",
     "windows": "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe",
-    "macos":   APPSTORE_HAPP_RU,
-}
-
-# Вторая витрина — только там, где листингов реально два.
-HAPP_DOWNLOADS_INTL = {
-    "ios":   APPSTORE_HAPP_INTL,
-    "macos": APPSTORE_HAPP_INTL,
+    # На Mac ведём в обход App Store: универсальная сборка (Apple Silicon +
+    # Intel), одна ссылка на любую страну Apple ID.
+    "macos":   HAPP_MACOS_DMG,
 }
 
 HAPP = ClientApp(
     name="Happ",
     deeplink_scheme="happ://add/",
     downloads=HAPP_DOWNLOADS,
-    downloads_intl=HAPP_DOWNLOADS_INTL,
+    downloads_alt={
+        "macos": (APPSTORE_HAPP_INTL, "поставить из международного App Store"),
+    },
 )
 
 INCY = ClientApp(
     name="INCY",
     deeplink_scheme="incy://import/",
     downloads={"ios": APPSTORE_INCY},
-    downloads_intl={},
+    downloads_alt={},
 )
 
 # Платформы, где мы выдаём не Happ. Остальные — DEFAULT_APP.
@@ -64,11 +66,6 @@ APPS_BY_PLATFORM = {
     "ios": INCY,
 }
 DEFAULT_APP = HAPP
-
-STORE_REGION_LABELS = {
-    "ru":   "Российский App Store",
-    "intl": "App Store других регионов",
-}
 
 
 def app_for_platform(platform: str) -> ClientApp:
@@ -94,16 +91,6 @@ def detect_platform(ua: str) -> str:
     return "windows"
 
 
-def detect_store_region(accept_language: str) -> str:
-    """Витрина App Store по Accept-Language: "ru" | "intl".
-
-    Берём только ПЕРВЫЙ language-tag: в "en-US,ru;q=0.9" русский стоит вторым
-    приоритетом, витрина у такого пользователя почти наверняка не российская.
-    """
-    primary = accept_language.split(",")[0].split(";")[0].strip().lower()
-    return "ru" if primary == "ru" or primary.startswith("ru-") else "intl"
-
-
 def build_deeplink(subscription_url: str, platform: str = "") -> str:
     return f"{app_for_platform(platform).deeplink_scheme}{subscription_url}"
 
@@ -125,15 +112,9 @@ def build_setup_response(sub_url: str, request: Request, platform: Optional[str]
 
     # Неизвестная платформа (linux и прочее) — как и раньше, десктопный Happ.
     primary_url = app.downloads.get(detected, HAPP_DOWNLOADS["windows"])
-    alt_url = app.downloads_intl.get(detected)
-    alt_label = STORE_REGION_LABELS["intl"]
-
-    # Язык устройства ≠ страна Apple ID, поэтому регион лишь решает, какая из
-    # двух ссылок основная. Вторую всегда отдаём рядом, чтобы пользователь с
-    # «неугаданной» витриной не упирался в «недоступно в вашем регионе».
-    if alt_url and detect_store_region(request.headers.get("accept-language", "")) == "intl":
-        primary_url, alt_url = alt_url, primary_url
-        alt_label = STORE_REGION_LABELS["ru"]
+    # Основная ссылка ни от какой витрины не зависит, поэтому угадывать страну
+    # Apple ID по Accept-Language больше не нужно: запасная просто лежит рядом.
+    alt_url, alt_label = app.downloads_alt.get(detected, (None, None))
 
     return {
         "platform": detected,
@@ -143,7 +124,7 @@ def build_setup_response(sub_url: str, request: Request, platform: Optional[str]
             "app_name": app.name,
             "download_url": primary_url,
             "download_url_alt": alt_url,
-            "download_alt_label": alt_label if alt_url else None,
+            "download_alt_label": alt_label,
             "all_downloads": ALL_DOWNLOADS,
         },
         "step2": {

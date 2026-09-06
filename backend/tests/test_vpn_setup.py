@@ -1,4 +1,4 @@
-"""Тесты выбора клиента, витрины App Store и сборки ответа /vpn/setup."""
+"""Тесты выбора клиента, ссылок на установку и сборки ответа /vpn/setup."""
 
 from __future__ import annotations
 
@@ -7,12 +7,11 @@ import pytest
 from vpn_setup import (
     ALL_DOWNLOADS,
     APPSTORE_HAPP_INTL,
-    APPSTORE_HAPP_RU,
     APPSTORE_INCY,
     HAPP_DOWNLOADS,
+    HAPP_MACOS_DMG,
     build_deeplink,
     build_setup_response,
-    detect_store_region,
 )
 
 
@@ -24,25 +23,6 @@ class FakeRequest:
 
     def __init__(self, **headers):
         self.headers = {k.replace("_", "-"): v for k, v in headers.items()}
-
-
-@pytest.mark.parametrize(
-    "accept_language, expected",
-    [
-        ("ru-RU,ru;q=0.9,en;q=0.8", "ru"),
-        ("ru", "ru"),
-        ("RU-ru", "ru"),
-        # Русский вторым приоритетом — витрина у такого пользователя не российская
-        ("en-US,ru;q=0.9", "intl"),
-        ("en-US,en;q=0.9", "intl"),
-        ("tr-TR", "intl"),
-        ("", "intl"),
-        # "rue" (русинский) не должен считаться русской витриной
-        ("rue", "intl"),
-    ],
-)
-def test_detect_store_region(accept_language, expected):
-    assert detect_store_region(accept_language) == expected
 
 
 @pytest.mark.parametrize("accept_language", ["ru-RU,ru;q=0.9", "en-US,en;q=0.9"])
@@ -72,16 +52,18 @@ def test_other_platforms_stay_on_happ(platform):
     assert data["step2"]["deeplink"] == f"happ://add/{SUB_URL}"
 
 
-def test_macos_follows_the_same_two_store_rule():
-    ru = build_setup_response(SUB_URL, FakeRequest(accept_language="ru"), "macos")["step1"]
-    intl = build_setup_response(SUB_URL, FakeRequest(accept_language="de-DE"), "macos")["step1"]
+@pytest.mark.parametrize("accept_language", ["ru", "de-DE"])
+def test_macos_gets_the_dmg_with_app_store_as_a_fallback(accept_language):
+    """Российской карточки Happ больше нет, поэтому .dmg — всем и всегда."""
+    step1 = build_setup_response(SUB_URL, FakeRequest(accept_language=accept_language), "macos")["step1"]
 
-    assert ru["download_url"] == intl["download_url_alt"] == APPSTORE_HAPP_RU
-    assert intl["download_url"] == ru["download_url_alt"] == APPSTORE_HAPP_INTL
+    assert step1["download_url"] == HAPP_MACOS_DMG
+    assert step1["download_url_alt"] == APPSTORE_HAPP_INTL
+    assert step1["download_alt_label"]
 
 
 @pytest.mark.parametrize("platform", ["android", "windows"])
-def test_platforms_without_second_store_have_no_alt_link(platform):
+def test_platforms_with_a_single_source_have_no_alt_link(platform):
     step1 = build_setup_response(SUB_URL, FakeRequest(accept_language="en-US"), platform)["step1"]
 
     assert step1["download_url"] == HAPP_DOWNLOADS[platform]
@@ -98,7 +80,7 @@ def test_unknown_platform_falls_back_to_windows_build():
 
 def test_all_downloads_lists_the_app_we_recommend_per_platform():
     assert ALL_DOWNLOADS["ios"] == APPSTORE_INCY
-    assert ALL_DOWNLOADS["macos"] == HAPP_DOWNLOADS["macos"]
+    assert ALL_DOWNLOADS["macos"] == HAPP_MACOS_DMG
     assert ALL_DOWNLOADS["android"] == HAPP_DOWNLOADS["android"]
     assert ALL_DOWNLOADS["windows"] == HAPP_DOWNLOADS["windows"]
 
