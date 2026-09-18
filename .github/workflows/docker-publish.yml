@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
 
+# Все прогоны пушат один тег :latest. Без очереди два мержа подряд собираются
+# параллельно, и последним может запушиться образ от более старого коммита.
+concurrency:
+  group: docker-publish
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
