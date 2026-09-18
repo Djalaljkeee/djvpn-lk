@@ -456,7 +456,7 @@
           <button class="home-card" data-jump="install-macos">
             <div class="home-ico">💻</div>
             <h4>macOS</h4>
-            <p>Happ для Mac (Intel и Apple Silicon)</p>
+            <p>Happ .dmg для Mac (Intel и Apple Silicon)</p>
           </button>
           <button class="home-card" data-jump="install-windows">
             <div class="home-ico">🪟</div>
@@ -537,7 +537,7 @@
       <!-- =================== APP STORE REGION =================== -->
       <section class="panel" id="panel-appstore-region">
         <h1>Смена региона App&nbsp;Store на Турцию</h1>
-        <p class="lead">Это крайний вариант и нужен он только для <strong>Happ</strong> на Mac: на iPhone и iPad мы ставим INCY, он есть во всех витринах. Сначала попробуйте обе ссылки из раздела установки: <strong>Happ&nbsp;— Proxy Utility+</strong> для российского App&nbsp;Store и <strong>Happ&nbsp;— Proxy Utility</strong> для остальных витрин. Если ни одна не открылась — приложения в вашей стране сейчас нет, и его можно поставить, переключив регион Apple&nbsp;ID на Турцию. Подписка DJ&nbsp;VPN после этого импортируется одной кнопкой из ЛК.</p>
+        <p class="lead">Обычно это не нужно: на iPhone и iPad мы ставим INCY, он есть во всех витринах, а на Mac — .dmg, которому App&nbsp;Store не требуется. Инструкция пригодится, если вы всё же хотите поставить Happ именно из App&nbsp;Store: в российской витрине его сейчас нет, зато он есть в турецкой. Подписка DJ&nbsp;VPN после смены региона импортируется одной кнопкой из ЛК.</p>
 
         <h3>Что проверить перед сменой региона</h3>
         <p>Apple не даст сменить страну, если выполняется хотя бы одно из условий ниже. Сначала разберитесь с этим — иначе мастер просто не пустит дальше.</p>
@@ -625,17 +625,17 @@
       <!-- =================== macOS =================== -->
       <section class="panel" id="panel-install-macos">
         <h1>Установка на macOS</h1>
-        <p class="lead">Happ есть в Mac&nbsp;App&nbsp;Store — единый клиент для iPhone и Mac, подписка импортируется одной кнопкой из ЛК.</p>
+        <p class="lead">На Mac ставим десктопный Happ из официального .dmg — App&nbsp;Store для этого не нужен, подписка импортируется одной кнопкой из ЛК.</p>
 
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-body">
               <h4>Установите Happ для macOS</h4>
-              <p>Скачайте Happ из Mac&nbsp;App&nbsp;Store — карточка та же, что и для iPhone: <strong>Happ&nbsp;— Proxy Utility+</strong> в российской витрине, <strong>Happ&nbsp;— Proxy Utility</strong> в остальных. Поддерживаются как Apple Silicon (M-серия), так и Intel.</p>
-              <!-- Ссылки синхронизированы с backend/vpn_setup.py::APPSTORE_HAPP_RU / APPSTORE_HAPP_INTL — правишь здесь, правь и там -->
-              <a class="btn btn-primary" data-store-link="ru" href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6788279553" target="_blank" rel="noopener">Открыть Mac&nbsp;App&nbsp;Store (Россия)</a>
-              <p class="store-alt">Apple&nbsp;ID зарегистрирован не в России? <a data-store-link="intl" href="https://apps.apple.com/app/happ-proxy-utility/id6504287215" target="_blank" rel="noopener">Откройте международную версию Happ</a>.</p>
+              <p>Скачайте <strong>Happ.macOS.universal.dmg</strong> — универсальная сборка, работает и на Apple Silicon (M-серия), и на Intel. Откройте образ и перетащите Happ в «Программы». Из App&nbsp;Store клиент ставить не нужно: российской карточки у него больше нет, а в поиске по магазину висят чужие подделки с похожими названиями.</p>
+              <!-- Ссылки синхронизированы с backend/vpn_setup.py::HAPP_MACOS_DMG / APPSTORE_HAPP_INTL — правишь здесь, правь и там -->
+              <a class="btn btn-primary" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg" target="_blank" rel="noopener">Скачать .dmg с GitHub</a>
+              <p class="store-alt">Apple&nbsp;ID зарегистрирован не в России? Можно поставить <a href="https://apps.apple.com/app/happ-proxy-utility/id6504287215" target="_blank" rel="noopener">Happ из международного App&nbsp;Store</a> — карточка та же, что и для iPhone.</p>
             </div>
           </div>
           <div class="step">
@@ -1188,28 +1188,6 @@
       }
       fromHash();
       window.addEventListener('hashchange', fromHash);
-
-      // ============ APP STORE: какая витрина основная ============
-      // У Happ два независимых листинга с разными app-id: РФ и всё остальное.
-      // Язык браузера ≠ страна Apple ID, поэтому он лишь решает, какую ссылку
-      // поднять в основную кнопку. Вторая всегда остаётся видимой рядом.
-      (function () {
-        var lang = (navigator.language || '').toLowerCase();
-        if (lang === 'ru' || lang.indexOf('ru-') === 0) return;
-
-        document.querySelectorAll('[data-store-link="ru"]').forEach(function (ruBtn) {
-          var intlLink = ruBtn.parentElement.querySelector('[data-store-link="intl"]');
-          if (!intlLink) return;
-
-          var ruHref = ruBtn.getAttribute('href');
-          ruBtn.setAttribute('href', intlLink.getAttribute('href'));
-          ruBtn.textContent = ruBtn.textContent.replace('(Россия)', '').trim();
-
-          intlLink.setAttribute('href', ruHref);
-          intlLink.textContent = 'Откройте версию для российского App Store';
-          intlLink.parentElement.firstChild.nodeValue = 'Apple ID зарегистрирован в России? ';
-        });
-      })();
 
       // ============ LEGAL TEXTS ============
       var TOS = "Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между пользователем (далее — «Пользователь») и сервисом DJ VPN (далее — «Сервис») относительно использования услуг.\n\n" +

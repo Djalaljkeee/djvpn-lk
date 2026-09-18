@@ -8,7 +8,7 @@ interface SetupData {
     title: string
     app_name: string
     download_url: string
-    /* Вторая витрина App Store — у Happ разные app-id для РФ и остального мира (macOS; на iOS одна карточка INCY) */
+    /* Запасной способ установки: на macOS — Happ из международного App Store вместо .dmg */
     download_url_alt?: string | null
     download_alt_label?: string | null
     all_downloads: Record<string, string>
@@ -187,14 +187,14 @@ export default function SetupGuide({
 
                   {data.step1.download_url_alt && (
                     <p className="text-xs text-slate-500 text-center leading-relaxed">
-                      Приложение недоступно в вашем App&nbsp;Store?{' '}
+                      Не подошло?{' '}
                       <a
                         href={data.step1.download_url_alt}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-slate-400 underline underline-offset-2 hover:text-slate-200 transition-colors"
                       >
-                        {data.step1.download_alt_label ?? 'Другая версия'}
+                        {data.step1.download_alt_label ?? 'другой способ установки'}
                       </a>
                     </p>
                   )}
