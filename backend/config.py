@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     SUPPORT_TG_FANOUT: bool = True
     SUPPORT_FANOUT_DELAY_S: int = 90
     SUPPORT_LK_URL: str = "https://lk.djvpn.ru"
-    SUPPORT_TG_LINK: str = "https://t.me/help_djvpn"
+    SUPPORT_TG_LINK: str = "https://t.me/Djvpnsupportbot"
     # Вложения. Скриншот — единицы мегабайт; всё, что крупнее, остаётся в
     # Telegram (там лимиты свои) и в кабинете отмечается строкой текста.
     # Тот же предел зашит в мост бота (MAX_CABINET_FILE_BYTES) — меняются вместе.

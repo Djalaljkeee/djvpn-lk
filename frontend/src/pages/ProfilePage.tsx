@@ -369,7 +369,7 @@ export default function ProfilePage() {
         <MenuRow
           icon={<SupportIcon />}
           label="Поддержка в Telegram"
-          onClick={() => window.open('https://t.me/help_djvpn', '_blank')}
+          onClick={() => window.open('https://t.me/Djvpnsupportbot', '_blank')}
         />
         <MenuRow
           icon={<DocIcon />}

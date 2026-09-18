@@ -817,7 +817,7 @@ Debian/Ubuntu — `.deb`), дальше подписка добавляется 
 | Что | Значение |
 |---|---|
 | Бот | [@Dj_VPN_bot](https://t.me/Dj_VPN_bot) |
-| Поддержка | [@help_djvpn](https://t.me/help_djvpn), почта `djvpn@internet.ru` |
+| Поддержка | [@Djvpnsupportbot](https://t.me/Djvpnsupportbot), почта `djvpn@internet.ru` |
 | Канал | [@DjVPNchannel](https://t.me/DjVPNchannel) |
 | Личный кабинет | <https://lk.djvpn.ru> |
 | Инструкции | <https://lk.djvpn.ru/setup.html> |
