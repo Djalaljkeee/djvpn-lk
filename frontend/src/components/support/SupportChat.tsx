@@ -7,7 +7,7 @@ import { useSupportChat } from '../../hooks/useSupportChat'
 import { useSupportChatStore } from '../../store/supportChatStore'
 import MessageBubble from './MessageBubble'
 
-const TELEGRAM_FALLBACK = 'https://t.me/help_djvpn'
+const TELEGRAM_FALLBACK = 'https://t.me/Djvpnsupportbot'
 
 /**
  * Чат поддержки: плавающая кнопка на всех страницах кабинета и панель переписки.
