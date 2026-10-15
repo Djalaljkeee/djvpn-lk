@@ -19,14 +19,22 @@ export const fetchProfile = async (): Promise<User> => {
   // SHM /user/email отдаёт {email, email_verified: 0|1} отдельным запросом —
   // мерджим в профиль до нормализации, чтобы email_verified прошёл через
   // приведение к boolean (иначе ProfilePage остаётся в состоянии «Не подтверждён»).
+  // SHM 2.x возвращает один объект, 3.x — все email-аккаунты пользователя
+  // ({email, email_verified, is_primary}); берём подтверждённый, если он есть.
   try {
     const emailResp = await shm.get('/user/email')
-    const emailObj = unwrapOne<Record<string, unknown>>(emailResp)
+    const emailObj = pickEmail(unwrap<Record<string, unknown>>(emailResp))
     if (emailObj) Object.assign(rawUser, emailObj)
   } catch {
     // 404 если email ещё не привязан — это нормально.
   }
   return normalizeUser(rawUser)
+}
+
+export function pickEmail(items: Record<string, unknown>[]): Record<string, unknown> | null {
+  const withEmail = items.filter(e => e && e.email)
+  const verified = withEmail.find(e => e.email_verified === 1 || e.email_verified === true || e.email_verified === '1')
+  return verified ?? withEmail[0] ?? null
 }
 
 export const fetchUserServices = async (): Promise<UserService[]> => {
@@ -236,13 +244,21 @@ export const requestEmailVerification = async (email: string): Promise<{ ok: boo
   return { ok: true, email, message: 'Код отправлен повторно' }
 }
 
-export const verifyEmailToken = async (code: string): Promise<{ ok: boolean; verified: boolean; message: string }> => {
-  // SHM: POST /user/email/verify → метод verify_email. Ключевой момент —
+export const verifyEmailToken = async (code: string, email?: string): Promise<{ ok: boolean; verified: boolean; message: string }> => {
+  // SHM 2.x: POST /user/email/verify → метод verify_email. Ключевой момент —
   // слать ТОЛЬКО `{code}` без `email`: при наличии `email` метод уходит в
   // ветку отправки кода и просто перевыпускает его, а не проверяет.
+  // SHM 3.x этот маршрут удалил (404): там код проверяет POST /user/email
+  // с ОБОИМИ полями {email, code} — email обязателен, по нему ищется аккаунт.
   // Как и в password-reset, SHM ВСЕГДА отвечает 200, реальный статус — в
   // data[0].msg. Поэтому нельзя слепо возвращать verified:true — читаем msg.
-  const resp = await shm.post('/user/email/verify', { code })
+  let resp: AxiosResponse
+  try {
+    resp = await shm.post('/user/email/verify', { code })
+  } catch (e: any) {
+    if (e?.response?.status !== 404 || !email) throw e
+    resp = await shm.post('/user/email', { email, code })
+  }
   const msg = extractEmailMsg(resp)
   if (msg === 'Email verified successfully') {
     return { ok: true, verified: true, message: 'Email подтверждён' }
@@ -257,8 +273,21 @@ export const verifyEmailToken = async (code: string): Promise<{ ok: boolean; ver
   throw new Error('Не удалось подтвердить email. Проверьте код и попробуйте снова.')
 }
 
-export const changePassword = async (password: string): Promise<{ ok: boolean }> => {
-  await shm.post('/user/passwd', { password })
+// SHM 3.x требует old_password, если у пользователя уже есть пароль, и
+// отвечает ошибкой с кодом в теле. 2.x лишнее поле игнорирует.
+const PASSWD_ERRORS: Record<string, string> = {
+  OLD_PASSWORD_REQUIRED: 'Введите текущий пароль',
+  INVALID_OLD_PASSWORD: 'Текущий пароль указан неверно',
+}
+
+export const changePassword = async (password: string, oldPassword?: string): Promise<{ ok: boolean }> => {
+  try {
+    await shm.post('/user/passwd', oldPassword ? { password, old_password: oldPassword } : { password })
+  } catch (e: any) {
+    const code = e?.response?.data?.error
+    if (typeof code === 'string' && PASSWD_ERRORS[code]) throw new Error(PASSWD_ERRORS[code])
+    throw e
+  }
   return { ok: true }
 }
 

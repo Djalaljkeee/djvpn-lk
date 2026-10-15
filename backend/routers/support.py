@@ -217,6 +217,15 @@ def _telegram_id_from(login: str, tg: dict) -> Optional[int]:
     return None
 
 
+def _email_from(items: list) -> Optional[str]:
+    """Email из ответа /user/email: подтверждённый, иначе первый попавшийся."""
+    items = [e for e in items if isinstance(e, dict) and e.get("email")]
+    for e in items:
+        if str(e.get("email_verified")) in ("1", "True", "true"):
+            return e["email"]
+    return items[0]["email"] if items else None
+
+
 async def _ensure_thread(db, session: dict) -> SupportThread:
     """Возвращает тред клиента, при необходимости создавая и освежая личность.
 
@@ -244,6 +253,10 @@ async def _ensure_thread(db, session: dict) -> SupportThread:
         telegram_id = _telegram_id_from(str(user.get("login") or ""), settings_blob.get("telegram") or {})
         email = settings_blob.get("email") or None
         name = user.get("full_name") or None
+        if not email:
+            # SHM 3.x перенёс email из users.settings в отдельные аккаунты.
+            emails = await shm_request("GET", "/shm/v1/user/email", session["shm_session"])
+            email = _email_from(emails.get("data") or [])
     except Exception as exc:  # noqa: BLE001 - личность необязательна для чата
         log.warning("support.identity_failed", error=str(exc))
 

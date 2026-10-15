@@ -59,7 +59,8 @@ export default function ChangePasswordPage() {
         navigate('/profile', { replace: true })
       }, 1200)
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || 'Не удалось сменить пароль'
+      // Ошибки SHM с понятным кодом changePassword превращает в Error без response.
+      const msg = e?.response?.data?.detail || (!e?.response && e?.message) || 'Не удалось сменить пароль'
       show(typeof msg === 'string' ? msg : 'Не удалось сменить пароль', 'error')
     } finally {
       setBusy(false)
