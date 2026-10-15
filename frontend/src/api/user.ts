@@ -285,6 +285,13 @@ export const changePassword = async (password: string, oldPassword?: string): Pr
     await shm.post('/user/passwd', oldPassword ? { password, old_password: oldPassword } : { password })
   } catch (e: any) {
     const code = e?.response?.data?.error
+    // Клиент из Telegram своего случайного пароля не знает: в Mini App
+    // меняем через бэкенд, который проверит подпись initData.
+    const initData = window.Telegram?.WebApp?.initData
+    if (code === 'OLD_PASSWORD_REQUIRED' && !oldPassword && initData) {
+      await api.post('/user/password', { password, init_data: initData })
+      return { ok: true }
+    }
     if (typeof code === 'string' && PASSWD_ERRORS[code]) throw new Error(PASSWD_ERRORS[code])
     throw e
   }

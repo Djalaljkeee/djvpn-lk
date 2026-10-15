@@ -11,6 +11,9 @@ class Settings(BaseSettings):
 
     # Telegram (имя бота показывается на /login)
     TELEGRAM_BOT_TOKEN: str = ""
+    # Ограниченный Bearer-токен SHM 3.x только на POST /admin/user/passwd
+    # (см. routers/password.py). Пусто — ручка смены пароля без текущего выключена.
+    SHM_PASSWD_TOKEN: str = ""
     TELEGRAM_BOT_USERNAME: str = ""  # без @
 
     # Remnawave HWID
