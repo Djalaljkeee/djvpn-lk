@@ -263,7 +263,7 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      await verifyEmailToken(trimmed)
+      await verifyEmailToken(trimmed, verifyEmail)
       // Обновляем профиль в сторе
       try {
         const fresh = await fetchProfile()

@@ -180,7 +180,7 @@ export default function ProfilePage() {
     }
     setVerifyBusy(true)
     try {
-      await verifyEmailToken(code)
+      await verifyEmailToken(code, email)
       // Оптимистично обновляем стор — SHM подтвердил верификацию.
       if (user) setUser({ ...user, email_verified: true })
       setVerifyModalOpen(false)
