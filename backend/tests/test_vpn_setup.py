@@ -27,12 +27,13 @@ class FakeRequest:
 
 @pytest.mark.parametrize("accept_language", ["ru-RU,ru;q=0.9", "en-US,en;q=0.9"])
 def test_ios_gets_incy_from_single_store(accept_language):
-    """У INCY одна карточка — витрина роли не играет, второй ссылки нет."""
+    """Ссылка на INCY одна и не привязана к витрине: в /ru/ карточки нет."""
     data = build_setup_response(SUB_URL, FakeRequest(accept_language=accept_language), "ios")
     step1 = data["step1"]
 
     assert step1["app_name"] == "INCY"
     assert step1["download_url"] == APPSTORE_INCY
+    assert "/ru/" not in step1["download_url"]
     assert step1["download_url_alt"] is None
     assert step1["download_alt_label"] is None
 
