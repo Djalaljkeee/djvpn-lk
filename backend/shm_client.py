@@ -23,7 +23,7 @@ from fastapi import HTTPException
 
 from config import settings
 from http_retry import request_with_connect_retry
-from logging_config import client_ip_ctx
+from logging_config import client_ip_ctx, client_ua_ctx
 
 
 # Лимиты подобраны под одиночный uvicorn-воркер: 50 одновременных коннектов
@@ -84,10 +84,23 @@ async def close_shm_client() -> None:
 
 
 def _proxy_headers() -> dict:
+    """Заголовки, по которым SHM узнаёт реального клиента.
+
+    IP — для логов и антифрода SHM. User-Agent обязателен: SHM 3.x снимает
+    отпечаток сессии при входе и по умолчанию (session.strict.user-agent=1)
+    отклоняет её, если UA не совпал. Без проброса UA браузера бэкенд шёл в
+    SHM как python-httpx и ловил 401 на каждой своей ручке → фронт уходил
+    на /login → бесконечный цикл входа в Mini App.
+    """
+    headers: dict = {}
     ip = client_ip_ctx.get()
-    if not ip:
-        return {}
-    return {"X-Forwarded-For": ip, "X-Real-IP": ip}
+    if ip:
+        headers["X-Forwarded-For"] = ip
+        headers["X-Real-IP"] = ip
+    ua = client_ua_ctx.get()
+    if ua:
+        headers["User-Agent"] = ua
+    return headers
 
 
 async def shm_request(

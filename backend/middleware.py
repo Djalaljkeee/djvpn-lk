@@ -11,7 +11,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from logging_config import request_id_ctx, user_id_ctx, client_ip_ctx
+from logging_config import request_id_ctx, user_id_ctx, client_ip_ctx, client_ua_ctx
 
 
 log = structlog.get_logger("http")
@@ -33,6 +33,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         rid_token = request_id_ctx.set(rid)
         uid_token = user_id_ctx.set(0)
         ip_token = client_ip_ctx.set(request.client.host if request.client else None)
+        ua_token = client_ua_ctx.set(request.headers.get("user-agent"))
 
         # Привязываем контекст к structlog (для любых log-вызовов внутри хэндлера)
         structlog.contextvars.clear_contextvars()
@@ -67,6 +68,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             request_id_ctx.reset(rid_token)
             user_id_ctx.reset(uid_token)
             client_ip_ctx.reset(ip_token)
+            client_ua_ctx.reset(ua_token)
             structlog.contextvars.clear_contextvars()
 
 

@@ -19,6 +19,9 @@ import structlog
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 user_id_ctx: ContextVar[int] = ContextVar("user_id", default=0)
 client_ip_ctx: ContextVar[Optional[str]] = ContextVar("client_ip", default=None)
+# User-Agent клиента: SHM 3.x привязывает сессию к UA (session.strict.user-agent),
+# поэтому серверные вызовы SHM от имени юзера должны слать его UA, а не httpx.
+client_ua_ctx: ContextVar[Optional[str]] = ContextVar("client_ua", default=None)
 
 
 def _add_request_context(
