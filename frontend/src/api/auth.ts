@@ -109,8 +109,12 @@ export const loginWithTelegram = async (tgData: object, partnerId?: number): Pro
   return { user }
 }
 
+const TELEGRAM_BOT_PROFILE = 'telegram_bot'
+
 export const loginWithWebApp = async (initData: string, partnerId?: number): Promise<AuthResult> => {
-  const params: Record<string, string> = { initData }
+  // SHM 3.x требует `profile` — имя профиля бота в конфиге `telegram`
+  // (без него 400 «Field required: profile»), 2.x параметр игнорирует.
+  const params: Record<string, string> = { initData, profile: TELEGRAM_BOT_PROFILE }
   // `webapp_auth` пользователей не регистрирует (нет юзера → undef), так что
   // partner_id здесь SHM просто игнорирует. Оставляем: внутри Mini App аккаунт
   // создаёт бот по `/start`, куда pid уезжает через deeplink (см. ReferralsPage),

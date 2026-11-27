@@ -66,7 +66,7 @@ describe('Telegram Mini App (webapp_auth)', () => {
     await loginWithWebApp('init-data-string', 42)
 
     expect(get).toHaveBeenCalledWith('/telegram/webapp/auth', {
-      params: { initData: 'init-data-string', partner_id: '42' },
+      params: { initData: 'init-data-string', profile: 'telegram_bot', partner_id: '42' },
     })
   })
 
