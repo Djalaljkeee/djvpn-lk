@@ -33,6 +33,7 @@ from routers import devices, public, shm_proxy, status, system, vpn
 from routers import cart as cart_router
 from routers import notifications as notifications_router
 from routers import support as support_router
+from routers import password as password_router
 from scheduler import shutdown_scheduler, start_scheduler
 from shm_client import close_shm_client, get_shm_in_flight
 from support_bridge import close_client as close_support_bridge_client
@@ -181,6 +182,7 @@ app.include_router(system.router)
 app.include_router(cart_router.router)
 app.include_router(notifications_router.router)
 app.include_router(support_router.router)
+app.include_router(password_router.router)
 app.include_router(shm_proxy.router)
 
 

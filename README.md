@@ -51,8 +51,7 @@ docker compose up --build
 | Переменная | Описание |
 |---|---|
 | `SHM_BASE_URL` | URL вашего SHM (напр. `http://shm:3001`) |
-| `SHM_ADMIN_LOGIN` | Логин admin в SHM |
-| `SHM_ADMIN_PASSWORD` | Пароль admin в SHM |
+| `SHM_PASSWD_TOKEN` | Только для SHM 3.x: Bearer-токен SHM с правом лишь на `POST /admin/user/passwd` (отдельный пользователь, группа с `default_policy: deny`, токен с ограничением по IP). Нужен для смены пароля из Telegram Mini App без текущего пароля, пусто — выключено. Полные админские креды SHM бэкенду не нужны и не должны лежать в `.env`. |
 | `JWT_SECRET` | Секрет для JWT токенов (≥32 символа) |
 | `JWT_EXPIRE_SECONDS` | Время жизни токена (по умолч. 30 дней) |
 | `TELEGRAM_BOT_TOKEN` | Токен бота от @BotFather |

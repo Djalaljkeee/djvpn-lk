@@ -1,6 +1,6 @@
 """Чат поддержки: нормализация текста и резолв личности клиента."""
 
-from routers.support import _clean, _telegram_id_from
+from routers.support import _clean, _email_from, _telegram_id_from
 
 
 def test_clean_strips_control_chars_and_normalises_newlines():
@@ -28,6 +28,21 @@ def test_telegram_id_falls_back_to_login():
 def test_telegram_id_absent_for_email_signup():
     assert _telegram_id_from("user@example.com", {}) is None
     assert _telegram_id_from("@notanumber", {}) is None
+
+
+def test_email_from_prefers_verified_account():
+    # SHM 3.x: /user/email отдаёт все email-аккаунты пользователя.
+    items = [
+        {"email": "new@example.com", "email_verified": 0, "is_primary": 0},
+        {"email": "ok@example.com", "email_verified": 1, "is_primary": 0},
+    ]
+    assert _email_from(items) == "ok@example.com"
+
+
+def test_email_from_falls_back_to_first_and_handles_empty():
+    assert _email_from([{"email": "a@example.com", "email_verified": 0}]) == "a@example.com"
+    assert _email_from([]) is None
+    assert _email_from([{"email": None}, "garbage"]) is None
 
 
 def test_safe_file_name_strips_paths_and_control_chars():

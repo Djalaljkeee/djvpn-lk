@@ -58,7 +58,7 @@ export const deleteAutopayment = async (pay_system: string): Promise<void> => {
 
 // Платёж создаётся через redirect на bill.djvpn.ru — SHM не предоставляет
 // REST-эндпоинта для создания платежа. Параметры: текущий user_id, email
-// из login2 (см. swagger User.login2), сумма и код платёжной системы.
+// профиля (на SHM 2.x — фолбэк на login2), сумма и код платёжной системы.
 export const BILL_BASE_URL = import.meta.env.VITE_SHM_BILL_URL || 'https://bill.djvpn.ru'
 
 export interface BuildPaymentUrlArgs {
@@ -71,7 +71,8 @@ export interface BuildPaymentUrlArgs {
 export const buildPaymentUrl = ({ ps, amount, user_id, email }: BuildPaymentUrlArgs): string => {
   const user = useAuthStore.getState().user
   const uid = user_id ?? user?.user_id
-  const mail = email ?? (user as { login2?: string } | null)?.login2 ?? user?.email ?? ''
+  // SHM 3.x больше не пишет email в login2 — сначала email из /user/email.
+  const mail = email ?? user?.email ?? (user as { login2?: string } | null)?.login2 ?? ''
   const ts = Math.floor(Date.now() / 1000)
   const params = new URLSearchParams({
     action: 'create',

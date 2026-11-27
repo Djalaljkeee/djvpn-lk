@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { BrandLogo } from '../components/BrandLogo'
 import { useToast } from '../components/Toast'
 import { changePassword } from '../api/user'
+import { useAuthStore } from '../store/authStore'
 
 /**
  * Standalone-страница смены пароля. Открывается по deep-ссылке из
@@ -12,10 +13,19 @@ import { changePassword } from '../api/user'
  * по initData, поэтому форма работает без дополнительного шага логина.
  * Снаружи Telegram анонимный пользователь будет отправлен на /login через
  * `PrivateRoute`.
+ *
+ * SHM 3.x требует текущий пароль. В Mini App его заменяет подпись initData
+ * (бэкенд ЛК меняет пароль ограниченным токеном), в браузере поле обязательно.
+ * Смена пароля в 3.x завершает все сессии пользователя, поэтому после успеха
+ * отправляем на вход, а не в профиль.
  */
 export default function ChangePasswordPage() {
   const navigate = useNavigate()
   const { show } = useToast()
+  const logout = useAuthStore(s => s.logout)
+  const inTelegram = Boolean(window.Telegram?.WebApp?.initData)
+  const [needOld, setNeedOld] = useState(!inTelegram)
+  const [oldPw, setOldPw] = useState('')
   const [pw1, setPw1] = useState('')
   const [pw2, setPw2] = useState('')
   const [busy, setBusy] = useState(false)
@@ -37,6 +47,10 @@ export default function ChangePasswordPage() {
   }, [])
 
   const handleSubmit = async () => {
+    if (needOld && !inTelegram && !oldPw) {
+      show('Введите текущий пароль', 'error')
+      return
+    }
     if (pw1.length < 6) {
       show('Минимум 6 символов', 'error')
       return
@@ -47,19 +61,25 @@ export default function ChangePasswordPage() {
     }
     setBusy(true)
     try {
-      await changePassword(pw1)
+      await changePassword(pw1, oldPw || undefined)
       setSuccess(true)
       show('Пароль изменён', 'success')
       closeTimerRef.current = setTimeout(() => {
         const tgClose = window.Telegram?.WebApp?.close
-        if (typeof tgClose === 'function') {
+        if (inTelegram && typeof tgClose === 'function') {
           tgClose()
           return
         }
-        navigate('/profile', { replace: true })
+        // SHM 3.x уже закрыл все сессии: без этого следующий запрос
+        // словит 401 и выкинет на вход без объяснений.
+        logout()
+        show('Войдите с новым паролем', 'success')
+        navigate('/login', { replace: true })
       }, 1200)
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || 'Не удалось сменить пароль'
+      // Ошибки SHM с понятным кодом changePassword превращает в Error без response.
+      const msg = e?.response?.data?.detail || (!e?.response && e?.message) || 'Не удалось сменить пароль'
+      if (msg === 'Введите текущий пароль') setNeedOld(true)
       show(typeof msg === 'string' ? msg : 'Не удалось сменить пароль', 'error')
     } finally {
       setBusy(false)
@@ -96,14 +116,28 @@ export default function ChangePasswordPage() {
               </svg>
             </div>
             <div className="mt-3 text-base font-medium text-emerald-200">Пароль изменён</div>
-            <div className="mt-1 text-xs text-slate-300">Окно закроется автоматически…</div>
+            <div className="mt-1 text-xs text-slate-300">
+              {inTelegram ? 'Окно закроется автоматически…' : 'Сейчас откроется вход — войдите с новым паролем.'}
+            </div>
           </div>
         ) : (
           <div className="mt-8 space-y-3">
+            {needOld && (
+              <input
+                type="password"
+                autoComplete="current-password"
+                autoFocus
+                value={oldPw}
+                onChange={e => setOldPw(e.target.value)}
+                placeholder="Текущий пароль"
+                disabled={busy}
+                className="w-full rounded-xl border border-white/10 bg-surface-2 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-brand-500 focus:outline-none disabled:opacity-60"
+              />
+            )}
             <input
               type="password"
               autoComplete="new-password"
-              autoFocus
+              autoFocus={!needOld}
               value={pw1}
               onChange={e => setPw1(e.target.value)}
               placeholder="Новый пароль"
@@ -130,8 +164,15 @@ export default function ChangePasswordPage() {
               {busy ? 'Сохранение…' : 'Сохранить'}
             </button>
             <p className="pt-1 text-center text-xs text-slate-400">
-              Минимум 6 символов. Старый пароль не требуется.
+              Минимум 6 символов.
             </p>
+            {needOld && (
+              <p className="text-center text-xs text-slate-400">
+                Не помните текущий пароль? Выйдите и нажмите «Забыли пароль?» на странице входа —
+                ссылка придёт на подтверждённый email. Если вы входили через Telegram, смените
+                пароль из бота.
+              </p>
+            )}
           </div>
         )}
       </div>
