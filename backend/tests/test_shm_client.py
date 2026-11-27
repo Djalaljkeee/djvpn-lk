@@ -60,3 +60,27 @@ def test_shm_request_sends_browser_ua(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data["data"][0]["user_id"] == 42
     assert seen["ua"] == UA
     assert seen["cookie"] == "session_id=sid123"
+
+
+def test_storage_fetch_sends_browser_ua(monkeypatch: pytest.MonkeyPatch) -> None:
+    import storage
+
+    seen: dict = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["ua"] = req.headers.get("user-agent")
+        return httpx.Response(200, text='{"subscriptionUrl": "https://sub/x"}')
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(storage, "get_shm_client", lambda: client)
+
+    async def run():
+        ua_t = client_ua_ctx.set(UA)
+        try:
+            return await storage.fetch_sub_url_from_storage(193, "sid123", 2)
+        finally:
+            client_ua_ctx.reset(ua_t)
+            await client.aclose()
+
+    assert asyncio.run(run()) == "https://sub/x"
+    assert seen["ua"] == UA
