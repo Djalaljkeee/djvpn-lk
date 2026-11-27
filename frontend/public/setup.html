@@ -201,6 +201,16 @@
       box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
       display: block;
     }
+    .guide-video {
+      margin: 16px 0 24px;
+      max-width: 320px; width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      display: block;
+      background: #000;
+    }
 
     /* ============ BUTTONS / CALLOUTS / PILLS ============ */
     .btn {
@@ -496,9 +506,9 @@
             <div class="step-num">1</div>
             <div class="step-body">
               <h4>Установите INCY из App&nbsp;Store</h4>
-              <p>Приложение бесплатное, работает на iOS&nbsp;15 и новее. В магазине оно называется просто <strong>incy</strong>. Карточка одна и она есть во всех витринах, включая российскую, — менять регион Apple&nbsp;ID не нужно.</p>
+              <p>Приложение бесплатное, работает на iOS&nbsp;15 и новее. В магазине оно называется просто <strong>incy</strong>, издатель — LLC ITDEV. В российском App&nbsp;Store его больше нет, поэтому сначала смените регион Apple&nbsp;ID на Казахстан по инструкции <button type="button" class="legal-link" data-jump="appstore-region" style="background:none;border:0;padding:0;cursor:pointer;">«Смена региона App&nbsp;Store»</button> или попросите в поддержке гостевой аккаунт. Похожие приложения в российском App&nbsp;Store, например «Incy VPN», — подделки.</p>
               <!-- Ссылка синхронизирована с backend/vpn_setup.py::APPSTORE_INCY — правишь здесь, правь и там -->
-              <a class="btn btn-primary" href="https://apps.apple.com/ru/app/incy/id6756943388" target="_blank" rel="noopener">Открыть App&nbsp;Store</a>
+              <a class="btn btn-primary" href="https://apps.apple.com/app/incy/id6756943388" target="_blank" rel="noopener">Открыть App&nbsp;Store</a>
             </div>
           </div>
           <div class="step">
@@ -530,14 +540,19 @@
         </div>
         <div class="callout">
           <span class="ico">🍏</span>
-          <p>Раньше на iPhone мы выдавали <strong>Happ</strong>. Он продолжает работать, но обе его карточки Apple убрала из российского App&nbsp;Store, поэтому новым устройствам мы ставим INCY. Если Happ уже установлен и подписка в нём жива — переустанавливать ничего не нужно.</p>
+          <p>Раньше на iPhone мы выдавали <strong>Happ</strong>. Если у вас Happ версии 6 и выше и подписка в нём работает, переустанавливать ничего не нужно. В более старых версиях устаревшее ядро, из-за которого VPN может работать с перебоями: поставьте новое приложение.</p>
         </div>
       </section>
 
       <!-- =================== APP STORE REGION =================== -->
       <section class="panel" id="panel-appstore-region">
-        <h1>Смена региона App&nbsp;Store на Турцию</h1>
-        <p class="lead">Обычно это не нужно: на iPhone и iPad мы ставим INCY, он есть во всех витринах, а на Mac — .dmg, которому App&nbsp;Store не требуется. Инструкция пригодится, если вы всё же хотите поставить Happ именно из App&nbsp;Store: в российской витрине его сейчас нет, зато он есть в турецкой. Подписка DJ&nbsp;VPN после смены региона импортируется одной кнопкой из ЛК.</p>
+        <h1>Смена региона App&nbsp;Store на Казахстан</h1>
+        <p class="lead">Apple убрала Happ и INCY из российского App&nbsp;Store. Чтобы поставить или обновить их на iPhone и iPad, смените регион Apple&nbsp;ID на Казахстан — это занимает пару минут. На Mac это не нужно: там Happ ставится из .dmg.</p>
+
+        <div class="callout">
+          <span class="ico">💡</span>
+          <p>Уже стоит INCY или Happ версии 6 и выше? Менять ничего не нужно. Регион менять не хотите? Напишите в <a href="https://t.me/Djvpnsupportbot" target="_blank" rel="noopener">поддержку</a> «Нужен гостевой аккаунт». Гостевой аккаунт вводите <strong>только в App&nbsp;Store</strong>: не указывайте его в Настройках и не включайте с ним iCloud, иначе можно потерять доступ к своему iPhone.</p>
+        </div>
 
         <h3>Что проверить перед сменой региона</h3>
         <p>Apple не даст сменить страну, если выполняется хотя бы одно из условий ниже. Сначала разберитесь с этим — иначе мастер просто не пустит дальше.</p>
@@ -570,55 +585,80 @@
           <p>Поддержка Apple в России: <strong>8-800-555-67-34</strong>, будни 10:00–18:00&nbsp;МСК. Скажите оператору, что хотите обнулить остаток на счёте, чтобы сменить страну — это делается быстро.</p>
         </div>
 
-        <h3 style="margin-top: 28px;">Как поменять регион на Турцию</h3>
-        <p>Все условия выше выполнены — переходим к смене страны. Откройте «Настройки» на iPhone и следуйте шагам.</p>
+        <h3 style="margin-top: 28px;">Как поменять регион на Казахстан</h3>
+        <p>Все условия выше выполнены — переходим к смене страны. На видео показаны все шаги, ниже они же текстом.</p>
+
+        <video class="guide-video" controls playsinline preload="metadata" poster="/docs/appstore-region/smena-reg-poster.jpg" aria-label="Видеоинструкция: смена региона App Store на Казахстан и установка Happ на iPhone">
+          <source src="/docs/appstore-region/smena-reg.mp4" type="video/mp4" />
+          <a href="/docs/appstore-region/smena-reg.mp4">Скачать видеоинструкцию</a>
+        </video>
 
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-body">
-              <h4>Откройте профиль Apple&nbsp;ID</h4>
-              <p>«Настройки» → нажмите на ваше имя сверху → раздел <strong>«Медиаматериалы и покупки»</strong> → <strong>«Просмотреть»</strong>. Откроется экран учётной записи с пунктом «Страна или регион».</p>
-              <img class="step-shot" src="/docs/appstore-region/01-account.jpg" alt="Экран учётной записи Apple ID с пунктом «Страна или регион»" loading="lazy" />
+              <h4>Откройте профиль в App&nbsp;Store</h4>
+              <p>Откройте App&nbsp;Store и нажмите на иконку профиля в правом верхнем углу.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">2</div>
             <div class="step-body">
-              <h4>Убедитесь, что нет активных покупок и подписок</h4>
-              <p>Прямо в этом экране проверьте разделы <strong>«Покупки»</strong> и <strong>«Подписки»</strong> внизу. Если что-то активно — вернитесь к чеклисту выше.</p>
-              <img class="step-shot" src="/docs/appstore-region/02-account-purchases.jpg" alt="Разделы «Покупки» и «Подписки» в профиле Apple ID" loading="lazy" />
+              <h4>Нажмите на строку с вашим именем</h4>
+              <p>Она находится в самом верху экрана «Уч. запись». Если iPhone попросит, подтвердите вход.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">3</div>
             <div class="step-body">
-              <h4>Зайдите в App&nbsp;Store текущего региона</h4>
-              <p>Откройте App&nbsp;Store, перейдите на вкладку <strong>«Сегодня»</strong> и тапните иконку профиля в правом верхнем углу — оттуда удобнее всего попасть в настройки аккаунта.</p>
-              <img class="step-shot" src="/docs/appstore-region/03-appstore-today.jpg" alt="Главная App Store «Сегодня» с иконкой профиля" loading="lazy" />
+              <h4>Откройте «Страна/регион»</h4>
+              <p>Пункт находится в «Настройках учётной записи», сейчас рядом с ним указана Россия.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">4</div>
             <div class="step-body">
-              <h4>Выберите «Страна или регион» → Турция</h4>
-              <p>Нажмите <strong>«Страна или регион»</strong> → <strong>«Сменить страну или регион»</strong> → выберите <strong>Türkiye</strong>. Заполните форму: способ оплаты (можно <strong>None</strong>, если подходит — но в ряде случаев Apple требует карту), имя, фамилию и турецкий адрес. Можно использовать публичный адрес отеля или ТРЦ в Стамбуле.</p>
-              <img class="step-shot" src="/docs/appstore-region/04-country-form.jpg" alt="Форма ввода адреса и способа оплаты при смене региона на Турцию" loading="lazy" />
+              <h4>Выберите Казахстан</h4>
+              <p>Введите в поиске <strong>«Каз»</strong> и выберите <strong>Казахстан</strong>.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">5</div>
             <div class="step-body">
-              <h4>Примите положения и условия</h4>
-              <p>На последнем экране откроются «Положения и условия» на турецком — нажмите <strong>«Принять»</strong> в правом верхнем углу. App&nbsp;Store перезагрузится уже в турецкой версии — теперь можно ставить Happ.</p>
-              <img class="step-shot" src="/docs/appstore-region/05-terms.jpg" alt="Экран «Положения и условия» Apple на турецком языке" loading="lazy" />
+              <h4>Нажмите «Продолжить»</h4>
+              <p>Кнопка находится на экране «Перед изменением страны или региона».</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">6</div>
+            <div class="step-body">
+              <h4>Примите условия</h4>
+              <p>Пролистайте «Положения и условия» и нажмите <strong>«Принять»</strong> в правом верхнем углу.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">7</div>
+            <div class="step-body">
+              <h4>Укажите способ оплаты None и адрес</h4>
+              <p>Выберите способ оплаты <strong>None</strong> и заполните адрес. Подойдёт любой, например как на видео: Street и City/Town — Нур-Султан, Region — Pavlodar, Postcode — 101000, Phone — 999 9999999. Проверьте данные и нажмите <strong>«Готово»</strong>.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">8</div>
+            <div class="step-body">
+              <h4>Установите приложение</h4>
+              <p>Найдите в App&nbsp;Store <strong>Happ — Proxy Utility</strong> (издатель Flyfrog LLC) или <strong>incy</strong> (издатель LLC ITDEV) и установите.</p>
             </div>
           </div>
         </div>
 
         <div class="callout">
           <span class="ico">✅</span>
-          <p>Регион переключился? Возвращайтесь к разделу <button type="button" class="legal-link" data-jump="install-macos" style="background:none;border:0;padding:0;cursor:pointer;">«Установка на&nbsp;macOS»</button> и открывайте ссылку на международную версию Happ — дальше всё как обычно.</p>
+          <p>Приложение установлено? Осталось добавить подписку. В INCY это делает кнопка <strong>«Настроить подключение»</strong> в ЛК. В Happ скопируйте ссылку подписки в ЛК и нажмите в приложении <strong>«+» → «Добавить подписку»</strong>.</p>
+        </div>
+        <div class="callout">
+          <span class="ico">🔁</span>
+          <p>Регион можно вернуть обратно, приложение останется на iPhone. Но для обновления приложения регион снова придётся сменить на Казахстан.</p>
         </div>
       </section>
 

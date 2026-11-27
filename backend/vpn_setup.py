@@ -30,11 +30,12 @@ class ClientApp(NamedTuple):
 APPSTORE_HAPP_INTL = "https://apps.apple.com/app/happ-proxy-utility/id6504287215"
 HAPP_MACOS_DMG = "https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
 
-# INCY (llc.itdev.incy) — клиент для iOS. Карточка одна и лежит в российской
-# витрине, поэтому второй ссылки для него нет и «недоступно в вашем регионе»
-# на iOS больше не ловим. Тот же выбор сделан на странице подписки Remnawave:
-# там iOS → INCY с диплинком incy://import/.
-APPSTORE_INCY = "https://apps.apple.com/ru/app/incy/id6756943388"
+# INCY (llc.itdev.incy) — клиент для iOS. С 27.10.2026 его нет в российской
+# витрине (/ru/ отдаёт 404), клиенту нужен Apple ID другой страны: инструкция в
+# setup.html#appstore-region. Ссылка без витрины откроется в витрине аккаунта.
+# Тот же выбор сделан на странице подписки Remnawave: там iOS → INCY с диплинком
+# incy://import/.
+APPSTORE_INCY = "https://apps.apple.com/app/incy/id6756943388"
 
 HAPP_DOWNLOADS = {
     "ios":     APPSTORE_HAPP_INTL,
