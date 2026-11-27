@@ -289,7 +289,13 @@ export const changePassword = async (password: string, oldPassword?: string): Pr
     // меняем через бэкенд, который проверит подпись initData.
     const initData = window.Telegram?.WebApp?.initData
     if (code === 'OLD_PASSWORD_REQUIRED' && !oldPassword && initData) {
-      await api.post('/user/password', { password, init_data: initData })
+      try {
+        await api.post('/user/password', { password, init_data: initData })
+      } catch (be: any) {
+        // 503 — на бэкенде не настроен токен: остаётся только текущий пароль.
+        if (be?.response?.status === 503) throw new Error(PASSWD_ERRORS.OLD_PASSWORD_REQUIRED)
+        throw be
+      }
       return { ok: true }
     }
     if (typeof code === 'string' && PASSWD_ERRORS[code]) throw new Error(PASSWD_ERRORS[code])

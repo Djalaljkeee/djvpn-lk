@@ -44,9 +44,32 @@ router = APIRouter()
 INIT_DATA_MAX_AGE_S = 3600
 
 # Группы SHM, которым разрешено менять пароль этой ручкой: 2 — «users» в 3.x,
-# 0/None — пользователи без группы в 2.x. Админов и операторов не трогаем,
-# даже если токен это позволяет.
+# 0/None — пользователи без группы в 2.x. SHM 3.x прячет gid от клиента
+# (hide_for_user), поэтому там проверка ничего не отсекает и основная защита —
+# явный список SHM_PASSWD_PROTECTED_USER_IDS. Токен SHM при этом может сменить
+# пароль любому, так что его обязательно ограничивать IP бэкенда.
 CLIENT_GIDS = {None, 0, 2}
+
+
+def protected_user_ids() -> set[int]:
+    ids = set()
+    for part in (settings.SHM_PASSWD_PROTECTED_USER_IDS or "").split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.add(int(part))
+    return ids
+
+
+def telegram_id_of(login: str, tg: dict) -> Optional[int]:
+    """Telegram id пользователя SHM.
+
+    settings клиенту в 3.x не отдаются, остаётся логин: старые TG-логины
+    вида `@12345`, а 3.x регистрирует новых голым id (`12345`).
+    """
+    tg_id = _telegram_id_from(login, tg)
+    if tg_id is None and login.isdigit():
+        tg_id = int(login)
+    return tg_id
 
 
 class PasswordIn(BaseModel):
@@ -110,7 +133,11 @@ async def change_password(
             settings_blob = json.loads(settings_blob)
         except ValueError:
             settings_blob = {}
-    shm_tg_id = _telegram_id_from(str(user.get("login") or ""), settings_blob.get("telegram") or {})
+    if user_id in protected_user_ids():
+        log.warning("password.protected_user", user_id=user_id)
+        raise HTTPException(status_code=403, detail="Смена пароля для этой учётной записи недоступна")
+
+    shm_tg_id = telegram_id_of(str(user.get("login") or ""), settings_blob.get("telegram") or {})
     if shm_tg_id != tg_id:
         log.warning("password.tg_mismatch", user_id=user_id)
         raise HTTPException(status_code=403, detail="Telegram-аккаунт не привязан к этому кабинету")

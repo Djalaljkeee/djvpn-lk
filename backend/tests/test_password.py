@@ -93,3 +93,43 @@ def test_disabled_without_token(api, monkeypatch):
     r = client.post("/api/user/password", json={"password": "newpass1", "init_data": make_init_data(42, int(time.time()))})
     assert r.status_code == 503
     assert state["calls"] == []
+
+
+def _post(client, tg_id=42):
+    return client.post("/api/user/password", json={"password": "newpass1", "init_data": make_init_data(tg_id, int(time.time()))})
+
+
+def test_shm3_client_view_without_gid_and_settings(api):
+    # SHM 3.x прячет gid и settings от клиента (hide_for_user): остаётся логин.
+    client, state = api
+    state["user"] = {"user_id": 1547, "login": "@42"}
+    assert _post(client).status_code == 200
+    assert state["calls"][0][1]["json"]["user_id"] == 1547
+
+
+def test_shm3_bare_telegram_login(api):
+    # Новых TG-пользователей 3.x регистрирует логином без «@».
+    client, state = api
+    state["user"] = {"user_id": 1547, "login": "42"}
+    assert _post(client).status_code == 200
+    assert _post(client, tg_id=43).status_code == 403
+
+
+@pytest.mark.parametrize("uid", [1, 2, 5])
+def test_rejects_protected_user_even_without_gid(api, uid):
+    import main
+    from security import get_current_session
+
+    client, state = api
+    main.app.dependency_overrides[get_current_session] = lambda: {"shm_session": "sid", "user_id": uid}
+    state["user"] = {"user_id": uid, "login": "@42"}
+    assert _post(client).status_code == 403
+    assert state["calls"] == []
+
+
+def test_protected_list_is_configurable(api, monkeypatch):
+    client, state = api
+    monkeypatch.setattr(password.settings, "SHM_PASSWD_PROTECTED_USER_IDS", " 1, 1547 ,x")
+    assert password.protected_user_ids() == {1, 1547}
+    assert _post(client).status_code == 403
+    assert state["calls"] == []

@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # Ограниченный Bearer-токен SHM 3.x только на POST /admin/user/passwd
     # (см. routers/password.py). Пусто — ручка смены пароля без текущего выключена.
     SHM_PASSWD_TOKEN: str = ""
+    # user_id SHM, которым эта ручка пароль не меняет никогда (админ и служебные).
+    # Через запятую. SHM 3.x не отдаёт клиенту gid, так что это основная защита.
+    SHM_PASSWD_PROTECTED_USER_IDS: str = "1,2,5"
     TELEGRAM_BOT_USERNAME: str = ""  # без @
 
     # Remnawave HWID

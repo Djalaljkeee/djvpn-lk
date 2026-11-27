@@ -44,3 +44,24 @@ describe('changePassword в Telegram Mini App на SHM 3.x', () => {
     expect(apiPost).not.toHaveBeenCalled()
   })
 })
+
+describe('changePassword: бэкенд без токена', () => {
+  afterEach(() => {
+    delete (window as any).Telegram
+  })
+
+  it('503 от бэкенда → просим текущий пароль', async () => {
+    ;(window as any).Telegram = { WebApp: { initData: 'query_id=1&hash=abc' } }
+    shmPost.mockReset().mockRejectedValueOnce(oldPasswordRequired)
+    apiPost.mockReset().mockRejectedValueOnce({ response: { status: 503, data: { detail: 'x' } } })
+    await expect(changePassword('newpass1')).rejects.toThrow('Введите текущий пароль')
+  })
+
+  it('с текущим паролем шлёт old_password в SHM', async () => {
+    shmPost.mockReset().mockResolvedValueOnce({ data: { data: [{}] } })
+    apiPost.mockReset()
+    await changePassword('newpass1', 'oldpass')
+    expect(shmPost).toHaveBeenCalledWith('/user/passwd', { password: 'newpass1', old_password: 'oldpass' })
+    expect(apiPost).not.toHaveBeenCalled()
+  })
+})
