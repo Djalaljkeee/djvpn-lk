@@ -32,6 +32,11 @@ export interface UserService {
   descr?: string
   subscription_url?: string
   remna_uuid?: string
+  // Родительская услуга. У доп. устройства (категория addon-device) это тариф,
+  // к которому оно подключено; у самого тарифа — undefined.
+  parent?: number
+  // Доп. устройства тарифа (дочерние услуги), см. fetchUserServices.
+  addons?: UserService[]
 }
 
 export interface Service {
