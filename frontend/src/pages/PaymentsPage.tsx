@@ -34,7 +34,11 @@ export default function PaymentsPage() {
   const [promoState, setPromoState] = useState<PromoApplyResult | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(0)
-  const [amount, setAmount] = useState('')
+  // ?amount=N — переход из доплаты (доп. устройство, смена тарифа).
+  const [amount, setAmount] = useState(() => {
+    const n = Number(new URLSearchParams(window.location.search).get('amount'))
+    return Number.isFinite(n) && n > 0 && n <= 100000 ? String(Math.ceil(n)) : ''
+  })
   // Сохранённый способ оплаты, который пользователь просит отвязать.
   const [confirmRemove, setConfirmRemove] = useState<PaySystemV2 | null>(null)
   const [removing, setRemoving] = useState(false)

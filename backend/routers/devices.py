@@ -25,6 +25,16 @@ from shm_client import shm_request
 router = APIRouter()
 
 
+def _vpn_root_services(raw_list: list) -> list:
+    """Услуги с собственным пользователем в Remnawave.
+
+    Доп. устройства — дочерние услуги тарифа (`parent` задан): своего
+    пользователя в панели у них нет, резолв по имени `us_<user_id>` вернул бы
+    пользователя тарифа, и его устройства задвоились бы в ответе.
+    """
+    return [s for s in raw_list if s.get("user_service_id") and not s.get("parent")]
+
+
 @router.get("/api/user/devices", response_model=list[ServiceDevicesOut])
 async def get_user_devices(session: dict = Depends(get_current_session)):
     """Получить HWID-устройства пользователя, сгруппированные по услугам."""
@@ -66,7 +76,7 @@ async def get_user_devices(session: dict = Depends(get_current_session)):
             devices=devices,
         )
 
-    valid_services = [s for s in raw_list if s.get("user_service_id")]
+    valid_services = _vpn_root_services(raw_list)
     # return_exceptions=True изолирует параллельные ветки: одна повисшая или
     # упавшая `fetch_devices_for_service` (CancelledError, неожиданный
     # KeyError и т.п.) не должна отменять остальные. Каждая ветка уже имеет
@@ -123,7 +133,7 @@ async def get_remna_info(session: dict = Depends(get_current_session)):
     """Получить данные Remnawave (трафик, лимит устройств, локации) по каждой услуге."""
     data = await shm_request("GET", "/shm/v1/user/service", session["shm_session"])
     raw_list = data.get("data", [])
-    valid_services = [s for s in raw_list if s.get("user_service_id")]
+    valid_services = _vpn_root_services(raw_list)
     user_id = session.get("user_id", 0)
     username_id = await resolve_remna_user_id_by_username(user_id)
 

@@ -11,7 +11,14 @@ import RenewalCard from '../components/dashboard/RenewalCard'
 import TrialOfferCard from '../components/dashboard/TrialOfferCard'
 import CartBanner from '../components/CartBanner'
 import { useCart } from '../hooks/useCart'
-import { resolveDeviceLimit } from '../utils/deviceLimit'
+import { effectiveDeviceLimit } from '../utils/deviceLimit'
+import { useTariffInfo } from '../hooks/useTariffInfo'
+import type { RemnaUserInfo } from '../types'
+
+function ServiceDevicesMini({ usi, used, remna }: { usi: number; used: number; remna: RemnaUserInfo | null }) {
+  const { info } = useTariffInfo(usi, [])
+  return <DevicesMiniCard used={used} limit={effectiveDeviceLimit(info, remna)} />
+}
 
 const TRIAL_SERVICE_ID = 4
 
@@ -78,7 +85,6 @@ export default function DashboardPage() {
           {activeServices.map(svc => {
             const remna = remnaMap[svc.id] ?? null
             const devicesCount = devicesMap[svc.id] ?? 0
-            const limitIp = resolveDeviceLimit(remna)
             return (
               <div key={svc.id} className="space-y-3">
                 <CompactSubscriptionCard
@@ -91,7 +97,7 @@ export default function DashboardPage() {
                     usedBytes={remna?.used_traffic_bytes ?? null}
                     limitBytes={remna?.traffic_limit_bytes ?? null}
                   />
-                  <DevicesMiniCard used={devicesCount} limit={limitIp} />
+                  <ServiceDevicesMini usi={svc.id} used={devicesCount} remna={remna} />
                 </div>
                 <RenewalCard serviceId={svc.id} />
               </div>

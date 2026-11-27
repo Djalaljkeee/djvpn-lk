@@ -71,6 +71,7 @@ export function normalizeUserService(svc: Record<string, unknown>): UserService 
     descr: (info.descr as string | undefined) || (svc.descr as string | undefined),
     subscription_url: subUrl,
     remna_uuid: data.uuid as string | undefined,
+    parent: svc.parent ? Number(svc.parent) : undefined,
   }
 }
 

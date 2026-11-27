@@ -16,7 +16,9 @@ import CountdownBlock from '../components/dashboard/CountdownBlock'
 import LocationsSection from '../components/dashboard/LocationsSection'
 import CtaBanner from '../components/dashboard/CtaBanner'
 import DeviceList from '../components/dashboard/DeviceList'
-import { resolveDeviceLimit } from '../utils/deviceLimit'
+import { effectiveDeviceLimit } from '../utils/deviceLimit'
+import DevicePlanCard, { UpgradeModal } from '../components/dashboard/DevicePlanCard'
+import { useTariffInfo } from '../hooks/useTariffInfo'
 import { servicePrice, formatPrice } from '../utils/price'
 
 function periodLabel(period: number, type: string) {
@@ -44,11 +46,19 @@ function ChangeTariffModal({
   catalog,
   onClose,
   onNeedsTopup,
+  tiers,
+  onFamily,
 }: {
   svc: UserService
   catalog: Service[]
   onClose: () => void
   onNeedsTopup: (prompt: { amount: number; balance: number }) => void
+  // tier услуг каталога из tariff_info: смена на тариф с устройствами идёт
+  // через шаблон tariff_upgrade (пересчёт, перенос доп. устройств, доплата),
+  // а не через голый change — тот без денег блокирует подписку, а доп.
+  // устройства оставляет на старом сроке.
+  tiers: Record<string, string>
+  onFamily: (serviceId: number) => void
 }) {
   const { show } = useToast()
   const invalidate = useInvalidateDashboard()
@@ -60,6 +70,11 @@ function ChangeTariffModal({
 
   const handleChange = async () => {
     if (!selectedId || !svc.id) return
+    if (tiers[String(selectedId)]) {
+      onClose()
+      onFamily(selectedId)
+      return
+    }
     setLoading(true)
     try {
       const res = await changeService(svc.id, selectedId)
@@ -172,6 +187,7 @@ export default function ServicesPage() {
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<UserService | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [upgradeTarget, setUpgradeTarget] = useState<number | null>(null)
 
   const availableIds = useMemo(() => new Set(orders.map(o => o.service_id)), [orders])
   const remnaMap = useMemo(
@@ -284,6 +300,12 @@ export default function ServicesPage() {
   const activeRemna = activeSvc ? (remnaMap[activeSvc.id] ?? null) : null
   const activeDevices = activeSvc ? (devicesMap[activeSvc.id] ?? []) : []
   const expiredAt = activeSvc?.expired ? parseISO(activeSvc.expired.replace(' ', 'T')) : null
+  const catalogIds = useMemo(() => catalog.map(s => s.service_id), [catalog])
+  const { info: tariffInfo, reload: reloadTariff } = useTariffInfo(activeSvc?.id, catalogIds)
+  const deviceLimit = effectiveDeviceLimit(tariffInfo, activeRemna)
+  const handleTariffChanged = () => {
+    void invalidate().finally(() => { void reloadTariff() })
+  }
 
   if (loading) {
     return (
@@ -462,6 +484,17 @@ export default function ServicesPage() {
           catalog={catalog}
           onClose={() => setChangingId(null)}
           onNeedsTopup={prompt => setTopupPrompt(prompt)}
+          tiers={tariffInfo?.tiers ?? {}}
+          onFamily={serviceId => setUpgradeTarget(serviceId)}
+        />
+      )}
+
+      {upgradeTarget !== null && activeSvc && (
+        <UpgradeModal
+          usi={activeSvc.id}
+          serviceId={upgradeTarget}
+          onClose={() => setUpgradeTarget(null)}
+          onDone={handleTariffChanged}
         />
       )}
 
@@ -582,7 +615,7 @@ export default function ServicesPage() {
 
           <DeviceConnectionCard
             connectedCount={activeDevices.length}
-            limitIp={resolveDeviceLimit(activeRemna)}
+            limitIp={deviceLimit}
           />
 
           <CountdownBlock expiredAt={expiredAt} />
@@ -595,11 +628,15 @@ export default function ServicesPage() {
 
           {catalogOpen && catalogContent}
 
+          {tariffInfo && (
+            <DevicePlanCard info={tariffInfo} connected={activeDevices.length} onChanged={handleTariffChanged} />
+          )}
+
           <div className="glass rounded-[1.75rem] p-5">
             <DeviceList
               devices={activeDevices}
               user_service_id={activeSvc.id}
-              totalLimit={resolveDeviceLimit(activeRemna)}
+              totalLimit={deviceLimit}
               onDeleted={() => { void invalidate() }}
               onDeleteAll={async () => {
                 await deleteAllDevices(activeSvc.id)

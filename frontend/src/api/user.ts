@@ -39,7 +39,22 @@ export function pickEmail(items: Record<string, unknown>[]): Record<string, unkn
 
 export const fetchUserServices = async (): Promise<UserService[]> => {
   const resp = await shm.get('/user/service')
-  return unwrap<Record<string, unknown>>(resp).map(normalizeUserService)
+  return groupChildServices(unwrap<Record<string, unknown>>(resp).map(normalizeUserService))
+}
+
+// SHM отдаёт доп. устройства (дочерние услуги тарифа) в общем списке и со
+// статусом ACTIVE. Если их не убрать, `services.find(s => s.status === 1)`
+// возьмёт доп. устройство вместо подписки. Оставляем только корневые услуги,
+// дочерние кладём в `addons` родителя.
+export function groupChildServices(list: UserService[]): UserService[] {
+  const roots = list.filter(s => !s.parent)
+  const byId = new Map(roots.map(s => [s.id, s]))
+  for (const child of list) {
+    if (!child.parent) continue
+    const parent = byId.get(child.parent)
+    if (parent) parent.addons = [...(parent.addons ?? []), child]
+  }
+  return roots
 }
 
 export const fetchPayments = async (): Promise<Payment[]> => {
